@@ -108,6 +108,8 @@ The screenshots show about 28 letters. So I also swept every glyph of the three 
   - A point belongs to the edge it was drawn on.
   - A light letter's edges may now be corrected outward, and a correction never carries an edge point past where it was drawn.
 
+Images: `condensed-diagonals-geist-*`, `crossbar-four-geist-*`, `dotless-j-geist-*`, `heights-light-lora-*`.
+
 ### 12. Found in closer screenshots
 
 - **Folded inside corners:** at weight 0.06 with width 0.7, the small inside corner where the tail of Geist's j meets its stem folded into a notch, and the y's did the same. Where a piece of outline now runs back the way it came, it is laid flat against the stem.
@@ -115,6 +117,10 @@ The screenshots show about 28 letters. So I also swept every glyph of the three 
 - **Slab flags:** a flag reaches out to the side of its stem, and it was tested for sitting on the letter only at its middle, which misses the stem. Heavy, every lowercase flag grew past its stem's top, and on Geist's i and j it met the dot. The test now runs along the whole edge.
 - **Slab beaks:** the beak on the sample font's f hung below its hook at heavy weights, nearly closing on the crossbar. A slab end flush with the letter's edge now follows that edge.
 - **G spur:** its foot bar reached over the bowl it stands on. A slab no longer reaches out on a side where the stroke is joined to ink.
+- **Upright edges between stacked counters:** after the handover fix, the & serif still leaned 19 units at 1.4. Straight upright edges are now moved across whole, by the mean of their two ends.
+- **Rim:** the boolean step that builds the rim could leave a tiny figure-eight in the outline, on Lora's a and the sample font's n and h. Its area was right, so the existing retry never caught it. A result that crosses itself now also goes to the next, finer grid. This change is in `src/forge/cast.ts`, which you approved going into.
+
+Images: `folded-corners-geist-*`, `stacked-counters-lora-*`, `slab-flags-geist-*`, `slab-beak-sample-*`.
 
 ### 13. Review
 
@@ -133,12 +139,11 @@ Every fix has a test that fails on the old code and passes now. They are in:
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run` (the whole suite).
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,881 tests.
 
 ## What is left
 
 - **Middle space and colour.** Measured as ink per unit of advance, letters with counters at 0.6 come out up to 10% denser than at rest (Lora's b, d, p, q), and at 1.4 up to 10% lighter. That is the white the control removes or adds while the strokes keep their weight. Thinning or thickening the walls to compensate is what squared the round letters earlier.
-- **Lora & at middle 1.4.** The serif on its arm still leans by about 19 units. Its two counters move by different amounts, and any smooth handover between them shears an upright edge standing in the gap.
-- **Rim cast.** This reproduces every time: one small self-loop in the rim on Lora's a, and on the sample font's n and h. Geist is clean. The rim is built in `src/forge/cast.ts`, outside the files this work is scoped to.
+- **The edge-only clamp has no test of its own.** In every case I could build, and in all three fonts, it gives the same outline as the clamp it replaced, so no test can fail on the old code. It stays as a safeguard.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.
