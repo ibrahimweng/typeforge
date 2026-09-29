@@ -413,6 +413,36 @@ describe("crossesMoreThan", () => {
   });
 });
 
+describe("crossesMoreThan, on an outline touching itself", () => {
+  // Two lobes, joined where a notch coming down from the top touches the
+  // bottom edge at one point, without crossing it.
+  const notched = (tip: Vec2, right = 400): Contour =>
+    corners([
+      { x: 0, y: 0 },
+      { x: right, y: 0 },
+      { x: right, y: 300 },
+      { x: 250, y: 300 },
+      tip,
+      { x: 150, y: 300 },
+      { x: 0, y: 300 },
+    ]);
+  const drawn = notched({ x: 200, y: 0 });
+
+  /*
+   * Found in Crimson Pro's 4, whose stem touches the bottom of its bar: any
+   * reshaping at all makes the touch two crossings, and taken for new ones
+   * they had the weight refused.
+   */
+  it("lets a touch become the crossings it grows into", () => {
+    expect(crossesMoreThan(drawn)(notched({ x: 200, y: -2 }))).toBe(false);
+  });
+
+  it("still refuses a crossing tied anywhere else", () => {
+    // The right side pulled in through the notch.
+    expect(crossesMoreThan(drawn)(notched({ x: 200, y: 0 }, 180))).toBe(true);
+  });
+});
+
 describe("overlapsMoreThan", () => {
   const rect = (x: number, y: number, width: number, height: number): Contour =>
     corners([

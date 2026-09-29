@@ -411,7 +411,7 @@ export function crossesMoreThan(
       if (selfCrossings(lay, 1).length === 0) return false;
       if (!had) {
         const laid = layOf(drawn, steps, layouts);
-        had = stageOf(drawn, laid, selfCrossings(laid, Infinity));
+        had = stageOf(drawn, laid, [...selfCrossings(laid, Infinity), ...selfTouches(laid)]);
       }
       if (had.found.length === 0) return true;
     }
@@ -715,6 +715,54 @@ function selfCrossings(laid: Laid, limit: number): Crossing[] {
     }
   return found;
 }
+
+/**
+ * Where an outline touches itself without crossing: a point of it lying on
+ * a piece of it that does not end there. Crimson Pro draws its 4 as one
+ * outline, with two points of the stem on the bottom of the bar; any weight
+ * at all makes each of them a crossing, and taken for new ones they left the
+ * 4 unweighed. So each is a crossing the reshaped outline may carry on.
+ */
+function selfTouches(laid: Laid): Crossing[] {
+  const found: Crossing[] = [];
+  const { pieces } = laid;
+  const total = pieces.length;
+  for (let one = 0; one < total; one++) {
+    const at = pieces[one].segment.from;
+    for (let other = 0; other < total; other++) {
+      // Not the piece it starts, nor the one ending at it.
+      if (other === one || other === (one - 1 + total) % total) continue;
+      const box = pieces[other].box;
+      if (
+        at.x < box.xMin - SELF_TOUCH ||
+        at.x > box.xMax + SELF_TOUCH ||
+        at.y < box.yMin - SELF_TOUCH ||
+        at.y > box.yMax + SELF_TOUCH
+      )
+        continue;
+      const { points } = laid.flat(other);
+      for (let k = 0; k + 1 < points.length; k++) {
+        const [a, b] = [points[k], points[k + 1]];
+        const run = sub(b, a);
+        const length = run.x * run.x + run.y * run.y;
+        if (!(length > 0)) continue;
+        const u = Math.max(0, Math.min(1, ((at.x - a.x) * run.x + (at.y - a.y) * run.y) / length));
+        if (distance(at, lerp(a, b, u)) > SELF_TOUCH) continue;
+        found.push({
+          at,
+          one: { place: pieces[one].place, t: 0 },
+          other: { place: pieces[other].place, t: (k + u) / (points.length - 1) },
+          sine: 1,
+        });
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+/** How near a point of an outline lies to another piece of it to touch it, in units. */
+const SELF_TOUCH = 0.05;
 
 /** Where two outlines cross each other, up to `limit` of them. */
 function crossingsBetween(one: Laid, other: Laid, limit: number): Crossing[] {

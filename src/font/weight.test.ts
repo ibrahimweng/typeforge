@@ -25,6 +25,8 @@ import { importFont } from "./parse";
 import { classifyContours, contoursIntersect } from "./outline";
 import {
   CRIMSON_FOUR,
+  CRIMSON_N_ACUTE,
+  CRIMSON_U_HORN_TILDE,
   CRIMSON_Y,
   crossEachOther,
   drawn,
@@ -37,6 +39,7 @@ import {
   LORA_BOLD_R_COMMA,
   LORA_BOLD_T_CARON,
   LORA_BOLD_V,
+  OUTFIT_FI,
   OUTFIT_N,
   OUTFIT_ONE_QUARTER,
   WORK_SANS_G_CIRCUMFLEX,
@@ -1221,7 +1224,7 @@ describe("heaviest, sharp corners at an edge", () => {
 
   /*
    * Regression: where the weight could not move a contour at all -- Crimson
-   * Pro's 4, one contour crossing itself, for now -- the heights were still
+   * Pro's 4, one contour touching itself, until that was followed -- the heights were still
    * put back by the weight it would have grown, and the 4 came out fifty
    * units shorter at each end than it is drawn.
    */
@@ -1231,6 +1234,19 @@ describe("heaviest, sharp corners at an edge", () => {
     const was = heights(drawn(CRIMSON_FOUR));
     expect(yMax).toBeGreaterThan(was.yMax - 1);
     expect(yMin).toBeLessThan(was.yMin + 1);
+  });
+
+  /*
+   * Regression: two points of the stem of Crimson Pro's 4 lie on the bottom
+   * of its bar, the one contour touching itself there. Any weight at all
+   * makes a crossing of each, and taken for new crossings, they had the
+   * weight refused: the 4 did not grow at all.
+   */
+  it("weighs a letter drawn touching itself", () => {
+    const { typeface, glyph } = drawnTo(drawn(CRIMSON_FOUR), 1024, [587, 430], 523);
+    const [four] = at(typeface, glyph, { weight: 61.44 });
+    const ink = (contour: Contour) => Math.abs(contourArea(contour));
+    expect(ink(four)).toBeGreaterThan(ink(drawn(CRIMSON_FOUR)[0]) * 1.3);
   });
 });
 
@@ -1300,6 +1316,60 @@ describe("heaviest, a letter under an accent", () => {
    * else on the line the weight was assumed, and the A of Lora Bold's Á
    * came down fifty-four units short of its height.
    */
+  const crimson = (contours: Contour[], advance: number, unicode: number) => {
+    const made = letter(contours, advance);
+    made.glyph.unicodes = [unicode];
+    made.typeface.unitsPerEm = 1024;
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 430, capHeight: 587 };
+    return made;
+  };
+
+  /*
+   * Regression: the heights were measured from how far the edges moved, and
+   * the top of the arch of Crimson Pro's n under its acute, which the acute
+   * kept from growing, moved eight units rather than sixty: the rest of the
+   * n was never brought back down, and its flag stood thirty-four units over
+   * the n drawn alone. The heights are measured from the letter weighed
+   * without the acute in the way, and the arch put back where it was drawn.
+   */
+  it("measures the heights from the letter weighed alone", () => {
+    const { typeface, glyph } = crimson(drawn(CRIMSON_N_ACUTE), 550, 0x144);
+    const [n] = at(typeface, glyph, { weight: 61.44 });
+    const alone = crimson(drawn(CRIMSON_N_ACUTE).slice(0, 1), 550, 0x6e);
+    const [bare] = at(alone.typeface, alone.glyph, { weight: 61.44 });
+    expect(apart([[n]], [[bare]])[0]).toBeLessThan(2);
+    // The top of the arch, where the acute kept it from growing, as drawn.
+    const top = (contour: Contour) => Math.max(...contour.nodes.map((node) => node.point.y));
+    expect(top(n)).toBeGreaterThan(top(drawn(CRIMSON_N_ACUTE)[0]) - 1);
+  });
+
+  /*
+   * Regression: a level point of the tilde over Crimson Pro's U with a horn
+   * lies on the top of the horn, and counted with the horn's own points, it
+   * had the horn brought down fifty units further than it grew.
+   */
+  it("measures the letter's own top from its own points", () => {
+    const { typeface, glyph } = crimson(drawn(CRIMSON_U_HORN_TILDE), 664, 0x1eee);
+    const [u] = at(typeface, glyph, { weight: 61.44 });
+    const drawnTop = contoursBounds([drawn(CRIMSON_U_HORN_TILDE)[0]]).yMax;
+    expect(contoursBounds([u]).yMax).toBeGreaterThan(drawnTop - 2);
+  });
+
+  /*
+   * Regression: a floating piece was brought down with the letter as the
+   * letter would have grown alone, further than it was weighed to: the dot
+   * of Outfit's fi went under the top of the i, and with the f's hook over
+   * it, it could not be lifted clear.
+   */
+  it("brings a floating piece down as it was weighed, not as the letter alone", () => {
+    const made = letter(drawn(OUTFIT_FI), 573);
+    made.glyph.unicodes = [0xfb01];
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 475, capHeight: 694 };
+    const out = at(made.typeface, made.glyph, { weight: 60 });
+    for (const piece of [0, 1, 2])
+      expect(crossEachOther(out[3], out[piece]), `3:${piece}`).toBe(false);
+  });
+
   it("keeps a top the accent held back where the letter alone has it", () => {
     const { typeface, glyph } = lora(drawn(LORA_BOLD_A_ACUTE), 668);
     const out = at(typeface, glyph, { weight: 60 });

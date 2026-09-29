@@ -204,6 +204,8 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
    */
   // The letter and its slabs as they were before the weight, point for point.
   let unweightedContours: Contour[] | undefined;
+  // The letter weighed as if what floats over or under it were not there.
+  let freeContours: Contour[] | undefined;
   // The slabs, kept to one side until the letter has its weight.
   let slabs: Contour[] = [];
   let slabbedLetter: Contour[] = [];
@@ -310,6 +312,40 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
      * are back, by what it then needs.
      */
     const weighed = drawnLetter.map((_, index) => weigh(index, 1));
+    /*
+     * And weighed again without what floats over or under it in the way, to
+     * measure how far the letter itself grew: a floating piece keeps the
+     * edges it is over from growing -- the top of the arch of Crimson Pro's
+     * n under its acute grew eight units rather than sixty -- and those
+     * edges say nothing of how far to bring the letter back. See
+     * `keepHeights`.
+     */
+    const loose = drawnLetter.map((_, index) => !stands.has(pieceOf[index]));
+    freeContours = undefined;
+    if (params.weight > 0 && loose.some(Boolean) && !loose.every(Boolean)) {
+      const alone = {
+        ...around,
+        obstacles: around.obstacles.map((obstacle, index) => (loose[index] ? [] : obstacle)),
+      };
+      // Only where a floating piece is near enough to have been in the way.
+      const reach = params.weight * 8 + typeface.unitsPerEm * 0.05;
+      const inTheWay = (index: number) =>
+        drawnLetter.some(
+          (_, other) =>
+            loose[other] &&
+            !(
+              pieceBoxes[index].xMax + reach < pieceBoxes[other].xMin ||
+              pieceBoxes[other].xMax + reach < pieceBoxes[index].xMin ||
+              pieceBoxes[index].yMax + reach < pieceBoxes[other].yMin ||
+              pieceBoxes[other].yMax + reach < pieceBoxes[index].yMin
+            ),
+        );
+      freeContours = drawnLetter.map((contour, index) =>
+        loose[index] || !inTheWay(index)
+          ? weighed[index]
+          : applyWeight(contour, params.weight, index, alone),
+      );
+    }
     const lifts = clearLifts(drawnLetter, weighed, typeface.unitsPerEm, CLEAR_KEPT);
     contours = keptApart(
       drawnLetter,
@@ -318,6 +354,11 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
       drawnLetter,
       { em: typeface.unitsPerEm, kept: CLEAR_KEPT },
     ).map((contour, index) => liftedBy(contour, -lifts[index]));
+    // Placed on the letter weighed alone too, to measure it the same way.
+    const freeSlabs =
+      freeContours && slabs.length
+        ? weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, freeContours)
+        : [];
     slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, contours);
     /*
      * And the letter moved over by what the weight added on its left, so it
@@ -346,6 +387,14 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     contours = contours.map((contour) =>
       mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
     );
+    freeContours = freeContours && [
+      ...freeContours.map((contour) =>
+        mapContour(contour, (point) => ({ x: point.x + shift, y: point.y })),
+      ),
+      ...(freeSlabs.length === slabs.length ? freeSlabs : slabs).map((slab) =>
+        mapContour(slab, (point) => ({ x: point.x + shift, y: point.y })),
+      ),
+    ];
     slabs = slabs.map((slab) => mapContour(slab, (point) => ({ x: point.x + shift, y: point.y })));
   }
   if (
@@ -362,7 +411,14 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     contours = [...contours, ...slabs];
   }
   if (params.weight !== 0 && unweightedContours) {
-    contours = keepHeights(contours, params.weight, glyph, typeface, unweightedContours);
+    contours = keepHeights(
+      contours,
+      params.weight,
+      glyph,
+      typeface,
+      unweightedContours,
+      freeContours,
+    );
     contours = keptClear(unweightedContours, contours, typeface.unitsPerEm, CLEAR_KEPT, true);
   }
   if (params.cornerRadius > 0) {
@@ -1369,6 +1425,8 @@ function keepHeights(
   typeface: Typeface,
   /** The same contours before the weight, point for point, where known. */
   before?: Contour[],
+  /** The same weighed without the pieces floating over or under them. */
+  free?: Contour[],
 ): Contour[] {
   const metrics = typeface.metrics;
   const top = isLowercase(glyph) ? metrics?.xHeight : metrics?.capHeight;
@@ -1435,14 +1493,64 @@ function keepHeights(
       flat(node.handleOut ?? (next.handleIn ? null : next.point))
     );
   };
-  const edgeMove = (line: number, upward: boolean): number => {
+  const reference = matched ? (before as Contour[]) : contours;
+  const { stands, inkOf, pieceOf } = piecesOf(reference, typeface.unitsPerEm);
+  /*
+   * How far each point went, weighed without what floats over or under the
+   * letter in its way -- how far the letter itself grew -- where that was
+   * measured.
+   */
+  const grown =
+    matched &&
+    free?.length === contours.length &&
+    free.every((contour, index) => contour.nodes.length === contours[index].nodes.length)
+      ? free
+      : contours;
+  /*
+   * Made bolder, a point on one of the letter's edges that a floating piece
+   * kept from growing -- the top of the arch of Crimson Pro's n under its
+   * acute, the flat top of the A of Lora Bold's Á -- went less far than the
+   * letter did without the piece in the way. Where the edges were measured
+   * from where it went, the n's said eight units rather than sixty, and the
+   * rest of the n, never brought back down, stood thirty-four over the
+   * x-height. They are measured from where the letter went alone, and such
+   * a point is drawn back out to where it was drawn.
+   */
+  // Each contour's own top and bottom as drawn: a point at a line of the
+  // letter's only in passing -- part of the way up the horn of Geist's O
+  // with a horn and a grave, at the cap height -- is not on an edge of it,
+  // and drawn back out, it folded the horn.
+  const ownEdges = (before ?? contours).map((contour) => contoursBounds([contour]));
+  const heldBackAt = (which: number, index: number, upward: boolean): boolean => {
+    if (grown === contours || !(weight > 0)) return false;
+    const y = (before as Contour[])[which].nodes[index].point.y;
+    const edge = upward ? ownEdges[which].yMax : ownEdges[which].yMin;
+    if (Math.abs(y - edge) > tolerance) return false;
+    const alone = grown[which].nodes[index].point.y;
+    const went = contours[which].nodes[index].point.y;
+    return (upward ? alone - went : went - alone) > 0.5;
+  };
+  /*
+   * The letter's own lines measured from its own points: a level point of
+   * the tilde over Crimson Pro's U with a horn lies on the top of the horn,
+   * and counted with the horn's, it had the horn brought down fifty units
+   * further than it grew.
+   */
+  const standingOnly = stands.size > 0 ? (which: number) => stands.has(pieceOf[which]) : undefined;
+  const edgeMove = (
+    line: number,
+    upward: boolean,
+    only?: (which: number) => boolean,
+    from: Contour[] = grown,
+  ): number => {
     const assumed = upward ? weight : -weight;
     if (!matched) return assumed;
     const found: Array<{ at: number; moved: number }> = [];
     for (const [which, contour] of (before as Contour[]).entries()) {
+      if (only && !only(which)) continue;
       for (const [index, node] of contour.nodes.entries()) {
         if (Math.abs(node.point.y - line) > tolerance || !level(contour, index)) continue;
-        const moved = contours[which].nodes[index].point.y - node.point.y;
+        const moved = from[which].nodes[index].point.y - node.point.y;
         if (upward ? along(moved) > 0.5 : along(moved) < -0.5)
           found.push({ at: node.point.y, moved });
       }
@@ -1475,7 +1583,6 @@ function keepHeights(
    * crosses the baseline with no point on it, and pinned there as if it
    * stood on it, the stem above was squeezed and the tail below moved whole.
    */
-  const reference = matched ? (before as Contour[]) : contours;
   const touches = (line: number): boolean =>
     Math.abs(box.yMin - line) <= tolerance ||
     Math.abs(box.yMax - line) <= tolerance ||
@@ -1489,13 +1596,6 @@ function keepHeights(
    * had kept from growing, came down by all the weight the circumflex had
    * grown and stood fifty-four units short.
    */
-  const {
-    stands,
-    inkOf,
-    pieces,
-    pieceOf,
-    boxes: drawnBoxes,
-  } = piecesOf(reference, typeface.unitsPerEm);
   const standing = [...stands].flatMap((piece) => inkOf(piece).map((index) => reference[index]));
   const own = standing.length ? contoursBounds(standing) : box;
   const lines: number[] = [];
@@ -1504,48 +1604,79 @@ function keepHeights(
   const bottoms = lines.length;
   if (toTop && own.yMax > top + tolerance && own.yMax < box.yMax - tolerance) lines.push(own.yMax);
   if (toTop && box.yMax > top + tolerance) lines.push(box.yMax);
-  const pins: Array<{ from: number; to: number }> = [];
-  for (const line of lines.slice(0, bottoms))
-    pins.push({ from: line + edgeMove(line, false), to: line });
-  if (onBaseline && touches(0)) pins.push({ from: edgeMove(0, false), to: 0 });
-  if (toTop && touches(top)) pins.push({ from: top + edgeMove(top, true), to: top });
-  for (const line of lines.slice(bottoms))
-    pins.push({ from: line + edgeMove(line, true), to: line });
-  if (pins.length === 0) return contours;
-  if (pins.some((pin, index) => index > 0 && pin.from <= pins[index - 1].from)) return contours;
-  const map = (y: number): number => {
-    const first = pins[0];
-    const last = pins[pins.length - 1];
-    if (y <= first.from) return y + first.to - first.from;
-    if (y >= last.from) return y + last.to - last.from;
-    for (let index = 1; index < pins.length; index++) {
-      const [a, b] = [pins[index - 1], pins[index]];
-      if (y <= b.from) return a.to + ((y - a.from) * (b.to - a.to)) / (b.from - a.from);
-    }
-    return y;
+  // The glyph's top and bottom, and the letter's own where a piece floats past them.
+  const topLines = [box.yMax, ...lines.slice(bottoms)];
+  const bottomLines = [box.yMin, ...lines.slice(0, bottoms)];
+  // The glyph's own top or bottom beyond the letter's is a floating piece's.
+  const whose = (line: number) =>
+    Math.abs(line - own.yMin) <= tolerance || Math.abs(line - own.yMax) <= tolerance
+      ? standingOnly
+      : undefined;
+  type Pin = { from: number; to: number };
+  const pinsFrom = (from: Contour[]): Pin[] => {
+    const found: Pin[] = [];
+    for (const line of lines.slice(0, bottoms))
+      found.push({ from: line + edgeMove(line, false, whose(line), from), to: line });
+    if (onBaseline && touches(0))
+      found.push({ from: edgeMove(0, false, standingOnly, from), to: 0 });
+    if (toTop && touches(top))
+      found.push({ from: top + edgeMove(top, true, standingOnly, from), to: top });
+    for (const line of lines.slice(bottoms))
+      found.push({ from: line + edgeMove(line, true, whose(line), from), to: line });
+    return found;
   };
-  const slope = (y: number): number => {
-    for (let index = 1; index < pins.length; index++) {
-      const [a, b] = [pins[index - 1], pins[index]];
-      if (y > a.from && y < b.from) return (b.to - a.to) / (b.from - a.from);
-    }
-    return 1;
-  };
-  const squeezed = contours.map((contour) => ({
-    closed: contour.closed,
-    nodes: contour.nodes.map((node) => {
-      const at = node.point;
-      const by = slope(at.y);
-      const carry = (handle: Vec2 | null): Vec2 | null =>
-        handle ? { x: handle.x, y: map(at.y) + (handle.y - at.y) * by } : null;
-      return {
-        point: { x: at.x, y: map(at.y) },
-        handleIn: carry(node.handleIn),
-        handleOut: carry(node.handleOut),
-        type: node.type,
-      };
-    }),
-  }));
+  const inOrder = (found: Pin[]) =>
+    found.every((pin, index) => index === 0 || pin.from > found[index - 1].from);
+  const pins = pinsFrom(grown);
+  if (pins.length === 0 || !inOrder(pins)) return contours;
+  /*
+   * And what floats over or under the letter by the edges as they came out,
+   * with it in their way, as it was weighed: brought down with the letter as
+   * it would have grown alone, the dot of Outfit's fi went under the top of
+   * the i and could not be lifted clear, with the f's hook over it.
+   */
+  const floatingPins = grown === contours ? pins : pinsFrom(contours);
+  const mapping = (pinned: Pin[]) => ({
+    map: (y: number): number => {
+      const first = pinned[0];
+      const last = pinned[pinned.length - 1];
+      if (y <= first.from) return y + first.to - first.from;
+      if (y >= last.from) return y + last.to - last.from;
+      for (let index = 1; index < pinned.length; index++) {
+        const [a, b] = [pinned[index - 1], pinned[index]];
+        if (y <= b.from) return a.to + ((y - a.from) * (b.to - a.to)) / (b.from - a.from);
+      }
+      return y;
+    },
+    slope: (y: number): number => {
+      for (let index = 1; index < pinned.length; index++) {
+        const [a, b] = [pinned[index - 1], pinned[index]];
+        if (y > a.from && y < b.from) return (b.to - a.to) / (b.from - a.from);
+      }
+      return 1;
+    },
+  });
+  const forLetter = mapping(pins);
+  const forFloating = inOrder(floatingPins) ? mapping(floatingPins) : forLetter;
+  const squeezed = contours.map((contour, which) => {
+    const { map, slope } =
+      stands.size === 0 || stands.has(pieceOf[which]) ? forLetter : forFloating;
+    return {
+      closed: contour.closed,
+      nodes: contour.nodes.map((node) => {
+        const at = node.point;
+        const by = slope(at.y);
+        const carry = (handle: Vec2 | null): Vec2 | null =>
+          handle ? { x: handle.x, y: map(at.y) + (handle.y - at.y) * by } : null;
+        return {
+          point: { x: at.x, y: map(at.y) },
+          handleIn: carry(node.handleIn),
+          handleOut: carry(node.handleOut),
+          type: node.type,
+        };
+      }),
+    };
+  });
   /*
    * A sharp corner on one of those edges, at the very edge, that the weight
    * moved by other than the edge it is on, goes back to where it was drawn,
@@ -1565,12 +1696,8 @@ function keepHeights(
    */
   const backToEdge = (put: Contour[]): Contour[] => {
     if (!matched || !(weight > 0)) return put;
-    const floating = pieces
-      .filter((piece) => !stands.has(piece))
-      .flatMap((piece) => inkOf(piece).map((index) => drawnBoxes[index]));
     const tops = pins.filter((pin) => pin.to > tolerance).map((pin) => pin.to);
     const bottoms = pins.filter((pin) => pin.to <= tolerance).map((pin) => pin.to);
-    const reach = 2 * weight + tolerance;
     return put.map((contour, which) => {
       const drawnContour = (before as Contour[])[which];
       const count = drawnContour.nodes.length;
@@ -1579,8 +1706,14 @@ function keepHeights(
         const was = drawnContour.nodes[index];
         const previous = drawnContour.nodes[(index - 1 + count) % count];
         const next = drawnContour.nodes[(index + 1) % count];
-        if (was.handleIn || was.handleOut || previous.handleOut || next.handleIn) return node;
-        if (node.handleIn || node.handleOut) return node;
+        const straight = !(
+          was.handleIn ||
+          was.handleOut ||
+          previous.handleOut ||
+          next.handleIn ||
+          node.handleIn ||
+          node.handleOut
+        );
         const { x, y } = was.point;
         const up = tops.some((line) => Math.abs(y - line) <= tolerance);
         const down = bottoms.some((line) => Math.abs(y - line) <= tolerance);
@@ -1591,19 +1724,9 @@ function keepHeights(
         const moved = (contours[which].nodes[index].point.y - y) * (up ? 1 : -1);
         const past = up ? node.point.y > y + 0.5 : node.point.y < y - 0.5;
         const short = up ? node.point.y < y - 0.5 : node.point.y > y + 0.5;
+        if (!straight) return node;
         const ranOut = moved > weight * 1.1 && past;
-        const held =
-          moved < weight - 0.5 &&
-          short &&
-          stands.has(pieceOf[which]) &&
-          floating.some(
-            (piece) =>
-              piece.xMin - weight <= x &&
-              x <= piece.xMax + weight &&
-              (up
-                ? piece.yMin >= y - tolerance && piece.yMin - y <= reach
-                : piece.yMax <= y + tolerance && y - piece.yMax <= reach),
-          );
+        const held = short && heldBackAt(which, index, up);
         if (!ranOut && !held) return node;
         changed = true;
         if (held) return { ...node, point: { x: node.point.x, y } };
@@ -1697,6 +1820,8 @@ function keepHeights(
    * smooth field moves the curve as a whole.
    */
   const edges: Array<{ at: Vec2; by: number; up: boolean }> = [];
+  // Points on an edge held back by a floating piece, and how far each is short.
+  const heldEdges: Array<{ at: Vec2; by: number }> = [];
   for (const [which, contour] of (before as Contour[]).entries()) {
     for (const [index, node] of contour.nodes.entries()) {
       const was = node.point.y;
@@ -1710,12 +1835,21 @@ function keepHeights(
        * units over its cap height.
        */
       const atTop =
-        (toTop && Math.abs(was - top) <= tolerance) || Math.abs(was - box.yMax) <= tolerance;
+        (toTop && Math.abs(was - top) <= tolerance) ||
+        topLines.some((line) => Math.abs(was - line) <= tolerance);
       const atBottom =
-        (onBaseline && Math.abs(was) <= tolerance) || Math.abs(was - box.yMin) <= tolerance;
-      if ((!atTop && !atBottom) || Math.abs(moved) <= 0.5) continue;
+        (onBaseline && Math.abs(was) <= tolerance) ||
+        bottomLines.some((line) => Math.abs(was - line) <= tolerance);
+      if (!atTop && !atBottom) continue;
       const up = atTop && (!atBottom || along > 0);
       const now = squeezed[which].nodes[index].point;
+      if (heldBackAt(which, index, up)) {
+        // Only ever drawn back out, to where it was drawn.
+        const by = was - now.y;
+        if (up ? by > 0.5 : by < -0.5) heldEdges.push({ at: now, by });
+        continue;
+      }
+      if (Math.abs(moved) <= 0.5) continue;
       /*
        * A point on a slope near the edge -- the top of a wedge serif, the
        * join of the tail of a Q with its bowl -- is only set right where it
@@ -1747,7 +1881,8 @@ function keepHeights(
       edges.push({ at: now, by, up });
     }
   }
-  if (!edges.some((edge) => Math.abs(edge.by) > 0.5)) return settle(restored);
+  if (!edges.some((edge) => Math.abs(edge.by) > 0.5) && heldEdges.length === 0)
+    return settle(restored);
   const band = typeface.unitsPerEm * 0.1;
   const soft = (typeface.unitsPerEm * 0.01) ** 2;
   /*
@@ -1759,7 +1894,9 @@ function keepHeights(
    */
   const groups = [true, false].map((up) => ({
     edges: edges.filter((edge) => edge.up === up),
-    lines: up ? [...(toTop ? [top] : []), box.yMax] : [...(onBaseline ? [0] : []), box.yMin],
+    lines: up
+      ? [...(toTop ? [top] : []), ...topLines]
+      : [...(onBaseline ? [0] : []), ...bottomLines],
   }));
   const field = (at: Vec2): number => {
     let total = 0;
@@ -1795,9 +1932,26 @@ function keepHeights(
    */
   const edgeLines = groups.flatMap((group) => group.lines);
   const onEdgeLine = (y: number) => edgeLines.some((line) => Math.abs(y - line) <= tolerance);
-  const shift = (at: Vec2 | null, drawnAt: Vec2 | null | undefined): Vec2 | null => {
+  /*
+   * And the points a floating piece held back, drawn back out -- the top of
+   * the arch of Crimson Pro's n under its acute, with the points either side
+   * of it on the same edge -- smoothly between them, and nothing else: spread
+   * like the rest, it lifted the flag of the n with it, and added to the
+   * stem beside it, it held the top of that stem out past its height.
+   */
+  const heldField = (at: Vec2): number => {
+    let sum = 0;
+    let weights = 0;
+    for (const edge of heldEdges) {
+      const weight = 1 / ((edge.at.x - at.x) ** 2 + (edge.at.y - at.y) ** 2 + soft);
+      sum += edge.by * weight;
+      weights += weight;
+    }
+    return weights > 0 ? sum / weights : 0;
+  };
+  const shift = (at: Vec2 | null, drawnAt: Vec2 | null | undefined, held = 0): Vec2 | null => {
     if (!at) return null;
-    const by = field(at);
+    const by = field(at) + held;
     let y = at.y + by;
     if (drawnAt && onEdgeLine(drawnAt.y)) {
       if (by > 0) y = Math.min(y, Math.max(at.y, drawnAt.y));
@@ -1806,28 +1960,55 @@ function keepHeights(
     return { x: at.x, y };
   };
   const drawnContours = before as Contour[];
-  const fielded = squeezed.map((contour, which) => ({
-    closed: contour.closed,
-    nodes: contour.nodes.map((node, index) => {
-      const drawnNode = drawnContours[which].nodes[index];
-      const point = shift(node.point, drawnNode.point) as Vec2;
-      /*
-       * A handle lying on its own point stays on it. Moved by the field
-       * where it stands and held by where it was drawn, one came away
-       * from a corner the weight had swallowed onto one spot, and the
-       * piece from the spot to itself became a spike: half a unit, at
-       * the bar of Lora Bold's heavy eth.
-       */
-      const handle = (at: Vec2 | null, drawnAt: Vec2 | null) =>
-        at && distance(at, node.point) < 1e-6 ? { ...point } : shift(at, drawnAt);
-      return {
-        ...node,
-        point,
-        handleIn: handle(node.handleIn, drawnNode.handleIn),
-        handleOut: handle(node.handleOut, drawnNode.handleOut),
-      };
-    }),
-  }));
+  const moveNode = (which: number, node: GlyphNode, index: number): GlyphNode => {
+    const drawnNode = drawnContours[which].nodes[index];
+    const held =
+      heldEdges.length &&
+      onEdgeLine(drawnNode.point.y) &&
+      (heldBackAt(which, index, true) || heldBackAt(which, index, false))
+        ? heldField(node.point)
+        : 0;
+    const point = shift(node.point, drawnNode.point, held) as Vec2;
+    /*
+     * A handle lying on its own point stays on it. Moved by the field
+     * where it stands and held by where it was drawn, one came away
+     * from a corner the weight had swallowed onto one spot, and the
+     * piece from the spot to itself became a spike: half a unit, at
+     * the bar of Lora Bold's heavy eth.
+     */
+    const handle = (at: Vec2 | null, drawnAt: Vec2 | null) =>
+      at && distance(at, node.point) < 1e-6 ? { ...point } : shift(at, drawnAt, held);
+    return {
+      ...node,
+      point,
+      handleIn: handle(node.handleIn, drawnNode.handleIn),
+      handleOut: handle(node.handleOut, drawnNode.handleOut),
+    };
+  };
+  /*
+   * Points the weight brought onto nearly one spot move as one: moved each
+   * by the field where it stood, two a tenth of a unit apart at the swallowed
+   * corner at the foot of the diagonal of Crimson Pro's Z folded across each
+   * other.
+   */
+  const fielded = squeezed.map((contour, which) => {
+    const nodes: GlyphNode[] = [];
+    contour.nodes.forEach((node, index) => {
+      const before = index > 0 ? contour.nodes[index - 1] : null;
+      const done = index > 0 ? nodes[index - 1] : null;
+      if (before && done && distance(before.point, node.point) < 0.5) {
+        const by = sub(done.point, before.point);
+        const carry = (at: Vec2 | null) => (at ? { x: at.x + by.x, y: at.y + by.y } : null);
+        nodes.push({
+          ...node,
+          point: { x: node.point.x + by.x, y: node.point.y + by.y },
+          handleIn: carry(node.handleIn),
+          handleOut: carry(node.handleOut),
+        });
+      } else nodes.push(moveNode(which, node, index));
+    });
+    return { closed: contour.closed, nodes };
+  });
   return settle(backToEdge(fielded));
 }
 
