@@ -1595,7 +1595,18 @@ export function grotesqueF(style: Style): Recipe {
   const f = frame(fAcross(lighterAcross(style)));
   uses("crossbar");
   const u = small(f);
-  const stem = f.edge + 114 * u;
+  /*
+   * The Sans's stem 6 to 8 units further left from the Regular on, as
+   * Geist's is, and its bar reaching as far left as before at the Regular
+   * and the SemiBold: its stem, hook and bar's right end stood that far
+   * right of Geist's.
+   */
+  const sansF = f.style.metrics.xGrows !== undefined;
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    sansF ? (pastBlack ? knots[4] : atWeights(f, ...knots)) : 0;
+  const stem = f.edge + 114 * u + knot([0, -6, -6, 0, 0]);
+  const barLeft = knot([0, 6, 3, 0, 0]);
   const top = f.hangs(f.asc);
   /*
    * Geist's hook and bar reach the same distance past the stem at every
@@ -1632,7 +1643,7 @@ export function grotesqueF(style: Style): Recipe {
     thin(
       f,
       straight(
-        at(stem - f.half - 76 * u - 12 * more, bar),
+        at(stem - f.half - 76 * u - 12 * more + barLeft, bar),
         at(stem + f.half + 130 * u + 17 * more, bar),
       ),
       f.end,

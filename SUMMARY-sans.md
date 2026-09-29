@@ -690,6 +690,14 @@ the Black. Ours kept the Regular's gap at every weight, so at the Black an
 weight grows and holds it past the Black. Only the Sans sets it. The feet of
 é, è and á now sit at 585–589, where Geist's are.
 
+**The f's stem.** At the Regular and the SemiBold, the f's stem, hook and the
+right end of its bar had stood 6 to 9 units right of Geist's. The stem now
+stands 6 units further left, and the bar still reaches as far left as before.
+The f's misfit falls from 0.099 to 0.014 at the Regular and from 0.079 to
+0.036 at the SemiBold. At the UltraBlack and the Black its shape already
+matched; there its left side is spaced 6–7 units wider than Geist's, which
+the sides table cannot close faster than the n's.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

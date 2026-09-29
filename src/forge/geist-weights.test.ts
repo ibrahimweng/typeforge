@@ -1914,3 +1914,12 @@ describe("the accents over a heavy letter", () => {
     }
   });
 });
+
+describe("the f's stem", () => {
+  it("stands where Geist's does at the Regular", () => {
+    // 100 up Geist Regular's f's stem runs 132-216; it ran 138-225.
+    const [stem] = filled(draw("f", 87).contours, 100);
+    expect(Math.abs(stem[0] - 132)).toBeLessThan(4);
+    expect(Math.abs(stem[1] - 216)).toBeLessThan(5);
+  });
+});
