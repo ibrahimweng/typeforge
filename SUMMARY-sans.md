@@ -476,6 +476,14 @@ strokes as white; they now use a filled (nonzero) ruler.
   past Geist's, and the 9's upper right 17 to 23: rounder quarters, down to
   a circle's, and a bowl tilted up to 12 degrees either way took less than
   a twentieth more off.
+- **Heavy b, d, p and q.** Geist's bowl meets the stem in a V notch at the
+  top and bottom from the SemiBold on, and its counter is rounder than its
+  outside, so its crowns are heavier near the right corners (187 across 420
+  in at the UltraBlack, on a stem of 172). Draw's bowl is one ring on the
+  pen, running flat into the stem. A lopsided ring, a fuller outer ring laid
+  over a rounder inner one, and an open bowl ending inside the stem each
+  measured no closer: the letters already cover Geist's to within 5 to 7 per
+  cent of its area.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o
