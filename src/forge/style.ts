@@ -175,7 +175,17 @@ export interface Metrics {
    * acute is set with its foot over the middle of the letter rather than its
    * whole width, as a steep one is. Left out, see `gapFor`.
    */
-  accents?: { gap: [number, number]; byFoot?: boolean };
+  accents?: {
+    gap: [number, number];
+    byFoot?: boolean;
+    /**
+     * The gap over a lowercase letter and a capital at the Black
+     * (`blackness` of `heavyAt`), run in from `gap` as the weight grows and
+     * held there past it. Left out, the gap is `gap` at every weight.
+     */
+    heavy?: [number, number];
+    heavyAt?: number;
+  };
   /**
    * The most contrast a heavy weight takes on: see `heavierPen`. Left out,
    * the horizontals go on thinning to the pen's limit, which on a face with
@@ -736,8 +746,9 @@ export const SANS: Style = {
     // Geist's word space: 250 at the Thin and the Regular, 221 at the Black.
     wordSpace: [250 / 530, 221 / 530],
     // Geist stands its accents 55 over a lowercase letter and 66 over a
-    // capital, and sets its steep grave and acute by their feet.
-    accents: { gap: [0.055, 0.066], byFoot: true },
+    // capital, and sets its steep grave and acute by their feet; and closer
+    // over a heavy letter, 33 and 47 over Geist Black's.
+    accents: { gap: [0.055, 0.066], byFoot: true, heavy: [0.033, 0.047], heavyAt: 0.88 },
     xGrows: { by: 10, at: 0.88 },
     counterBend: 0.24,
     dotAspect: { thin: 1.1, black: 0.92, at: 0.88 },

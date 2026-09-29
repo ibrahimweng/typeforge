@@ -681,6 +681,15 @@ Regular, and by about a third at the heavy weights; at the Thin it is
 0.03, where it had been 0.08. Every accented letter built on them improves
 slightly.
 
+**Accents over heavy letters (shared files, Sans only).** Geist sets its
+accents closer over a heavy letter: 55 units over a lowercase letter at the
+Regular but 33 at the Black, and 66 over a capital at the Regular but 47 at
+the Black. Ours kept the Regular's gap at every weight, so at the Black an
+é's acute stood 22 units high. A new optional `accents.heavy` metric in
+`style.ts`, read in `build.ts`, runs the gap in towards the Black's as the
+weight grows and holds it past the Black. Only the Sans sets it. The feet of
+é, è and á now sit at 585–589, where Geist's are.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

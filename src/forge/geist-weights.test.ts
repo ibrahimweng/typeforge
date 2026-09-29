@@ -1903,3 +1903,14 @@ describe("the grave", () => {
     }
   });
 });
+
+describe("the accents over a heavy letter", () => {
+  it("stand as close as Geist's", () => {
+    // 300 in, Geist Black's é and è have their accents' feet at 585; set 55
+    // over the letter at every weight they stood at 607.
+    for (const name of ["eacute", "egrave"]) {
+      const runs = filled(draw(name, 194).contours, 300, "x");
+      expect(Math.abs(runs[runs.length - 1][0] - 585), name).toBeLessThan(4);
+    }
+  });
+});

@@ -57,6 +57,7 @@ import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import {
   BASES,
+  blackness,
   capitalled,
   heavier,
   proportioned,
@@ -468,7 +469,16 @@ function marked(
   const gap = gapFor(em, isCapital(parts.base));
   // The face's own gap is for the marks over a letter: a cedilla or an
   // ogonek hangs from the foot as close as ever.
-  const above = gapFor(em, isCapital(parts.base), style.metrics.accents?.gap);
+  const accents = style.metrics.accents;
+  const heavyGap =
+    accents?.heavy && accents.heavyAt
+      ? ([0, 1].map(
+          (i) =>
+            accents.gap[i] +
+            (accents.heavy![i] - accents.gap[i]) * Math.min(1, blackness(style) / accents.heavyAt!),
+        ) as [number, number])
+      : accents?.gap;
+  const above = gapFor(em, isCapital(parts.base), heavyGap);
   const runs = [...base.runs];
   const contours = [...base.contours];
 
