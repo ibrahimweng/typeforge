@@ -37,7 +37,7 @@ import {
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
-import { eroded, groovesOf, knivesOf, onGrid, outlined, untangled } from "./cast";
+import { eroded, figuresOf, groovesOf, knivesOf, onGrid, outlined, untangled } from "./cast";
 import { penReach, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Spine, SpineSegment, Stroke } from "./types";
@@ -194,7 +194,8 @@ export function cutInk(
     ...shape.map((contour) => contourArea(contour)).filter((area) => area > 0),
   );
 
-  if (cuts.motif.on) shape = motifCut(shape, cuts.motif, stem);
+  const figures: Contour[] = [];
+  if (cuts.motif.on) shape = motifCut(shape, cuts.motif, stem, figures);
 
   /*
    * Four of the six are one subtraction between them.
@@ -263,7 +264,8 @@ export function cutInk(
   shape = withoutWedges(shape, strokes, straight);
 
   const chamfered: Vec2[] = [];
-  if (cuts.chamfer.on) shape = take(shape, chamferTool(shape, cuts.chamfer, stem, chamfered));
+  if (cuts.chamfer.on)
+    shape = chamferedOff(shape, chamferTool(shape, cuts.chamfer, stem, chamfered), chamfered);
   /*
    * How thin the letter's own thinnest stroke is, where it was drawn here:
    * a splinter is thinner than anything the letter means to draw, and on a
@@ -282,6 +284,7 @@ export function cutInk(
   shape = untangled(shape.map(withoutHairs), scale.slant ?? 0);
   if (groove.length > 0) groovesOf.set(shape, groove);
   if (knife.length > 0) knivesOf.set(shape, knife);
+  if (figures.length > 0) figuresOf.set(shape, figures);
 
   return {
     contours: shape,
@@ -469,10 +472,23 @@ function withoutWedges(shape: Contour[], strokes: Stroke[], knife: Contour[]): C
     }
   }
   if (wedges.length === 0) return shape;
-  const trimmed = subtract(shape, wedges, "winding");
   const inkOf = (contours: Contour[]) =>
     contours.reduce((total, contour) => total + contourArea(contour), 0);
-  if (inkOf(trimmed) < inkOf(shape) * 0.97 || pieces(trimmed) > pieces(shape)) return shape;
+  const holesOf = (contours: Contour[]) => contours.filter((one) => contourArea(one) < 0).length;
+  /*
+   * Each taken only if the letter is no worse for it: no ink it needs, no
+   * piece broken off and no counter closed. Where a band crosses the top of
+   * a heavy m's middle stem, the corner the arch leaves on it is as thin as a
+   * tongue, but it is the stem's own edge: taken, it left a step in the edge
+   * and a counter pinched shut at its point.
+   */
+  let trimmed = shape;
+  for (const wedge of wedges) {
+    const next = subtract(trimmed, [wedge], "winding");
+    if (inkOf(next) < inkOf(shape) * 0.97) continue;
+    if (pieces(next) > pieces(trimmed) || holesOf(next) > holesOf(trimmed)) continue;
+    trimmed = next;
+  }
   return trimmed;
 }
 
@@ -938,7 +954,14 @@ function inlineTool(
    * off at a slant at the foot of the m.
    */
   const core = eroded(shape, wall);
-  if (core.length === 0 || strokes.length === 0) return core;
+  // A groove shorter than it is wide is not a groove: see below. A letter
+  // from a font file has no skeleton to hold its grooves back at the ends,
+  // but the serifs of a Lora E left flecks of groove just the same.
+  const least = width * width;
+  if (core.length === 0) return core;
+  if (strokes.length === 0) {
+    return core.filter((one) => contourArea(one) <= 0 || contourArea(one) >= least);
+  }
   const back = inline.inset * stem;
 
   const breakouts: Contour[] = [];
@@ -1039,7 +1062,6 @@ function inlineTool(
    * apart from the rest -- a white fleck beside the ends of a Serif e and
    * s. A groove shorter than it is wide is not a groove.
    */
-  const least = width * width;
   return [
     ...held.filter((one) => contourArea(one) <= 0 || contourArea(one) >= least),
     ...breakouts,
@@ -2151,6 +2173,43 @@ function arcsIn(stroke: Stroke): number {
 }
 
 /**
+ * The letter with its corners cut off -- none of them where cutting it off
+ * breaks a stroke away.
+ *
+ * On a contrast script the corner where a swash leaves the foot of a Black E
+ * stands on a neck thinner than the cut laid across it, and the tail came
+ * away as a piece of its own. A corner is only ever meant to lose its point,
+ * so a cut that touches two of the pieces the letter came apart into is left
+ * off, and its corner kept square.
+ */
+function chamferedOff(shape: Contour[], tool: Contour[], corners: Vec2[]): Contour[] {
+  const cut = take(shape, tool);
+  if (tool.length === 0 || piecesOf(cut) <= piecesOf(shape)) return cut;
+  const solids = cut.filter((one) => contourArea(one) > 0).map((one) => contoursBounds([one]));
+  const bridging = tool.map((one) => {
+    const box = contoursBounds([one]);
+    return (
+      solids.filter(
+        (other) =>
+          other.xMin - 1 < box.xMax &&
+          other.xMax + 1 > box.xMin &&
+          other.yMin - 1 < box.yMax &&
+          other.yMax + 1 > box.yMin,
+      ).length >= 2
+    );
+  });
+  if (!bridging.some(Boolean)) return cut;
+  const again = take(
+    shape,
+    tool.filter((_, at) => !bridging[at]),
+  );
+  if (piecesOf(again) >= piecesOf(cut)) return cut;
+  const kept = corners.filter((_, at) => !bridging[at]);
+  corners.splice(0, corners.length, ...kept);
+  return again;
+}
+
+/**
  * The corners of the letter, cut off square.
  *
  * Read off the outline the previous cuts left rather than off the skeleton,
@@ -2317,7 +2376,13 @@ function alongEdge(from: GlyphNode, to: GlyphNode, by: number, way: "back" | "fo
  * dozen units across, and a diamond that size is a printing fault rather than
  * a decision.
  */
-function motifCut(shape: Contour[], motif: Cuts["motif"], stem: number): Contour[] {
+function motifCut(
+  shape: Contour[],
+  motif: Cuts["motif"],
+  stem: number,
+  // The figures set in, for anything after that has to know: see `figuresOf`.
+  figures: Contour[] = [],
+): Contour[] {
   const holes = shape.filter((contour) => contourArea(contour) < 0);
   if (holes.length === 0) return shape;
 
@@ -2421,6 +2486,7 @@ function motifCut(shape: Contour[], motif: Cuts["motif"], stem: number): Contour
     shapes.push(...(size > 1 ? intersect(drawn, solid, "winding") : drawn));
   }
   const filled = [...solid, ...kept];
+  figures.push(...shapes);
   return shapes.length === 0 ? filled : subtract(filled, shapes, "winding");
 }
 

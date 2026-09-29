@@ -30,6 +30,7 @@ import {
   rayHitDistance,
   reverseContour,
   splitCubic,
+  crossesItself,
 } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
@@ -103,6 +104,12 @@ export const groovesOf = new WeakMap<Contour[], Contour[]>();
  */
 export const knivesOf = new WeakMap<Contour[], Contour[]>();
 
+/**
+ * The figures the counter motif set in the letter, for the same list: see
+ * `slit` in the effects, which took a roughened one for a crack.
+ */
+export const figuresOf = new WeakMap<Contour[], Contour[]>();
+
 /** Whether a hole lies mostly in an inline's groove (`groovesOf`). */
 export function inGroove(hole: Contour, grooves: Contour[]): boolean {
   if (grooves.length === 0) return false;
@@ -133,7 +140,16 @@ export function castInk(
   // Where a chamfer has just cut corners off: see `spurTool`.
   chamfered: Vec2[] = [],
 ): Contour[] {
-  if (!reachesCast(cast, strokes) || ink.length === 0 || !loaded()) return ink;
+  if (ink.length === 0 || !loaded()) return ink;
+  /*
+   * With nothing it can do -- a weld on a letter from a font file, which has
+   * no skeleton to find joins on -- the letter is still handed on the way
+   * the cast hands on everything, fused and wound as ink is. Handed back as
+   * it came, in the file's own winding, a cut after it read every counter
+   * inside out: the chamfer cut the inside corners off a Lora H, and the
+   * motif took its n away altogether.
+   */
+  if (!reachesCast(cast, strokes)) return roles === "winding" ? ink : unite(ink, roles, "whole");
 
   let shape = unite(ink, roles, "whole");
   const stem = Math.max(scale.stem, 1);
@@ -156,7 +172,9 @@ export function castInk(
   );
 
   const local: Contour[] = [];
-  if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem, chamfered));
+  if (cast.spur.on) {
+    local.push(...spurTool(shape, cast.spur, stem, chamfered, knivesOf.get(ink) ?? []));
+  }
   if (cast.weld.on) {
     local.push(
       ...weldTool(strokes, cast.weld, stem, shape, breaks, grooves, knivesOf.get(ink) ?? []),
@@ -212,6 +230,8 @@ export function castInk(
   const result = withoutSpecks(untangled(done, scale.slant ?? 0), stem, smallest);
   // Handed on with the groove still known, for the effects that follow.
   if (grooves.length > 0) groovesOf.set(result, grooves);
+  const figures = figuresOf.get(ink);
+  if (figures) figuresOf.set(result, figures);
   return result;
 }
 
@@ -393,8 +413,18 @@ function swept(
     const inner = counters.filter((counter) =>
       islands.some((island) => contourContainsPoint(island, counter.nodes[0].point)),
     );
+    /*
+     * One level down only while it is one level down. A counter pinched
+     * shut at a point by a slot touches the piece beside it there, and each
+     * takes the other's first point for inside: on a slotted heavy Display m
+     * the same piece and counter came back as island and counter for ever,
+     * and the letter threw.
+     */
+    const deeper = islands.length + inner.length < solids.length + counters.length;
     const again =
-      inner.length > 0 ? swept([...islands, ...inner], convolve, reachOf) : sweep(islands);
+      inner.length > 0 && deeper
+        ? swept([...islands, ...inner], convolve, reachOf)
+        : sweep(islands);
     result = unite([...result, ...again], "winding", "whole");
   }
   return tidied(result);
@@ -466,22 +496,44 @@ export function untangled(shape: Contour[], slant = 0): Contour[] {
       const at = Math.tan(((slant + by) * Math.PI) / 180);
       const leaned = tilt(shape, at);
       if (leaned.some((contour) => contoursIntersect([contour]))) {
-        return tilt(withoutCrumbs(untangled(leaned)), -at);
+        const fixed = untangled(leaned);
+        // Where the leaned letter will not come untangled, the upright one
+        // may: the hairline e of a Formal Script under the inline did.
+        if (fixed.every((contour) => !crossesItself(contour))) {
+          return tilt(withoutCrumbs(fixed), -at);
+        }
+        break;
       }
     }
   }
-  if (!shape.some((contour) => contoursIntersect([contour]))) return withoutCrumbs(shape);
-  const once = withoutCrumbs(unite(shape, "winding", "whole"));
-  if (!once.some((contour) => contoursIntersect([contour]))) return once;
-  for (const per of [8, 2, 1]) {
-    const again = unite(
-      once.map((contour) => onGrid(contour, per)),
-      "winding",
-      "whole",
-    );
-    if (!again.some((contour) => contoursIntersect([contour]))) return withoutCrumbs(again);
+  /*
+   * Answered by the exact test. The quick one samples curves in six and is
+   * wrong either way: on a hairline Formal Script e under the inline and the
+   * pressure it saw no crossing in the outline that had one, and once the
+   * union had put that right it still saw one, and laid the letter on a grid
+   * that crossed it again.
+   */
+  const clean = (contours: Contour[]) => !contours.some((contour) => crossesItself(contour));
+  if (!shape.some((contour) => contoursIntersect([contour])) && clean(shape)) {
+    return withoutCrumbs(shape);
   }
-  return once;
+  const quiet = (contours: Contour[]) => !contours.some((contour) => contoursIntersect([contour]));
+  const once = withoutCrumbs(unite(shape, "winding", "whole"));
+  if (clean(once) && quiet(once)) return once;
+  const tried = [once];
+  for (const per of [8, 2, 1]) {
+    const again = withoutCrumbs(
+      unite(
+        once.map((contour) => onGrid(contour, per)),
+        "winding",
+        "whole",
+      ),
+    );
+    if (clean(again) && quiet(again)) return again;
+    tried.push(again);
+  }
+  // Where no answer satisfies both, the exact test's word is the one taken.
+  return tried.find(clean) ?? once;
 }
 
 /**
@@ -1148,9 +1200,31 @@ function spurTool(
   spur: Cast["spur"],
   stem: number,
   chamfered: Vec2[] = [],
+  knives: Contour[] = [],
 ): Contour[] {
   const size = spur.size * stem;
   if (size <= 0) return [];
+  /*
+   * Not at a corner a cut made. A slot laid across a curve leaves each piece
+   * with sharp corners where the band's edge meets the curve, and a point
+   * grown at every one of them gave a slotted e and s a star of spikes at
+   * each band. The points are the letter's own corners, chamfered or not.
+   */
+  const cutEdges = knives.map((knife) => flattenContour(knife, 8));
+  const cut = (point: Vec2): boolean =>
+    cutEdges.some((line) =>
+      line.some((a, at) => {
+        const b = line[(at + 1) % line.length];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const run = dx * dx + dy * dy;
+        const t =
+          run > 0
+            ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / run))
+            : 0;
+        return Math.hypot(point.x - a.x - dx * t, point.y - a.y - dy * t) < 1;
+      }),
+    );
 
   /** Below this the outline is carrying on rather than turning. */
   const SHARP = (25 * Math.PI) / 180;
@@ -1186,6 +1260,7 @@ function spurTool(
       if (used.has(index)) continue;
       const first = corners[index];
       if (!first.arriving || !first.leaving || first.turn <= 0) continue;
+      if (cutEdges.length > 0 && cut(first.here.point)) continue;
 
       /*
        * A corner that has been cut off is still one corner.

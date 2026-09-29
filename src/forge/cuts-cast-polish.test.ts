@@ -32,6 +32,7 @@ import {
   startFrom,
   type Forge,
 } from "./document";
+import { outlined } from "./cast";
 import { readyToShape } from "./layers";
 import { piecesOf } from "./cut";
 import { BASES } from "./style";
@@ -813,6 +814,115 @@ describe("slots through a crotch", () => {
   });
 });
 
+describe("slots across the top of a heavy m's middle stem", () => {
+  const forge = () => forgeOf("Display", 260, { cuts: { slot: { count: 3, angle: 15 } } });
+
+  it("leave the stem's corner on and close no counter", () => {
+    // The corner the arch leaves on the stem, under the band, is as thin as
+    // a tongue. Taken for one, it left a step in the stem's edge and a
+    // counter pinched shut at its point.
+    expect(counters(drawn("m", forge()))).toEqual([]);
+  });
+
+  it("throw a shadow or grow a rim after them", () => {
+    for (const cast of ["extrude", "outline"]) {
+      const made = forgeOf("Display", 260, {
+        cuts: { slot: { count: 3, angle: 15 } },
+        cast: { [cast]: {} },
+        order: "after",
+      });
+      expect(drawn("m", made).length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("the chamfer on a heavy Formal Script", () => {
+  const chamfered = forgeOf("Formal Script", 260, { cuts: { chamfer: {} } });
+
+  it("breaks no swash off the letter", () => {
+    // The corner where the swash leaves the foot of the E stands on a neck
+    // thinner than the cut laid across it.
+    expect(piecesOf(drawn("E", chamfered))).toBe(
+      piecesOf(drawn("E", forgeOf("Formal Script", 260, {}))),
+    );
+  });
+
+  it("leaves the pressed stems' corners as clean as the uncut ones", () => {
+    // The press laid its bands along the faces the chamfer cut, sample by
+    // sample, and every cut corner of the H came back a staircase of ticks.
+    expect(inwardTurns(drawn("H", chamfered))).toBeLessThanOrEqual(
+      inwardTurns(drawn("H", forgeOf("Formal Script", 260, {}))),
+    );
+  });
+});
+
+describe("the motif on a roughened face", () => {
+  it("keeps the figure set in the eye of the e", () => {
+    // Roughened, the diamond in the eye of a Marker e wandered into the
+    // shape of a crack, and was filled as one: the e came back solid.
+    const figured = drawn("e", forgeOf("Marker", 200, { cuts: { motif: {} } }));
+    expect(counters(figured).length).toBe(1);
+  });
+});
+
+describe("points after the chamfer on a Formal Script", () => {
+  it("leave no speck standing by the leg of the k", () => {
+    // Untangled after the pressure, the k tied off a speck beside its leg,
+    // and nothing swept after the untangling to take it.
+    const pointed = drawn(
+      "k",
+      forgeOf("Formal Script", 200, { cuts: { chamfer: {} }, cast: { spur: {} }, order: "after" }),
+    );
+    const solids = unite(pointed, "winding", "whole").filter((contour) => contourArea(contour) > 0);
+    expect(solids.length).toBe(1);
+  });
+});
+
+describe("the inline on a hairline Formal Script", () => {
+  it("leaves the pressed wall standing and uncrossed", () => {
+    // The press found the groove's edge a unit off the spine and cut from
+    // there across the whole wall, and the e's outline folded over itself.
+    const grooved = drawn("e", forgeOf("Formal Script", 30, { cuts: { inline: {} } }));
+    expect(grooved.filter((contour) => crossesItself(contour))).toEqual([]);
+  });
+});
+
+describe("a rim round a counter that overlaps a piece", () => {
+  const box = (
+    xMin: number,
+    yMin: number,
+    xMax: number,
+    yMax: number,
+    clockwise = false,
+  ): Contour => {
+    const corners: Vec2[] = [
+      { x: xMin, y: yMin },
+      { x: xMax, y: yMin },
+      { x: xMax, y: yMax },
+      { x: xMin, y: yMax },
+    ];
+    const points = clockwise ? [corners[2], corners[1], corners[0], corners[3]] : corners;
+    return {
+      closed: true,
+      nodes: points.map((point) => ({
+        point,
+        handleIn: null,
+        handleOut: null,
+        type: "corner" as const,
+      })),
+    };
+  };
+
+  it("grows, where each takes the other's first point for inside", () => {
+    // A piece and a counter that each hold the other's first point were
+    // taken for island and counter one level down, and again, for ever.
+    const shape = [box(-200, -200, 400, 400), box(0, 0, 100, 100), box(-30, -30, 10, 10, true)];
+    expect(contourContainsPoint(shape[2], shape[1].nodes[0].point)).toBe(true);
+    expect(contourContainsPoint(shape[1], shape[2].nodes[0].point)).toBe(true);
+    expect(outlined(shape, 5).length).toBeGreaterThan(0);
+  });
+});
+
 describe("fillets after a cut", () => {
   it("never tie two pieces together", () => {
     // Across a slot, the corner a band leaves beside a join was closer to
@@ -958,6 +1068,23 @@ describe("a chamfer on a leaning face", () => {
       const forge = forgeOf("Handwriting", weight, { cuts: { chamfer: {} }, cast });
       const folded = drawn("s", forge).filter((contour) => crossesItself(contour));
       expect(folded.length, JSON.stringify(cast)).toBe(0);
+    }
+  });
+});
+
+describe("points after slots", () => {
+  it("grow from the letter's own corners, not the ones a slot cut", () => {
+    // A slot across a curve leaves sharp corners where the band meets it, and
+    // a point grown at each gave a slotted e and s a star at every band.
+    const weight = BASES.find((base) => base.name === "Serif")!.pen.weight;
+    const slot = { slot: { count: 3, angle: 15 } };
+    for (const letter of "eos") {
+      const plain = drawn(letter, forgeOf("Serif", weight, {}));
+      const own =
+        area(drawn(letter, forgeOf("Serif", weight, { cast: { spur: {} } }))) - area(plain);
+      const slotted = drawn(letter, forgeOf("Serif", weight, { cuts: slot }));
+      const pointed = drawn(letter, forgeOf("Serif", weight, { cuts: slot, cast: { spur: {} } }));
+      expect(area(pointed) - area(slotted), letter).toBeLessThan(own * 1.5 + 50);
     }
   });
 });
