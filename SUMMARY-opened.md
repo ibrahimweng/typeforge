@@ -149,9 +149,11 @@ A fifth review found that the fuller check now rejected the corner folds the wid
 - The check is faster: it skips curves that can't loop and only compares pieces near each other.
 - The tests' own crossing check now evaluates curves itself.
 
+A sixth review found the checks against a letter as drawn were each separate, and each let something through. They are now one helper, `crossesMoreThan`. It records a letter's crossings by the pair of curves that make them, and a reshaping may keep those but add none: counted alone, a change that removed one crossing and made a new one elsewhere came out even. Every reshaping step uses it. The counters' check also compares how often each pair of contours crosses.
+
 ## Tests
 
-Every fix has a test that fails on the old code and passes now, except the four listed under What is left. They are in:
+Every fix has a test that fails on the old code and passes now, except those listed under What is left. They are in:
 - `src/font/shape-controls.test.ts`
 - `src/font/weight.test.ts`
 - `src/font/slab.test.ts`
@@ -165,16 +167,17 @@ Three tests use real letters as fixtures, because their faults depend on the let
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,892 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,894 tests.
 
 ## What is left
 
 - **Middle space and colour.** Measured as ink per unit of advance, letters with counters at 0.6 come out up to 10% denser than at rest (Lora's b, d, p, q), and at 1.4 up to 10% lighter. That is the white the control removes or adds while the strokes keep their weight. Thinning or thickening the walls to compensate is what squared the round letters earlier.
-- **Four changes have no test of their own**, because in every case I could build they give the same outline as the code they replaced:
+- **Some changes have no test of their own**, because in every case I could build they give the same outline as the code they replaced:
   - the edge-only clamp;
-  - an upright run taking its largest shift on the one-counter-at-a-time path;
+  - the rules for moving an upright run (the largest shift on the one-counter-at-a-time path; most-one-way-less-most-the-other when pushed both ways);
   - `crossesItself` skipping pieces of no length;
-  - the counters' check comparing crossing pairs instead of the whole letter.
+  - the counters' check comparing contour pairs;
+  - the rim's later grid retries and their size check.
   An independent check of every weighted glyph confirms none of the outlines cross.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.
