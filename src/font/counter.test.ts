@@ -242,13 +242,35 @@ describe("middle space", () => {
       { x: 600, y: 1000 },
       { x: 0, y: 1000 },
     ]);
-    const block = rect(650, 440, 100, 120);
-    const letter = [outside, rect(100, 100, 400, 300), rect(100, 600, 300, 300), block];
-    const moved = resolve(letter, 1.4)[3];
-    const xs = moved.nodes.map((node) => node.point.x).sort((a, b) => a - b);
-    // Two lefts and two rights, each pair level with the other.
-    expect(xs[1] - xs[0]).toBeLessThan(0.5);
-    expect(xs[3] - xs[2]).toBeLessThan(0.5);
+    const counters = [rect(100, 100, 400, 300), rect(100, 600, 300, 300)];
+    // As a plain rectangle, with a point halfway up its right side, and
+    // starting halfway up its left side: a run of one piece, of two, and of
+    // two across the join of the outline.
+    const blocks = [
+      rect(650, 440, 100, 120),
+      polygon([
+        { x: 650, y: 440 },
+        { x: 750, y: 440 },
+        { x: 750, y: 500 },
+        { x: 750, y: 560 },
+        { x: 650, y: 560 },
+      ]),
+      polygon([
+        { x: 650, y: 500 },
+        { x: 650, y: 440 },
+        { x: 750, y: 440 },
+        { x: 750, y: 560 },
+        { x: 650, y: 560 },
+      ]),
+    ];
+    for (const block of blocks) {
+      const moved = resolve([outside, ...counters, block], 1.4)[3];
+      const xs = moved.nodes.map((node) => node.point.x);
+      const left = xs.filter((x) => x < Math.min(...xs) + 50);
+      const right = xs.filter((x) => x > Math.max(...xs) - 50);
+      expect(Math.max(...left) - Math.min(...left)).toBeLessThan(0.5);
+      expect(Math.max(...right) - Math.min(...right)).toBeLessThan(0.5);
+    }
   });
 
   it("moves the outside of the letter across with the counter, never up or down", () => {

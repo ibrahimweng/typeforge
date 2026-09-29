@@ -1567,18 +1567,41 @@ function followCounters(
     contours.map((other, which) => {
       const by = chosen.filter((map) => map.index !== which);
       if (by.length === 0) return other;
-      const move = (point: Vec2 | null): Vec2 | null =>
-        point
-          ? { x: point.x + by.reduce((sum, map) => sum + map.shiftAt(point), 0), y: point.y }
-          : null;
+      const shiftAt = (point: Vec2) => by.reduce((sum, map) => sum + map.shiftAt(point), 0);
+      /*
+       * A straight upright run of the outline moves across whole, by what
+       * its middle is given. Between two counters one above the other the
+       * ink moves by a blend of the two maps that changes with height, and
+       * an upright edge standing in that gap -- the serif on the arm of
+       * Lora's & -- leaned by nineteen units at 1.4.
+       */
+      const runs = uprightRuns(other);
+      const runShift = new Map<number, number>();
+      runs.forEach((run) => {
+        if (run < 0 || runShift.has(run)) return;
+        const members = other.nodes.filter((_, at) => runs[at] === run).map((node) => node.point);
+        const ys = members.map((point) => point.y);
+        runShift.set(
+          run,
+          shiftAt({
+            x: members.reduce((sum, point) => sum + point.x, 0) / members.length,
+            y: (Math.min(...ys) + Math.max(...ys)) / 2,
+          }),
+        );
+      });
       return {
         closed: other.closed,
-        nodes: other.nodes.map((node) => ({
-          ...node,
-          point: move(node.point) as Vec2,
-          handleIn: move(node.handleIn),
-          handleOut: move(node.handleOut),
-        })),
+        nodes: other.nodes.map((node, index) => {
+          const whole = runs[index] >= 0 ? runShift.get(runs[index]) : undefined;
+          const move = (point: Vec2 | null): Vec2 | null =>
+            point ? { x: point.x + (whole ?? shiftAt(point)), y: point.y } : null;
+          return {
+            ...node,
+            point: move(node.point) as Vec2,
+            handleIn: move(node.handleIn),
+            handleOut: move(node.handleOut),
+          };
+        }),
       };
     });
   // Not where following would cross an outline, or two, that did not cross.
@@ -1591,7 +1614,7 @@ function followCounters(
    * single straight line: halfway through, the stem leaned across the lower
    * bowl, the check below saw it cross, and the upper bowl was put back.
    */
-  const together = keepUpright(settled, moveBy(settled, maps));
+  const together = moveBy(settled, maps);
   if (!crosses(together, settled)) return together;
   // Failing that, one at a time, and a counter whose walls cannot follow it
   // stays as it was drawn.
@@ -1605,49 +1628,46 @@ function followCounters(
 }
 
 /**
- * The straight upright edges of a letter kept upright as its counters' walls
- * follow them.
+ * Which straight upright run of an outline each point belongs to, or -1.
  *
- * Between two counters one above the other the ink moves by a blend of the
- * two, which changes with height, and an upright edge standing in that gap
- * had its two ends moved by different amounts: the serif on the arm of
- * Lora's & at 1.4 leaned by nineteen units. Each straight edge that was
- * upright is moved across whole, by the mean of what its ends were given.
+ * A run is one or more straight pieces one after another, each standing as
+ * near upright as `wallBeside` counts a wall upright; a point in the middle
+ * of a stem joins the two halves into one run. The last point runs on to
+ * the first only on a closed outline.
  */
-function keepUpright(before: Contour[], after: Contour[]): Contour[] {
-  return after.map((contour, which) => {
-    const drawn = before[which];
-    const count = contour.nodes.length;
-    if (drawn.nodes.length !== count || count < 2) return contour;
-    const nodes = contour.nodes.map((node) => ({ ...node }));
-    for (let index = 0; index < count; index++) {
-      const next = (index + 1) % count;
-      const [a, b] = [drawn.nodes[index], drawn.nodes[next]];
-      if (a.handleOut || b.handleIn) continue;
-      const dx = b.point.x - a.point.x;
-      const dy = b.point.y - a.point.y;
-      if (Math.abs(dy) < 1 || Math.abs(dx) > Math.abs(dy) * 0.02) continue;
-      const here = nodes[index].point.x - a.point.x;
-      const there = nodes[next].point.x - b.point.x;
-      if (Math.abs(here - there) < 0.25) continue;
-      const mean = (here + there) / 2;
-      for (const [at, by] of [
-        [index, mean - here],
-        [next, mean - there],
-      ] as const) {
-        const along = (point: Vec2 | null): Vec2 | null =>
-          point ? { x: point.x + by, y: point.y } : null;
-        const node = nodes[at];
-        nodes[at] = {
-          ...node,
-          point: along(node.point) as Vec2,
-          handleIn: along(node.handleIn),
-          handleOut: along(node.handleOut),
-        };
-      }
+function uprightRuns(contour: Contour): number[] {
+  const nodes = contour.nodes;
+  const count = nodes.length;
+  const runs = new Array<number>(count).fill(-1);
+  const pieces = contour.closed ? count : count - 1;
+  const upright = (index: number): boolean => {
+    const a = nodes[index];
+    const b = nodes[(index + 1) % count];
+    if (a.handleOut || b.handleIn) return false;
+    const dy = b.point.y - a.point.y;
+    return Math.abs(dy) >= 1 && Math.abs(b.point.x - a.point.x) <= Math.abs(dy) * 0.05;
+  };
+  const straight = Array.from({ length: pieces }, (_, index) => upright(index));
+  if (!straight.some(Boolean) || straight.every(Boolean)) return runs;
+  // Start after a piece that is not upright, so a run across the join of a
+  // closed outline is not cut in two.
+  const start = contour.closed ? (straight.indexOf(false) + 1) % pieces : 0;
+  let run = -1;
+  let open = false;
+  for (let step = 0; step < pieces; step++) {
+    const index = (start + step) % pieces;
+    if (!straight[index]) {
+      open = false;
+      continue;
     }
-    return { closed: contour.closed, nodes };
-  });
+    if (!open) {
+      run++;
+      open = true;
+    }
+    runs[index] = run;
+    runs[(index + 1) % count] = run;
+  }
+  return runs;
 }
 
 /**
