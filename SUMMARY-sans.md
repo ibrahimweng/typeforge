@@ -739,6 +739,14 @@ nodes. The misfits fall:
 
 at the Thin, Regular, SemiBold, UltraBlack and Black.
 
+**The u's trough.** Geist's u is its n turned over: its trough rises into
+the stem thinned, in a notch, so 40 units up there is white between the two.
+The Sans's u now draws its last quarter on the same thin-across pen as the
+n's first, with the same measures turned over. The side runs down to where
+the round actually begins, so the points stay the same past the Black. The
+u's misfit falls from 0.16/0.11/0.05/0.06/0.05 to 0.05/0.08/0.03/0.04/0.03 at
+the Thin, Regular, SemiBold, UltraBlack and Black.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

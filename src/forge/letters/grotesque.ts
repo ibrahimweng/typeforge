@@ -1492,20 +1492,60 @@ export function grotesqueSmallU(style: Style): Recipe {
   // Half a pen up off the baseline and the overshoot back down: the arch's
   // crest, turned over (see `archSpine`).
   const floor = Math.min(f.sits(0) - f.over, height - radius);
-  const middle = at((left + right) / 2, floor + radius);
   const half = (right - left) / 2;
+  if (f.style.metrics.xGrows === undefined) {
+    const middle = at((left + right) / 2, floor + radius);
+    return finish(f, [
+      ink(f, straight(at(right, f.x), at(right, f.x - f.crown)), f.end, f.end),
+      ink(
+        f,
+        chain(
+          straight(at(left, height), at(left, floor + radius)),
+          bend(f, middle, radius, 180, 270, half),
+          bend(f, middle, radius, 270, 360, half),
+        ),
+        f.end,
+        BUTT,
+      ),
+    ]);
+  }
+  /*
+   * The Sans's the n's arch turned over (see `sansArch`): its last quarter on
+   * a pen thin across and full along, flush with the stem inside and diving
+   * into it outside, as Geist's is.
+   */
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    pastBlack ? knots[4] : atWeights(f, ...knots);
+  const { pen } = f.style;
+  const w = f.half * 2;
+  const along = w * (1 - pen.contrast);
+  const thin = w * knot([0.7, 0.25, 0.25, 0.25, 0.25]);
+  const joinPen =
+    thin < along
+      ? { ...pen, weight: along, contrast: 1 - thin / along, angle: 90 }
+      : { ...pen, weight: thin, contrast: 1 - along / thin, angle: 0 };
+  const endX = right - (w - thin) / 2;
+  const middle = at(
+    (left + right) / 2 - knot([0.6, 0.45, 0.45, 0.6, 0.6]) * f.half,
+    floor + radius,
+  );
+  const deeper = knot([60, 30, 30, 30, 30]);
+  // The side down to where the round begins: past the Black the round is
+  // held to what the pen goes round, a unit or two off the side.
+  const round = bend(f, middle, radius, 180, 270, middle.x - left);
+  const side = spineStart(round);
+  const trough = chain(straight(at(side.x, height), side), round);
+  const rising = ink(
+    f,
+    bend(f, at(middle.x, floor + radius + deeper), radius + deeper, 270, 360, endX - middle.x),
+    BUTT,
+    BUTT,
+  );
   return finish(f, [
     ink(f, straight(at(right, f.x), at(right, f.x - f.crown)), f.end, f.end),
-    ink(
-      f,
-      chain(
-        straight(at(left, height), at(left, floor + radius)),
-        bend(f, middle, radius, 180, 270, half),
-        bend(f, middle, radius, 270, 360, half),
-      ),
-      f.end,
-      BUTT,
-    ),
+    ink(f, trough, f.end, BUTT),
+    inherit(rising, { ...rising, pen: joinPen }),
   ]);
 }
 

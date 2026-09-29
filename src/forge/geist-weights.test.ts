@@ -1962,3 +1962,13 @@ describe("the n's shoulder", () => {
     }
   });
 });
+
+describe("the u's trough", () => {
+  it("rises into the stem in a notch, as Geist's does", () => {
+    // 40 up, Geist Regular's u has white between its trough and its stem
+    // (386 to 415); the plain trough ran solid into the stem.
+    const runs = filled(draw("u", 87).contours, 40);
+    expect(runs.length).toBe(2);
+    expect(Math.abs(runs[0][1] - 386)).toBeLessThan(8);
+  });
+});
