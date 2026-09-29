@@ -508,3 +508,76 @@ export function crossEachOther(one: Contour, other: Contour, steps = 32): boolea
     }
   return false;
 }
+
+/** Geist's t with a caron: the caron, then the t. */
+export const GEIST_TCARON: Node6[][] = [
+  [
+    [357, 552, null, null, null, null],
+    [295, 552, null, null, null, null],
+    [325, 757, null, null, null, null],
+    [409, 757, null, null, null, null],
+  ],
+  [
+    [358, 0, null, null, null, null],
+    [274, 0, null, null, 226, 0],
+    [167.5, 33, 190.5, 11, 144.5, 55],
+    [133, 136, 133, 89.33333333333334, null, null],
+    [133, 456, null, null, null, null],
+    [55, 456, null, null, null, null],
+    [55, 530, null, null, null, null],
+    [133, 530, null, null, null, null],
+    [133, 654, null, null, null, null],
+    [217, 654, null, null, null, null],
+    [217, 530, null, null, null, null],
+    [358, 530, null, null, null, null],
+    [358, 456, null, null, null, null],
+    [217, 456, null, null, null, null],
+    [217, 138, null, null, 217, 114],
+    [233, 88, 222.33333333333334, 97.33333333333333, 243.66666666666666, 78.66666666666667],
+    [282, 74, 260, 74, null, null],
+    [358, 74, null, null, null, null],
+  ],
+];
+
+/**
+ * How close two outlines come, asked independently of the code under test:
+ * both flattened here as `crossEachOther` flattens them, every point of each
+ * measured to every piece of the other, and nothing where they cross.
+ */
+export function gapBetween(one: Contour, other: Contour, steps = 32): number {
+  if (crossEachOther(one, other, steps)) return 0;
+  const flat = (contour: Contour): Vec2[] => {
+    const nodes = contour.nodes;
+    const points: Vec2[] = nodes.length > 0 ? [nodes[0].point] : [];
+    for (let k = 0; k < nodes.length; k++) {
+      const a = nodes[k];
+      const b = nodes[(k + 1) % nodes.length];
+      const [p0, p1, p2, p3] = [a.point, a.handleOut ?? a.point, b.handleIn ?? b.point, b.point];
+      const pieces = !a.handleOut && !b.handleIn ? 1 : steps;
+      for (let step = 1; step <= pieces; step++) {
+        const t = step / pieces;
+        const u = 1 - t;
+        points.push({
+          x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+          y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+        });
+      }
+    }
+    return points;
+  };
+  const toPiece = (p: Vec2, a: Vec2, b: Vec2) => {
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const length = dx * dx + dy * dy;
+    const t = length ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / length)) : 0;
+    return Math.hypot(a.x + t * dx - p.x, a.y + t * dy - p.y);
+  };
+  const a = flat(one);
+  const b = flat(other);
+  let best = Infinity;
+  for (const p of a)
+    for (let j = 0; j + 1 < b.length; j++) best = Math.min(best, toPiece(p, b[j], b[j + 1]));
+  for (const p of b)
+    for (let j = 0; j + 1 < a.length; j++) best = Math.min(best, toPiece(p, a[j], a[j + 1]));
+  return best;
+}

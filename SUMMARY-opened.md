@@ -168,6 +168,32 @@ Fixes:
 
 An independent sweep of every glyph of all three fonts under 39 settings found the same as before this round: no crossings and no point-count changes. Every outline of Lora and Geist under those settings comes out within half a unit of the previous commit, so this round adds no images: the fixes matter for fonts that are drawn crossing or overlapping, and for shapes these three fonts don't have.
 
+An eighth review found the location rule still wrong both ways:
+- A crossing where two curves meet at a shallow angle slides further than three times their move. A bowl leaving its stem at ten degrees, moved four units, read as a new crossing, so in an unmerged font the counters of such letters would back off for nothing.
+- With big moves the allowance grew without limit, and any number of crossings could share one drawn crossing.
+- Where a stroke's two sides meet at a point, "the next piece" let a wall pulled through the far side of a wedge pass.
+
+Fixes:
+- **Crossings followed through the reshaping.** The drawn outline is eased into the reshaped one in steps, every point and handle along a straight line. Each crossing at each step must be one from the step before: within 1% of the letter's size of it, and on the same two curves, or the next ones past the point joining them. A step a crossing can't be followed across is halved, down to 1/256 of the whole. So a crossing sliding a long way at a shallow angle is followed, and one tied anywhere new is caught, whatever the angle or the move. Only letters drawn crossing, and reshapes that cross, go through this.
+- **Corner radius.** It can't be followed point for point, so it now allows for a crossing sliding along curves that meet at a shallow angle.
+- **Rim.** A retry must now cover the shape, checked with a boolean subtraction. Being at least the shape's area wasn't enough: a retry that dropped the dot of an i and its rim was still larger than the shape.
+- **Spike cleanup.** The spikes on Lora's A and n and on Geist's ª are on pieces drawn as a single point. So only a piece drawn short with handles of its own keeps them, however the weight grows them.
+- **Follow step.** When one counter without a map is scaled through a wall, it alone is put back as drawn. Before, the whole letter was put back, and every other counter's change with it.
+- **Speed.** The checks of one letter share their flattened outlines, and hold them weakly.
+
+**Between contours.** The review also found that only the counters' steps checked contours against each other. The independent sweep had never checked that either, so I added it. It found real faults:
+- **At weight −0.04 a counter cut through its outline**, in Lora's g and Geist's ª and д.
+  - In д it was a bug in the weight engine. It turns a straight side to lie parallel to its stroke's other side, and it took the counter's slanted left side, across the white, for the partner of its upright right side. That tilted the side, and its corner ran eighty units out through the stem. Partners must now face each other across ink.
+  - In ª and g each contour is weighed on its own, so neither side of a thin join knew the other was moving.
+  - The weight, the width's give and the height correction now all check between contours. Where two contours cross that didn't as drawn, both are weighed again with the weight taken down together until they don't. ª keeps about 98% of the weight asked.
+  - The height correction had an early return that skipped this guard, and with it Lora's § crossed, light and with its counters opened.
+- **At weight 0.06 separate pieces touched.**
+  - The lower end of the acute on Lora's Á came down onto the A. The pointed end of the lower arm of Geist's ≥ and ≤ came down onto the bar, which had grown out under it.
+  - A piece standing above another is now lifted, whole, to keep half the white it had, up to half an opening (18 units). The width's give keeps all of what it is handed.
+  - The crossbar control now stops a bar short of a separate piece. Geist's ť bar used to rise until it touched the caron; it now keeps half of the 22 units between them.
+
+Images: `light-joins-geist-*`, `light-joins-lora-*`, `parts-apart-geist-*`, `parts-apart-lora-*`.
+
 ## Tests
 
 Every fix has a test that fails on the old code and passes now, except those listed under What is left. They are in:
@@ -184,7 +210,7 @@ Three tests use real letters as fixtures, because their faults depend on the let
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,900 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,908 tests.
 
 ## What is left
 
@@ -197,7 +223,14 @@ These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vite
   - the fillet choice using `crossesMoreThan`;
   - the corner radius passing its radius to the check;
   - the spike cleanup keeping the handles of a piece drawn that short (the loops the narrower rule brought back are covered by the Lora d and n test, which failed on it);
-  - the rim's later grid retries and their size floor.
+  - the rim's later grid retries, and a retry having to cover the shape;
+  - the corner radius allowing for a crossing sliding at a shallow angle;
+  - the follow step putting back one counter without a map rather than the whole letter;
+  - the spike cleanup's rule for pieces drawn short (the loops on Lora's A and n are covered by the d and n test);
+  - the height correction's check between contours (the § it fixed crossed only with this round's other changes).
   An independent check of every glyph under every setting confirms none of the outlines cross.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.
+- **Pieces side by side.** Only a piece standing above another is lifted clear. At weight 0.06 and width 0.6, the dots of Geist's ◌ and the strokes of its 〃 and Lora's " come within 14 to 18 units of each other; they don't touch.
+- **Two controls on one gap.** Each control keeps half of the white it is handed, so the crossbar and the heaviest weight together leave Geist's ť about 9 of its 22 units.
+- **Pointed ends.** At weight 0.06 the ends of the chevron of Geist's ≥ and ≤ run out along their mitres, as the weight engine draws any sharp corner, and the symbols stand 127 units taller, and 172 condensed to 0.6. This was so before this work; lifting the chevron clear of the bar adds up to 18 more.

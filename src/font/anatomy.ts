@@ -34,6 +34,7 @@
  */
 
 import {
+  clearance,
   contourContainsPoint,
   contourSegments,
   contoursBounds,
@@ -43,7 +44,7 @@ import {
   splitCubic,
   type Segment,
 } from "./geometry";
-import { contoursIntersect } from "./outline";
+import { classifyContours, contoursIntersect } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 /** How far from horizontal a segment may run and still count as one. */
@@ -183,6 +184,9 @@ function moveNode(node: GlyphNode, dx: number, dy: number): GlyphNode {
   };
 }
 
+/** The share of the white between two separate pieces of ink that a move keeps. */
+const SEPARATE_KEPT = 0.5;
+
 /**
  * Apply a move, backing off until it no longer tears the letter.
  *
@@ -201,8 +205,23 @@ function asFarAsClean(
   attempt: (shift: number) => Contour[] | null,
 ): Contour[] {
   const crossedAlready = contoursIntersect(contours);
+  /*
+   * And clear of the separate pieces of ink beside it, by half of the white
+   * between them as drawn: raised, the bar of Geist's t-caron stopped only
+   * where it touched the caron.
+   */
+  const outer = classifyContours(contours);
+  const apart: Array<{ one: number; other: number; need: number }> = [];
+  for (let one = 0; one < contours.length; one++)
+    for (let other = one + 1; other < contours.length; other++) {
+      if (!outer[one] || !outer[other]) continue;
+      const gap = clearance(contours[one], contours[other]);
+      if (gap > 1 && gap < Infinity) apart.push({ one, other, need: gap * SEPARATE_KEPT });
+    }
+  const clear = (moved: Contour[]) =>
+    apart.every(({ one, other, need }) => clearance(moved[one], moved[other]) >= need);
   const clean = (moved: Contour[] | null): moved is Contour[] =>
-    moved !== null && (crossedAlready || !contoursIntersect(moved));
+    moved !== null && (crossedAlready || !contoursIntersect(moved)) && clear(moved);
 
   const full = attempt(shift);
   if (clean(full)) return full;

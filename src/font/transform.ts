@@ -12,6 +12,8 @@
 
 import {
   centroid,
+  clearance,
+  contourContainsPoint,
   contoursBounds,
   contourArea,
   contourSegments,
@@ -306,8 +308,10 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     if (params.weight === 0) slabs = weighSlabs(slabs, slabbedLetter, 0, typeface.unitsPerEm);
     contours = [...contours, ...slabs];
   }
-  if (params.weight !== 0)
+  if (params.weight !== 0 && unweightedContours) {
     contours = keepHeights(contours, params.weight, glyph, typeface, unweightedContours);
+    contours = keptClear(unweightedContours, contours, typeface.unitsPerEm);
+  }
   if (params.cornerRadius > 0) {
     const outer = classifyContours(contours);
     contours = contours.map((contour, index) =>
@@ -379,10 +383,15 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
           CONDENSED_WHITE,
           (trial) => unfold(narrow[index], trial, params.slant),
         );
-      contours = keptApart(
+      contours = keptClear(
         narrow,
-        narrow.map((_, index) => putBack(index, 1)),
-        putBack,
+        keptApart(
+          narrow,
+          narrow.map((_, index) => putBack(index, 1)),
+          putBack,
+        ),
+        typeface.unitsPerEm,
+        1,
       );
       /*
        * Moved over by what the strokes put back added on the left, and the
@@ -593,6 +602,72 @@ function keptApart(
       else high = middle;
     }
     result = at(low);
+  }
+  return result;
+}
+
+/**
+ * The white a piece of ink standing above another keeps under it, as a share
+ * of what it had as drawn -- or of an opening, the narrowest white the
+ * weight leaves between walls, where it had more.
+ */
+const CLEAR_KEPT = 0.5;
+const CLEAR_OPENING = 0.036;
+
+/**
+ * And a piece of ink standing above another -- an accent over its letter,
+ * the chevron of a ≥ over its bar -- kept clear of it.
+ *
+ * Each is weighed against the other as drawn, and a pointed end runs out
+ * along its mitre by more than the weight: the lower end of the acute on
+ * Lora's heaviest Á came down onto the top of the A, which had grown up to
+ * meet it, and the end of the lower arm of Geist's ≥ onto the bar under it,
+ * which had grown up and out beneath it. The piece above is lifted, whole, as
+ * far as keeps its share of the white; nothing about either shape changes,
+ * and what stands on the baseline stays there. The strokes put back
+ * sideways into a condensed letter are asked to keep all of it: they move
+ * across, and closed the white under the arm of the heaviest condensed ≥ by
+ * half again, as the slope of the arm carried its edge down.
+ */
+function keptClear(drawn: Contour[], weighed: Contour[], em: number, kept = CLEAR_KEPT): Contour[] {
+  const outer = classifyContours(drawn);
+  const boxes = drawn.map((contour) => contoursBounds([contour]));
+  const stacks: Array<{ above: number; below: number; need: number }> = [];
+  drawn.forEach((top, above) => {
+    drawn.forEach((bottom, below) => {
+      if (above === below || !outer[above] || !outer[below]) return;
+      const a = boxes[above];
+      const b = boxes[below];
+      // Above it and over it, not beside it; and not inside it.
+      if (a.yMin < b.yMax - 1) return;
+      if (Math.min(a.xMax, b.xMax) - Math.max(a.xMin, b.xMin) <= 0) return;
+      if (a.yMin - b.yMax > em * CLEAR_OPENING * 4) return;
+      if (contourContainsPoint(bottom, top.nodes[0].point)) return;
+      const gap = clearance(top, bottom);
+      if (!(gap > 1)) return;
+      stacks.push({ above, below, need: Math.min(gap * kept, CLEAR_KEPT * em * CLEAR_OPENING) });
+    });
+  });
+  if (stacks.length === 0) return weighed;
+  const lifted = (contour: Contour, by: number): Contour =>
+    by === 0 ? contour : mapContour(contour, (point) => ({ x: point.x, y: point.y + by }));
+  let result = weighed;
+  // From the bottom up, so that what stands on a lifted piece is lifted with it.
+  stacks.sort((one, other) => boxes[one.below].yMin - boxes[other.below].yMin);
+  for (const { above, below, need } of stacks) {
+    const clear = (by: number) => clearance(lifted(result[above], by), result[below]) >= need;
+    if (clear(0)) continue;
+    let high = need;
+    for (let tries = 0; tries < 8 && !clear(high); tries++) high *= 2;
+    if (!clear(high)) continue;
+    let low = 0;
+    for (let step = 0; step < 8; step++) {
+      const middle = (low + high) / 2;
+      if (clear(middle)) high = middle;
+      else low = middle;
+    }
+    const by = high;
+    result = result.map((contour, which) => (which === above ? lifted(contour, by) : contour));
   }
   return result;
 }

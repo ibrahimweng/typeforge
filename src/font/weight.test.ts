@@ -25,6 +25,7 @@ import { contoursIntersect } from "./outline";
 import {
   crossEachOther,
   drawn,
+  gapBetween,
   GEIST_DE,
   GEIST_N,
   GEIST_ORDFEMININE,
@@ -905,5 +906,46 @@ describe("lightest, each contour against the rest of the letter", () => {
     expect(crossEachOther(outline, counter)).toBe(false);
     expect(loopsAnywhere(outline)).toBe(false);
     expect(loopsAnywhere(counter)).toBe(false);
+  });
+});
+
+describe("heaviest, a piece of ink standing above another", () => {
+  /*
+   * Regression: each piece is weighed against the other as drawn, and the
+   * pointed end of the lower arm of Geist's ≥ ran out along its mitre onto
+   * the bar under it, which had grown up and out beneath it at the same
+   * time: at the heaviest weight the two touched, thirty-eight units apart
+   * as drawn. The chevron is lifted clear instead, and keeps half of that.
+   */
+  it("keeps the chevron of a ≥ clear of its bar", () => {
+    const chevron = polygon([
+      [504, 276],
+      [50, 112],
+      [50, 196],
+      [434, 329],
+      [50, 462],
+      [50, 546],
+      [504, 382],
+    ]);
+    const bar = polygon([
+      [504, 0],
+      [50, 0],
+      [50, 74],
+      [504, 74],
+    ]);
+    const { typeface, glyph } = letter([chevron, bar], 544);
+    // And condensed, where the strokes put back sideways carry the sloping
+    // arm down again.
+    for (const [weight, width] of [
+      [20, 1],
+      [40, 1],
+      [60, 1],
+      [60, 0.6],
+    ]) {
+      const [top, bottom] = at(typeface, glyph, { weight, width });
+      expect(gapBetween(top, bottom), `weight ${weight} width ${width}`).toBeGreaterThan(17);
+      // The bar stays on the baseline.
+      expect(Math.min(...bottom.nodes.map((node) => node.point.y))).toBeCloseTo(0, 0);
+    }
   });
 });

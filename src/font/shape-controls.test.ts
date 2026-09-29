@@ -15,6 +15,7 @@ import { contourArea, contoursBounds, flattenContour } from "./geometry";
 import { blankGlyph } from "./library";
 import { contoursIntersect } from "./outline";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
+import { drawn, GEIST_TCARON, gapBetween } from "../../test/outlines";
 import {
   DEFAULT_PARAMS,
   emptyTypeface,
@@ -303,5 +304,22 @@ describe("crossbar", () => {
     const advance = resolveAdvanceWidth(glyph, typeface);
     expect(lowered.xMin).toBeCloseTo(30, 0);
     expect(advance - lowered.xMax).toBeCloseTo(50, 0);
+  });
+
+  /*
+   * Regression: a raised bar stopped only where it would cross something, so
+   * the bar of Geist's t-caron went up until it touched the caron beside the
+   * top of the stem, twenty-two units above it as drawn.
+   */
+  it("stops a raised bar short of a separate piece of ink above it", () => {
+    const { typeface, glyph } = font(drawn(GEIST_TCARON));
+    glyph.advanceWidth = 399;
+    const [caron, t] = at(typeface, glyph, { crossbar: 80 });
+    expect(gapBetween(caron, t)).toBeGreaterThan(10);
+    // And the bar still went up as far as that leaves it.
+    const bar = Math.max(
+      ...t.nodes.filter((node) => node.point.x > 300).map((node) => node.point.y),
+    );
+    expect(bar).toBeGreaterThan(535);
   });
 });

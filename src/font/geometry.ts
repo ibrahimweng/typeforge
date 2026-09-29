@@ -882,6 +882,54 @@ function misses(a: Bounds, b: Bounds): boolean {
   return a.xMax < b.xMin || b.xMax < a.xMin || a.yMax < b.yMin || b.yMax < a.yMin;
 }
 
+/**
+ * How close two outlines come: the least distance between them, flattened in
+ * `steps` pieces a curve, and nothing if they cross. Every piece of one is
+ * measured against every piece of the other that could be nearer than the
+ * best found so far.
+ */
+export function clearance(one: Contour, other: Contour, steps = 12): number {
+  const a = flattenedLoop(one, steps);
+  const b = flattenedLoop(other, steps);
+  if (a.length < 2 || b.length < 2) return Infinity;
+  const apart = (p: Bounds, q: Bounds) =>
+    Math.max(p.xMin - q.xMax, q.xMin - p.xMax, p.yMin - q.yMax, q.yMin - p.yMax, 0);
+  const boxesA = a.slice(1).map((point, index) => boundsOf([a[index], point]));
+  const boxesB = b.slice(1).map((point, index) => boundsOf([b[index], point]));
+  let best = Infinity;
+  for (let i = 0; i + 1 < a.length; i++)
+    for (let j = 0; j + 1 < b.length; j++) {
+      if (apart(boxesA[i], boxesB[j]) >= best) continue;
+      if (crossingOf(a[i], a[i + 1], b[j], b[j + 1])) return 0;
+      best = Math.min(
+        best,
+        towards(a[i], b[j], b[j + 1]),
+        towards(a[i + 1], b[j], b[j + 1]),
+        towards(b[j], a[i], a[i + 1]),
+        towards(b[j + 1], a[i], a[i + 1]),
+      );
+    }
+  return best;
+}
+
+/** An outline flattened, back to its first point if it closes. */
+function flattenedLoop(contour: Contour, steps: number): Vec2[] {
+  const points = flattenContour(contour, steps);
+  return contour.closed && points.length > 0 ? [...points, points[0]] : points;
+}
+
+/** How far a point is from a straight piece. */
+function towards(point: Vec2, from: Vec2, to: Vec2): number {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = dx * dx + dy * dy;
+  const t =
+    length > 0
+      ? Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / length))
+      : 0;
+  return Math.hypot(from.x + t * dx - point.x, from.y + t * dy - point.y);
+}
+
 /** Even-odd containment test, used to tell counters from outer shapes. */
 export function contourContainsPoint(contour: Contour, point: Vec2): boolean {
   const polygon = flattenContour(contour, 8);
