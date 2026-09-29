@@ -703,7 +703,14 @@ export function grotesqueCapitalD(style: Style): Recipe {
     // Its round a little shorter than half its height, as Geist's is: at
     // 1.05 its crowns turned 20 to 44 units short of Geist's and its corners
     // stood inside them, a fifth of the Thin's ink off.
-    lobeRun(g, f.edge, top, bottom, right, ((top - bottom) / 2) * 0.9),
+    lobeRun(
+      f.style.metrics.xGrows !== undefined ? { ...g, curve: 0.15 } : g,
+      f.edge,
+      top,
+      bottom,
+      right,
+      ((top - bottom) / 2) * 0.9,
+    ),
     BUTT,
     BUTT,
   );
@@ -725,6 +732,9 @@ function lobeRun(
   bottom: number,
   right: number,
   flat: number,
+  // How full its upper and lower quarters are, where not the face's own.
+  upperCurve = f.curve,
+  lowerCurve = f.curve,
 ): Spine {
   const half = held(f, (top - bottom) / 2);
   const wide = held(f, Math.min(flat, right - stem - f.half));
@@ -733,7 +743,8 @@ function lobeRun(
   const centre = at(right - wide, top - half);
   return chain(
     straight(at(stem, top), at(centre.x, top)),
-    bend(f, centre, half, 90, -90, wide),
+    bend({ ...f, curve: upperCurve }, centre, half, 90, 0, wide),
+    bend({ ...f, curve: lowerCurve }, centre, half, 0, -90, wide),
     straight(at(centre.x, centre.y - half), at(stem, centre.y - half)),
   );
 }
@@ -754,6 +765,10 @@ export function grotesqueCapitalB(style: Style): Recipe {
   const stem = f.edge;
   const X = (x: number) => stem + x * u;
   const waist = up(f, lerp(360, 380));
+  // The Sans's bowls round into the waist nearly as circles, so the notch
+  // where they meet runs further in, as Geist's does: that took a fifth off
+  // the Regular's misfit.
+  const waistCurve = f.style.metrics.xGrows !== undefined ? 0.05 : f.curve;
   return finish(f, [
     ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
     ink(
@@ -765,6 +780,8 @@ export function grotesqueCapitalB(style: Style): Recipe {
         waist,
         X(lerp(409, 392)) + roundGain(f, 7, 21),
         150 * u * sansRound(f, 1.25),
+        f.curve,
+        waistCurve,
       ),
     ),
     /*
@@ -782,6 +799,7 @@ export function grotesqueCapitalB(style: Style): Recipe {
         f.sits(0),
         X(lerp(439, 423)) + roundGain(f, 8, 23),
         160 * u * sansRound(f, 1.25),
+        waistCurve,
       ),
     ),
   ]);
