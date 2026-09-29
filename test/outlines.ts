@@ -895,6 +895,34 @@ export const LORA_BOLD_ETH: Node6[][] = [
   ],
 ];
 
+/** Work Sans' A with a circumflex, as composed: the A, then the circumflex. */
+export const WORK_SANS_A_CIRCUMFLEX: Node6[][] = [
+  [
+    [378, 660, null, null, null, null],
+    [634, 0, null, null, null, null],
+    [549, 0, null, null, null, null],
+    [479, 183, null, null, null, null],
+    [180, 183, null, null, null, null],
+    [110, 0, null, null, null, null],
+    [26, 0, null, null, null, null],
+    [283, 660, null, null, null, null],
+  ],
+  [
+    [329, 583, null, null, null, null],
+    [209, 258, null, null, null, null],
+    [450, 258, null, null, null, null],
+  ],
+  [
+    [374, 902, null, null, null, null],
+    [484, 743, null, null, null, null],
+    [410, 743, null, null, null, null],
+    [330, 850, null, null, null, null],
+    [250, 743, null, null, null, null],
+    [176, 743, null, null, null, null],
+    [286, 902, null, null, null, null],
+  ],
+];
+
 /** Work Sans' g with a circumflex, drawn in pieces: the circumflex, then the g's. */
 export const WORK_SANS_G_CIRCUMFLEX: Node6[][] = [
   [

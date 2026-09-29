@@ -585,14 +585,20 @@ export function weighSlabs(
   unitsPerEm: number,
   /** The letter as the weight left it, where it has been weighted. */
   weighted?: Contour[],
+  /**
+   * The share of the weight each slab grows by, where not all of it. Only
+   * its size: it stays flush with its stroke's end where the weight left it.
+   */
+  shares?: number[],
 ): Contour[] {
   const polylines = letter.map((contour) => flattenContour(contour, 12));
   const moved = weighted?.map((contour) => flattenContour(contour, 12));
   const hairline = unitsPerEm * 0.008;
-  const resize = (length: number): number =>
-    weight >= 0 ? length + 2 * weight : Math.max(length + 2 * weight, hairline, length / 3);
-  const bars = slabs.map((slab) => {
+  const bars = slabs.map((slab, which) => {
     if (slab.nodes.length !== 4) return null;
+    const grows = weight * (shares?.[which] ?? 1);
+    const resize = (length: number): number =>
+      grows >= 0 ? length + 2 * grows : Math.max(length + 2 * grows, hairline, length / 3);
     const q = slab.nodes.map((node) => node.point);
     const c = {
       x: (q[0].x + q[1].x + q[2].x + q[3].x) / 4,
@@ -631,16 +637,24 @@ export function weighSlabs(
      * Else about the middle.
      */
     let outer = flush < 0 ? thickness / 2 : axis.far + weight;
+    /*
+     * Read from inside the stroke, as deep as the weight might have moved
+     * its end, or failing that less deep: a thin diagonal stroke, the foot of
+     * the circumflex over Work Sans' A, is left behind that deep, and the
+     * end was taken to have moved the whole weight when the A had held it to
+     * half of that. Its slab, weighed lighter, hung below it.
+     */
     if (flush >= 0 && moved) {
-      const depth = axis.far * 2 + 2 * Math.abs(weight);
-      const from = {
-        x: axis.middle.x - u.x * depth,
-        y: axis.middle.y - u.y * depth,
-      };
-      if (insideInk(moved, from)) {
+      for (const depth of [axis.far * 2 + 2 * Math.abs(weight), axis.far * 2, axis.far]) {
+        const from = {
+          x: axis.middle.x - u.x * depth,
+          y: axis.middle.y - u.y * depth,
+        };
+        if (!insideInk(moved, from)) continue;
         const out = rayHitDistance(moved, from, u) - depth;
         if (Number.isFinite(out) && Math.abs(out) <= Math.abs(weight) * 1.5 + 1)
           outer = axis.far + out;
+        break;
       }
     }
     const along = edges[flush < 0 ? 1 : (flush + 1) % 4].far;

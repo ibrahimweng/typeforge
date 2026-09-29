@@ -266,6 +266,15 @@ And from What is left:
 
 On the eight fonts, plain letters further from where they were drawn than a scan's tolerance go from 7 to 1 in Lora Bold and from 10 to 3 in Crimson Pro, and are the same in the rest. No accented letter comes out further from the same letter alone than before, except Crimson's Ỡ and Ờ, by the 5 units above. The sweep of all eight fonts under the 39 settings finds nothing new against the previous commit and no height further out by more than 10 units, and fewer findings in six of the eight fonts. 300 glyphs of Lora Bold at weight 0.06 take 3.0 s, against 2.8 s for the previous commit on the same machine.
 
+**A twelfth review, of those fixes,** found two more, and a look at the slabs it pointed to found a third:
+- **Weighed lighter, slabs lost their joins.** Two slabs that end a crack apart, like the feet of two stems side by side, are made one slab. That is done when the slabs are weighed together, and once any slab needed less weight, every slab was weighed on its own and none was joined. They are weighed together again, each by its own share.
+- **A lighter slab left its stroke's end.** Its share lightened its position as well as its size, so its flush edge stopped short of where the full weight had left the stroke. The foot slab of the one in Outfit's heavy ¼ stood 7 units over the foot. The top slab of the sample font's Í, weighed lighter for the acute, was 63 units thick and sat 106 units down inside the stem. The share now changes only a slab's thickness and length.
+- **A slab's end was read too deep in its stroke.** With that fixed, the slabs on the feet of Work Sans' circumflexes hung below the feet, nearly onto the letter. The end of a stroke is read by a ray from inside it, started as deep as the weight might have moved the end. The circumflex's thin diagonal foot is left behind at that depth, so the end was taken to have moved the whole weight, where the A had held it to half. The ray now starts shallower when the deep point misses the ink. The slabs on the accents over Work Sans' and Geist's capitals and ĥ now sit on the accents' feet, where before this round they hung up to 30 units below them. The test for this passes on the previous commit too: the fault only showed once a slab's share stopped moving its end.
+- **Slabs joined as drawn were kept apart.** Two stems drawn a crack apart are separate pieces, but their feet share one slab. Each foot was kept off the other stem and given up weight for it. Pieces whose slabs touch as drawn now count as one.
+- **A pair gave up weight for a third piece.** Taking weight off two pieces that cross, the spacing check refused any trial that left either of them too near another piece. That included nearness the pair could not mend, a third piece grown toward one of them, so the search ran down to no weight at all. Nearness that is still there with both pieces at no weight is now left for that third piece's own round.
+
+The sweep of all eight fonts under the 39 settings finds the same as before these four fixes: nothing new, and no height further out.
+
 Images: `tips-crimson-*` (1, parentheses, comma, ñ), `tips-lorabold-*` (parentheses, comma, ñ), at rest, at weight 0.06 and at 0.06 condensed to 0.6; `slabs-outfit-*` (¼ ¾) at rest, with slab 0.03, and with slab and weight 0.06.
 
 ## Tests
@@ -286,7 +295,7 @@ Two of this round's tests pass on the code before it as well: the one of Outfit'
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,942 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,944 tests.
 
 ## What is left
 
@@ -319,6 +328,7 @@ These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vite
 - **Heights the controls change by design.** The sweep reports every glyph whose top or bottom moves. Most of these are intended: an accent or dot keeps clear of its letter by moving; a mark that touches no line, such as a period, a comma or a subscript figure, grows both ways; a slant moves a letter's top sideways. The scans for letters against themselves alone, and plain letters against where they were drawn, are what tell real faults from these.
 - **Fractions at the heaviest weight.** The pieces of a ¼ keep clear of each other, but the one squeezes to do so: at weight 0.06 Outfit's is about a quarter shorter from below. Condensed as well, it can't keep its whole top on the cap height; it stands 37 units over it.
 - **Heavy slabs on small figures.** With slab and weight 0.06 on, the slabs of the figures of a ¼ or ¾ grow as thick as their strokes, and on figures that small they pile into one another within the same figure. That is what slab and weight do to any letter at that size; they are kept off the other pieces.
+- **A slab under an accent, at the heaviest weight.** With slab on at weight 0.06, the top slab of the sample font's Í is 351 units thick against 274 on its I. The acute holds the top of the stem back, the heights put that top back on its line, and the slab's other edge is moved by the whole correction as if the top had grown. It was the same before this round.
 - **The tilde's terminal, heavy and condensed.** At weight 0.06 and width 0.6 the right-hand terminal of Outfit's tilde comes to a point about 25 units over the tilde's crest, which the heights squeeze down. The point now stops at the top the tilde is drawn to; before this round it stood 71 units over it.
 - **Chevrons at the heaviest weight.** The chevron of a ≥ or ≤ keeps its 18 units of white over the bar by rising, after giving up a quarter of its height. At weight 0.06 the symbol stands 145 to 155 units taller in Geist, Lora Bold, Plex and Work Sans, and 148 in Crimson Pro. Before this round the heights squeezed the chevron without that limit, and it rose 92 to 162 depending on the font, with the bar lighter.
 - **Two controls on one gap.** Each control keeps half of the white it is handed, so the crossbar and the heaviest weight together leave Geist's ť about 9 of its 22 units.

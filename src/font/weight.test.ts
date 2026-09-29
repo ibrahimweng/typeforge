@@ -43,6 +43,7 @@ import {
   OUTFIT_FI,
   OUTFIT_N,
   OUTFIT_ONE_QUARTER,
+  WORK_SANS_A_CIRCUMFLEX,
   WORK_SANS_G_CIRCUMFLEX,
   GEIST_DE,
   GEIST_N,
@@ -1312,6 +1313,30 @@ describe("heaviest, pieces side by side", () => {
         expect(gapBetween(slab, out[which]), `slab ${index}, contour ${which}`).toBeGreaterThan(10);
       });
     });
+  });
+
+  /*
+   * Regression: a slab's end was read from well inside its stroke, and the
+   * thin diagonal foot of the circumflex over Work Sans' A is left behind
+   * there: the foot was taken to have grown the whole weight, when the A
+   * had held it to half of that, and the slabs on the circumflex's feet,
+   * weighed lighter, hung below them nearly onto the A.
+   */
+  it("keeps the slabs on an accent's feet flush with them", () => {
+    const made = letter(drawn(WORK_SANS_A_CIRCUMFLEX), 660);
+    made.glyph.unicodes = [0xc2];
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 500, capHeight: 660 };
+    const rest = at(made.typeface, made.glyph, { slab: 30 });
+    const out = at(made.typeface, made.glyph, { weight: 60, slab: 30 });
+    expect(out.length).toBe(rest.length);
+    const circumflex = contoursBounds([out[2]]);
+    // The slabs on the circumflex, the ones above the A as drawn.
+    const onIt = rest
+      .map((_, index) => index)
+      .filter((index) => index > 2 && contoursBounds([rest[index]]).yMin > 600);
+    expect(onIt.length).toBeGreaterThan(0);
+    for (const index of onIt)
+      expect(contoursBounds([out[index]]).yMin).toBeGreaterThan(circumflex.yMin - 6);
   });
 
   /*

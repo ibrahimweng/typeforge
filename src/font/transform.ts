@@ -384,24 +384,17 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
      * one than it keeps is weighed lighter, as far as it has to be.
      */
     const drawnSlabs = slabs;
-    const weighSlab = (index: number, share: number, on: Contour[]) =>
-      weighSlabs(
-        [drawnSlabs[index]],
-        slabbedLetter,
-        params.weight * share,
-        typeface.unitsPerEm,
-        on,
-      )[0];
+    // All the slabs weighed together, each by its share, so the slabs that
+    // end a crack apart are still joined.
+    const weighSlabsAt = (shares: number[], on: Contour[]) =>
+      weighSlabs(drawnSlabs, slabbedLetter, params.weight, typeface.unitsPerEm, on, shares);
     const slabShares =
       params.weight > 0 && slabs.length
-        ? slabsApart(slabbedLetter, drawnSlabs, contours, typeface.unitsPerEm, (index, share) =>
-            weighSlab(index, share, contours),
+        ? slabsApart(slabbedLetter, drawnSlabs, contours, typeface.unitsPerEm, (shares) =>
+            weighSlabsAt(shares, contours),
           )
-        : [];
-    const slabsOn = (on: Contour[]) =>
-      slabShares.some((share) => share < 1)
-        ? drawnSlabs.map((_, index) => weighSlab(index, slabShares[index], on))
-        : weighSlabs(drawnSlabs, slabbedLetter, params.weight, typeface.unitsPerEm, on);
+        : drawnSlabs.map(() => 1);
+    const slabsOn = (on: Contour[]) => weighSlabsAt(slabShares, on);
     // Placed on the letter weighed alone too, to measure it the same way.
     const freeSlabs = freeContours && slabs.length ? slabsOn(freeContours) : [];
     slabs = slabs.length ? slabsOn(contours) : slabs;
@@ -818,13 +811,16 @@ function keptApart(
       });
     // Clear of the others, the two of them, as well as of each other, and
     // as far from what they were drawn apart from as they are to keep.
+    // But not for a nearness the two can't mend: one still there with
+    // neither weighed at all comes of a third piece, and is its to mend.
+    const involves = (pair: { one: number; other: number }) =>
+      [one, other].includes(pair.one) || [one, other].includes(pair.other);
+    const unmendable = new Set(tooNear(at(0)).filter(involves));
     const clear = (trial: Contour[]): boolean => {
       const still: Array<[number, number]> = [];
       overlapsMore(trial, still);
       if (still.some((pair) => pair.includes(one) || pair.includes(other))) return false;
-      return tooNear(trial).every(
-        (pair) => ![one, other].includes(pair.one) && ![one, other].includes(pair.other),
-      );
+      return tooNear(trial).every((pair) => !involves(pair) || unmendable.has(pair));
     };
     let low = 0;
     let high = 1;
@@ -850,7 +846,7 @@ function slabsApart(
   drawnSlabs: Contour[],
   weighed: Contour[],
   em: number,
-  weigh: (index: number, share: number) => Contour,
+  weighAll: (shares: number[]) => Contour[],
 ): number[] {
   const shares = drawnSlabs.map(() => 1);
   const outer = classifyContours(drawn);
@@ -867,40 +863,58 @@ function slabsApart(
     });
     return nearest < 0 ? -1 : pieceOf[nearest];
   });
+  /*
+   * And pieces whose slabs are joined as drawn are one: two stems a crack
+   * apart are given one slab across both feet, and that slab is on both.
+   */
+  const joined = new Map<number, number>();
+  const group = (piece: number): number => {
+    const up = joined.get(piece);
+    return up === undefined || up === piece ? piece : group(up);
+  };
+  for (let one = 0; one < drawnSlabs.length; one++)
+    for (let two = one + 1; two < drawnSlabs.length; two++)
+      if (group(owner[one]) !== group(owner[two]))
+        if (clearance(drawnSlabs[one], drawnSlabs[two]) <= 0.5)
+          joined.set(group(owner[one]), group(owner[two]));
+  const pieceOfSlab = owner.map(group);
+  const groupOf = (index: number) => group(pieceOf[index]);
   const reach = em * CLEAR_OPENING * 4;
   const most = CLEAR_KEPT * em * CLEAR_OPENING;
-  const slabs = drawnSlabs.map((_, index) => weigh(index, 1));
   // Everything a slab keeps off: the other pieces' contours and slabs.
   const keptOff = (index: number) => [
     ...drawn.flatMap((contour, which) =>
-      outer[which] && pieceOf[which] !== owner[index]
+      outer[which] && groupOf(which) !== pieceOfSlab[index]
         ? [{ drawn: contour, now: () => weighed[which] }]
         : [],
     ),
     ...drawnSlabs.flatMap((slab, which) =>
-      which !== index && owner[which] !== owner[index]
-        ? [{ drawn: slab, now: () => slabs[which] }]
+      which !== index && pieceOfSlab[which] !== pieceOfSlab[index]
+        ? [{ drawn: slab, now: (slabs: Contour[]) => slabs[which] }]
         : [],
     ),
   ];
+  let slabs = weighAll(shares);
   drawnSlabs.forEach((slab, index) => {
     const pairs = keptOff(index)
       .map((other) => ({ ...other, gap: clearance(slab, other.drawn) }))
       .filter(({ gap }) => gap > 1 && gap <= reach)
       .map((other) => ({ ...other, need: Math.min(other.gap * CLEAR_KEPT, most) }));
     if (!pairs.length) return;
-    const clear = (trial: Contour) =>
-      pairs.every((pair) => clearance(trial, pair.now()) >= pair.need);
-    if (clear(slabs[index])) return;
+    const clear = (trial: Contour[]) =>
+      pairs.every((pair) => clearance(trial[index], pair.now(trial)) >= pair.need);
+    if (clear(slabs)) return;
+    const at = (share: number) =>
+      weighAll(shares.map((was, which) => (which === index ? share : was)));
     let low = 0;
     let high = 1;
     for (let step = 0; step < BACK_OFF_STEPS; step++) {
       const middle = (low + high) / 2;
-      if (clear(weigh(index, middle))) low = middle;
+      if (clear(at(middle))) low = middle;
       else high = middle;
     }
     shares[index] = low;
-    slabs[index] = weigh(index, low);
+    slabs = at(low);
   });
   return shares;
 }

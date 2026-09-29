@@ -481,6 +481,32 @@ describe("slabs on a letter, with the other controls", () => {
     expect(right.xMin).toBeLessThanOrEqual(left.xMax);
   });
 
+  /*
+   * Regression: a slab kept off another piece is weighed lighter, and once
+   * one was, every slab was weighed on its own, and two that end a crack
+   * apart were no longer made one.
+   */
+  it("still makes one slab of two when one of them is weighed lighter", () => {
+    // The two stems, and a square standing just past the right one's slab.
+    const one = letter([stem(100, 0, 100, 700), stem(240, 0, 100, 700), stem(405, 0, 60, 60)], 600);
+    const feet = (contours: Contour[]) =>
+      contours
+        .slice(3)
+        .map((contour) => contoursBounds([contour]))
+        .filter((box) => box.yMin < 1)
+        .sort((a, b) => a.xMin - b.xMin);
+    const rest = at(one, { slab: 60 }).contours;
+    const { contours } = at(one, { slab: 60, weight: 10 });
+    expect(contours).toHaveLength(rest.length);
+    const [left, right] = feet(contours);
+    const square = contoursBounds([contours[2]]);
+    const drawnGap = contoursBounds([rest[2]]).xMin - feet(rest)[1].xMax;
+    // The right foot gave up weight for the square...
+    expect(square.xMin - right.xMax).toBeGreaterThan(drawnGap / 2 - 0.5);
+    // ...and the two feet are still one.
+    expect(right.xMin).toBeLessThanOrEqual(left.xMax);
+  });
+
   it("puts no slab on a dot, nor on punctuation", () => {
     // An i: a stem and a square dot as wide as it.
     const i = letter([stem(100, 0, 100, 500), stem(100, 600, 100, 100)], 300, "i", 105);
