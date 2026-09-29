@@ -520,17 +520,35 @@ export function grotesqueCapitalG(style: Style): Recipe {
   // Carried up into the bar, so its square end lies inside it: stopped
   // under the bar, the end's corner stood into the counter as a tooth.
   const foot = angleAt(f, centre, drawnIn, halfH, Math.min(bar, centre.y + halfH * 0.5), false);
+  /*
+   * The Sans's bowl keeps its own round and runs into the upright's side
+   * low down, leaving a notch under it, where the upright drops straight to
+   * the line as Geist's does. Drawn in to run up into the upright, it filled
+   * that notch and the spur read as a curve.
+   */
+  const notched = f.style.metrics.xGrows !== undefined && halfW > drawnIn;
+  /*
+   * And its spur lighter than the stem, as Geist's is (0.75 of it at the
+   * Regular, 0.6 at the Black), its right side where Geist's stands.
+   */
+  const spurW = notched ? f.half * 2 * atWeights(f, 0.93, 0.75, 0.65, 0.62, 0.6) : f.half * 2;
+  const spurX = notched ? upright + f.half + atWeights(f, -2, 7, 5, 5, 1) - spurW / 2 : upright;
+  /*
+   * The bowl's lower right drawn in so its outside runs flush with the
+   * spur's right side, and falls away from the spur's left side below the
+   * bar into the notch.
+   */
+  const reach = notched ? Math.max(spurX + spurW / 2 - f.half - centre.x, f.least) : drawnIn;
+  const into = notched
+    ? angleAt(f, centre, reach, halfH, Math.min(bar, centre.y + halfH * 0.5), false)
+    : foot;
+  const bowl = chain(
+    bend(f, centre, halfH, head, 270, halfW),
+    bend(f, centre, halfH, 270, 360 + into, reach),
+  );
   return finish(f, [
-    ink(
-      f,
-      chain(
-        bend(f, centre, halfH, head, 270, halfW),
-        bend(f, centre, halfH, 270, 360 + foot, drawnIn),
-      ),
-      f.end,
-      BUTT,
-    ),
-    ink(f, straight(at(X(lerp(322, 344)), bar), at(upright, bar)), BUTT, BUTT),
+    ink(f, bowl, f.end, BUTT),
+    ink(f, straight(at(X(lerp(322, 344)), bar), at(spurX, bar)), BUTT, BUTT),
     /*
      * On a slab face the upright stands on the line bare: a slab on its foot
      * stepped out past the upright as the upright stepped out past the bar,
@@ -538,11 +556,9 @@ export function grotesqueCapitalG(style: Style): Recipe {
      * blocks beside the bowl -- a C with something stood next to it. A
      * Rockwell G has its spur, and no foot on it.
      */
-    ink(
-      f,
-      straight(at(upright, bar + f.upright), at(upright, 0)),
-      BUTT,
-      heavySlab(f) ? BUTT : f.end,
+    ((spur: Stroke) =>
+      notched ? inherit(spur, { ...spur, pen: { ...spur.pen, weight: spurW } }) : spur)(
+      ink(f, straight(at(spurX, bar + f.upright), at(spurX, 0)), BUTT, heavySlab(f) ? BUTT : f.end),
     ),
   ]);
 }

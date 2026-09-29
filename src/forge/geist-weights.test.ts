@@ -1293,3 +1293,21 @@ describe("the full stop", () => {
     }
   });
 });
+
+describe("the G's spur", () => {
+  it("drops straight to the line, lighter than the stem, with a notch beside it", () => {
+    // Geist's spur is 65 across at the Regular and 117 at the Black, and
+    // its bowl leaves a notch 50 across beside it 50 over the line; ours
+    // ran up into a stem's-weight spur with no notch at all.
+    for (const [weight, spur] of [
+      [87, 65],
+      [194, 117],
+    ]) {
+      const { contours } = draw("G", weight);
+      const low = filled(contours, 20);
+      const last = low[low.length - 1];
+      expect(Math.abs(last[1] - last[0] - spur), `G at ${weight}`).toBeLessThan(6);
+      expect(filled(contours, 50).length, `G at ${weight}`).toBe(2);
+    }
+  });
+});

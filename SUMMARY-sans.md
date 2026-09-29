@@ -229,6 +229,14 @@ Black. A new `metrics.dotAspect` shapes them; a dot on the line keeps its
 foot there and one above it its top, so the colon's upper dot stays level
 with Geist's. The stops are within 3 of Geist's height at every weight.
 
+**The G's spur.** Geist's spur drops straight to the line and is lighter than
+the stem (0.75 of it at the Regular, 0.6 at the Black); its bowl's lower
+right runs flush with the spur's right side and falls away from its left
+side into a notch just over the line. Ours ran the bowl up into a spur of the
+stem's weight, with no notch. The Sans's spur is now drawn on Geist's pen,
+with its right side where Geist's is, and the notch is within a few units of
+Geist's.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
