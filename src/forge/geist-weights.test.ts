@@ -1982,3 +1982,17 @@ describe("the b's bowl", () => {
     expect(Math.abs(runs[runs.length - 1][1] - 478)).toBeLessThan(6);
   });
 });
+
+describe("the Thin's capitals and figures", () => {
+  it("stand on Geist Thin's heavier stems", () => {
+    // 300 up Geist Thin's H's stem runs 96-128 and 200 up its one's 199-231,
+    // where its l's is 30 across; on the lowercase's pen they were 30 too.
+    for (const [name, y] of [
+      ["H", 300],
+      ["one", 200],
+    ] as const) {
+      const [stem] = filled(draw(name, 30).contours, y);
+      expect(Math.abs(stem[1] - stem[0] - 32), name).toBeLessThan(1);
+    }
+  });
+});

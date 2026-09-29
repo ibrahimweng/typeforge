@@ -763,6 +763,13 @@ ink best. The misfits fall:
 at the Thin, Regular, SemiBold, UltraBlack and Black. The d is a hundredth
 worse at the Thin.
 
+**Thin capitals and figures (shared file, Sans only).** Geist Thin draws its
+capitals and figures on stems of 32, where its lowercase stems are 30. A new
+Sans metric, `capitalThin` in `style.ts`, makes `capitalled` draw capitals
+and figures up to 6.7% heavier at the Thin. The gain runs in from nothing at
+the Regular. Across the capitals and figures, the Thin's mean misfit falls
+from 0.179 to 0.153.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

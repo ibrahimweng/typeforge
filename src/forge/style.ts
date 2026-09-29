@@ -210,6 +210,12 @@ export interface Metrics {
    * lighter than it.
    */
   capitalContrast?: number;
+  /**
+   * How much heavier than the pen a face's capitals and figures are drawn at
+   * its lightest (pen 30), run in from nothing at `lightHeld.from`. Geist
+   * Thin's capital and figure stems are 32 on a lowercase stem of 30.
+   */
+  capitalThin?: number;
   /** Set on the style a capital or figure is drawn with: see `capitalContrast`. Never saved. */
   capital?: boolean;
   /**
@@ -739,6 +745,8 @@ export const SANS: Style = {
     heavyCounter: 1.3,
     heavyContrast: 0.42,
     capitalContrast: 0.61,
+    // Geist Thin's capitals and figures stand on stems of 32 to its lowercase's 30.
+    capitalThin: 0.067,
     contrastRise: { from: 87, to: 0.27, over: 56, past: 0.82 },
     // Geist Thin's o and n are both a little wider down the stroke than the
     // Regular's, and set 5 units further apart on either side (its figures 10).
@@ -3514,7 +3522,19 @@ export function capitalled(style: Style, name: string): Style {
   }
   const had = known.get(name);
   if (had) return had;
-  const made = { ...style, metrics: { ...style.metrics, capital: true } };
+  // Heavier towards the Thin, where the face asks for it: see `metrics.capitalThin`.
+  const heavier = style.metrics.capitalThin;
+  const held = style.metrics.lightHeld;
+  const light =
+    heavier && held && held.from > 30
+      ? Math.min(1, Math.max(0, (held.from - style.pen.weight) / (held.from - 30)))
+      : 0;
+  const made = {
+    ...style,
+    pen:
+      light > 0 ? { ...style.pen, weight: style.pen.weight * (1 + heavier! * light) } : style.pen,
+    metrics: { ...style.metrics, capital: true },
+  };
   known.set(name, made);
   return made;
 }
