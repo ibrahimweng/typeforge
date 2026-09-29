@@ -1972,3 +1972,13 @@ describe("the u's trough", () => {
     expect(Math.abs(runs[0][1] - 386)).toBeLessThan(8);
   });
 });
+
+describe("the b's bowl", () => {
+  it("meets the stem in notches, as Geist's does", () => {
+    // 180 in, Geist Regular's b's bowl runs 50-167 and 364-478 either side
+    // of its counter; as one ring on the pen it ran 28-168 and 363-503.
+    const runs = filled(draw("b", 87).contours, 180, "x");
+    expect(Math.abs(runs[0][0] - 50)).toBeLessThan(6);
+    expect(Math.abs(runs[runs.length - 1][1] - 478)).toBeLessThan(6);
+  });
+});

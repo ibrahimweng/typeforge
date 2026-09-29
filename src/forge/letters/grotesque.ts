@@ -2415,6 +2415,103 @@ function sansArch(f: Frame, fromX: number, height: number): Stroke[] {
   ];
 }
 
+/**
+ * The Sans's bowl on a stem, for its b, d, p and q: the two quarters beside
+ * the stem drawn on a pen thin across and full along, as the n's shoulder is
+ * (see `sansArch`), flush with the stem inside and diving into it outside,
+ * so the bowl meets the stem in Geist's notches at its top and foot.
+ */
+function sansStemBowl(f: Frame, centre: Vec2, stemSide: 1 | -1): Stroke[] {
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    pastBlack ? knots[4] : atWeights(f, ...knots);
+  const { pen } = f.style;
+  const w = f.half * 2;
+  const along = w * (1 - pen.contrast);
+  // Seven tenths of the pen across at the Thin, a little over half at the
+  // Regular, a quarter and less from the SemiBold to the UltraBlack, and
+  // two fifths at the Black, as Geist's are.
+  const thin = w * knot([0.7, 0.55, 0.25, 0.15, 0.4]);
+  const joinPen =
+    thin < along
+      ? { ...pen, weight: along, contrast: 1 - thin / along, angle: 90 }
+      : { ...pen, weight: thin, contrast: 1 - along / thin, angle: 0 };
+  const far = f.bowl;
+  const near = f.bowl - (w - thin) / 2;
+  const [a, b] = stemSide === 1 ? [90, 270] : [-90, 90];
+  const nearSide = ink(
+    f,
+    chain(bend(f, centre, f.bowlH, a, a + 90, near), bend(f, centre, f.bowlH, a + 90, b, near)),
+    BUTT,
+    BUTT,
+  );
+  const farSide = ink(
+    f,
+    chain(bend(f, centre, f.bowlH, b, b + 90, far), bend(f, centre, f.bowlH, b + 90, a + 360, far)),
+    BUTT,
+    BUTT,
+  );
+  return [inherit(nearSide, { ...nearSide, pen: joinPen }), farSide];
+}
+
+/** The Sans's b: see `sansStemBowl`. */
+export function grotesqueSmallB(style: Style): Recipe {
+  const f = frame(style);
+  const stem = f.edge;
+  return finish(
+    f,
+    [
+      ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+      ...sansStemBowl(f, at(stem + f.bowl, f.x / 2), 1),
+    ],
+    true,
+  );
+}
+
+/** The Sans's d: see `sansStemBowl`. */
+export function grotesqueSmallD(style: Style): Recipe {
+  const plain = LETTERS.d(style);
+  const f = frame(style);
+  const centre = at(f.edge + f.bowl, f.x / 2);
+  const stem = centre.x + f.bowl + f.aside;
+  return {
+    ...finish(f, [
+      ...sansStemBowl(f, centre, -1),
+      ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
+    ]),
+    air: plain.air,
+  };
+}
+
+/** The Sans's p: see `sansStemBowl`. */
+export function grotesqueSmallP(style: Style): Recipe {
+  const f = frame(style);
+  const stem = f.edge;
+  return finish(
+    f,
+    [
+      ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
+      ...sansStemBowl(f, at(stem + f.bowl, f.x / 2), 1),
+    ],
+    true,
+  );
+}
+
+/** The Sans's q: see `sansStemBowl`. */
+export function grotesqueSmallQ(style: Style): Recipe {
+  const plain = LETTERS.q(style);
+  const f = frame(style);
+  const centre = at(f.edge + f.bowl, f.x / 2);
+  const stem = centre.x + f.bowl;
+  return {
+    ...finish(f, [
+      ...sansStemBowl(f, centre, -1),
+      ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
+    ]),
+    air: plain.air,
+  };
+}
+
 /** The Sans's n: see `sansArch`. */
 export function grotesqueSmallN(style: Style): Recipe {
   const f = frame(style);

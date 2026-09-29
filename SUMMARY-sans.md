@@ -747,6 +747,22 @@ the round actually begins, so the points stay the same past the Black. The
 u's misfit falls from 0.16/0.11/0.05/0.06/0.05 to 0.05/0.08/0.03/0.04/0.03 at
 the Thin, Regular, SemiBold, UltraBlack and Black.
 
+**The b, d, p and q bowls.** Geist's bowls meet their stems in notches at
+the top and the foot. The Sans's b, d, p and q now draw their bowls with the
+two quarters beside the stem on the n's thin-across pen, flush with the stem
+inside and diving into it outside (`sansStemBowl`). The far half keeps the
+pen. The join is seven tenths of the pen at the Thin, a little over half at
+the Regular, a quarter to three twentieths from the SemiBold to the
+UltraBlack, and two fifths at the Black, which is where each fitted Geist's
+ink best. The misfits fall:
+- b: 0.12/0.06/0.06/0.06/0.06 to 0.11/0.04/0.04/0.04/0.06;
+- d: 0.12/0.06/0.05/0.08/0.08 to 0.13/0.04/0.03/0.07/0.08;
+- p: 0.11/0.06/0.06/0.06/0.06 to 0.10/0.04/0.04/0.04/0.06;
+- q: 0.12/0.06/0.05/0.07/0.08 to 0.11/0.04/0.03/0.06/0.08;
+
+at the Thin, Regular, SemiBold, UltraBlack and Black. The d is a hundredth
+worse at the Thin.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
@@ -799,14 +815,10 @@ strokes as white; they now use a filled (nonzero) ruler.
   past Geist's, and the 9's upper right 17 to 23: rounder quarters, down to
   a circle's, and a bowl tilted up to 12 degrees either way took less than
   a twentieth more off.
-- **Heavy b, d, p and q.** Geist's bowl meets the stem in a V notch at the
-  top and bottom from the SemiBold on, and its counter is rounder than its
-  outside, so its crowns are heavier near the right corners (187 across 420
-  in at the UltraBlack, on a stem of 172). Draw's bowl is one ring on the
-  pen, running flat into the stem. A lopsided ring, a fuller outer ring laid
-  over a rounder inner one, and an open bowl ending inside the stem each
-  measured no closer: the letters already cover Geist's to within 5 to 7 per
-  cent of its area.
+- **Heavy b, d, p and q.** Their bowls now meet the stem in Geist's
+  notches (see above). Geist's counter is still rounder than its outside at
+  the UltraBlack and the Black, so its crowns are heavier near the right
+  corners; the d and the q still miss Geist's ink by 0.07 to 0.08 there.
 - **The heavy s.** From the SemiBold on, Geist's s has a thin diagonal
   spine and teardrop counters. Draw's has a level spine and counters flat
   where they meet it. It covers Geist's to within 13 to 19 per cent of its
