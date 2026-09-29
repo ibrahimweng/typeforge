@@ -866,6 +866,18 @@ units out at 450 up. The Thin's loop is now 20 shorter and 5 further left,
 and its bowl 10 further right. The Thin's misfit went from 0.51 to 0.30. The
 Regular and heavier weights are unchanged; there, neither change helped.
 
+**The s's bowls.** The Sans's s was still set to an older Geist's bowls. The
+current one's upper bowl sits 5 lower and is 10 narrower at the Regular, and
+10 lower at the Black. Its lower bowl sits 15 higher at the Regular and 5
+higher at the Black. The turns inside both are rounder: the corner share
+rises from 0.42 to 0.52, and to 0.8 at the Black. At the Regular the upper
+counter reached 45 units too far left. The misfit went from 0.16 to 0.10 at
+the Regular and from 0.14 to 0.12 at the UltraBlack, a little better at the
+Thin and the Black. Only the Sans changes: the Geometric shares this s, and
+its Black s narrowed past its limit.
+
+The crossing check for rebuilt letters now covers the @ and the & as well.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's

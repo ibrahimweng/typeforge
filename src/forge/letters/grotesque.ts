@@ -4522,6 +4522,7 @@ export function grotesqueS(style: Style): Recipe {
    * UltraBlack on.
    */
   const f = frame(essAcross(stackedPen(style, SMALL_ESS_GAIN)));
+  const sans = f.style.metrics.xGrows !== undefined;
   return {
     ...finish(
       f,
@@ -4531,14 +4532,25 @@ export function grotesqueS(style: Style): Recipe {
           geist: 530,
           unit: small(f) * (1 + 0.025 * thinness(f)),
           left: 104,
-          upper: { x: 263 + 5 * thinness(f), y: [385, 378], w: 159 - 5 * thinness(f) },
-          lower: { x: 266, y: [125, 155], w: 174 },
+          /*
+           * The Sans's bowls fitted to the current Geist's: the upper 5 lower
+           * and 10 narrower at the Regular and 10 lower at the Black, the
+           * lower 15 and 5 higher, and the turns inside them rounder. The
+           * Regular's misfit went from 0.16 to 0.10 and the UltraBlack's
+           * from 0.14 to 0.12.
+           */
+          upper: {
+            x: 263 + 5 * thinness(f),
+            y: sans ? [380, 368] : [385, 378],
+            w: sans ? atWeights(f, 154, 149, 154, 159, 159) : 159 - 5 * thinness(f),
+          },
+          lower: { x: 266, y: sans ? [140, 160] : [125, 155], w: 174 },
           head: [385, 358],
           // The Thin's foot cut lower and its spine's quarters taller, as
           // Geist Thin's are: its terminal stood 20 high and 12 left.
           foot: [175 - 20 * thinness(f), 172],
-          inner: 0.42 + 0.15 * thinness(f),
-          innerBlack: 0.5,
+          inner: (sans ? 0.52 : 0.42) + 0.15 * thinness(f),
+          innerBlack: sans ? 0.8 : 0.5,
           blackWiden:
             11 -
             7 * Math.min(1, Math.max(0, (heavyT(f) - T_ULTRABLACK) / (nowBlack() - T_ULTRABLACK))),

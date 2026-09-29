@@ -562,6 +562,19 @@ describe("the at sign", () => {
   });
 });
 
+describe("the s at the Regular", () => {
+  it("closes its upper counter where Geist's does", () => {
+    // 150 across, Geist Regular's s is ink from its spine to its crown,
+    // 253 to 518: its upper counter ends right of there. Ours ran 45 units
+    // further left, and the column crossed it from 354 to 419.
+    const { contours } = draw("s", 87);
+    const column = filled(contours, 150, "x");
+    const upper = column.find(([from, to]) => from < 300 && to > 300);
+    expect(upper, "the spine at 150").toBeDefined();
+    expect(upper![1]).toBeGreaterThan(510);
+  });
+});
+
 describe("the Thin ampersand", () => {
   it("turns its loop in to the crossing where Geist Thin's does", () => {
     // 450 up, Geist Thin's loop has come round into the crossing: its ink
@@ -867,7 +880,7 @@ describe("the rebuilt letters", () => {
       x: Math.round(point.x),
       y: Math.round(point.y),
     });
-    for (const name of ["a", "e", "s", "S", "dollar", "eight", "y"]) {
+    for (const name of ["a", "e", "s", "S", "dollar", "eight", "y", "at", "ampersand"]) {
       for (const weight of [30, 87, 130, 172, 215, 260]) {
         draw(name, weight).contours.forEach((contour, index) => {
           const stored = {
