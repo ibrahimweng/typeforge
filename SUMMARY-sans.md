@@ -898,6 +898,30 @@ lands within 2 of Geist's at every weight. The misfit went from 0.24, 0.09,
 0.05 and 0.04 to 0.12, 0.07, 0.04 and 0.02 (Thin, Regular, UltraBlack,
 Black); the SemiBold's is 0.09, from 0.08.
 
+**The last five: A, ", ?, G and 9.** Surveyed after the merge into the
+integration branch, these stood worst at the Thin. The misfit below is the
+area where Draw's ink and Geist's differ, over Geist's ink (Thin, Regular,
+SemiBold, UltraBlack, Black).
+- **A.** The Thin's right leg stood 4 to 7 units right of Geist Thin's and
+  its bar 5 low. 0.224 at the Thin to 0.071; the rest unchanged.
+- **" and '.** The feet stood 3 or 4 units high at every weight and the
+  Thin's pair 6 too far apart. 0.235/0.075/0.076/0.077/0.056 to
+  0.063/0.069/0.072/0.068/0.057.
+- **?.** Geist's hook leans in from its terminal: the terminal is the
+  hook's leftmost point, and the stroke already rises to the right there.
+  The left half is now drawn round a lower middle, on an ellipse's quarter.
+  0.260/0.103/0.088/0.066/0.076 to 0.182/0.056/0.065/0.043/0.058.
+- **G.** The Thin's bowl is 8 wider with its left side held, its terminal
+  cut 12 lower and its bar begun 12 further left. 0.249/0.082 to
+  0.162/0.079 at the Thin and the Regular.
+- **9.** Its bowl's lower left is rounder at the Thin and fuller from the
+  SemiBold on, its tail 12 shorter at the Thin, and its bowl's foot lighter
+  at the heavy weights. 0.260/0.078/0.076/0.093/0.101 to
+  0.197/0.078/0.075/0.082/0.087.
+
+The Q was checked against Geist after its refit and needed nothing more:
+0.120/0.066/0.088/0.047/0.022.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's
@@ -924,9 +948,10 @@ Black); the SemiBold's is 0.09, from 0.08.
   stem's pen, so the ring's left third stands about 17 units high and the
   hook about 28 heavy. A leaning ring needs a spine of arcs fitted to a
   sheared ellipse.
-- **The ?'s terminal.** Geist cuts its hook's left end on a slant at the
-  heavy weights, so its lower corner stands about 24 units in from Draw's
-  level cut 500 up.
+- **The ?'s terminal.** Geist cuts its hook's left end on a slant, so its
+  lower corner stands in from Draw's level cut 500 up. The hook now leans
+  in from the terminal as Geist's does (see above), but the cut is still
+  level.
 - **The 6's hood and the 9's bowl.** Geist's hood is a little lighter than
   Draw's at the heavy weights (165 across 500 up at the UltraBlack against
   175). At the Black the 6's lower left still stands 10 to 14 units out
