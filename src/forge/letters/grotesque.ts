@@ -3750,21 +3750,51 @@ function accent(style: Style, way: 1 | -1): Recipe {
   const f = frame(style);
   const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
-  const cut = lerp(82, 162, 30);
+  const sans = f.style.metrics.xGrows !== undefined;
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    pastBlack ? knots[4] : atWeights(f, ...knots);
+  const cut = lerp(82, 162, 30) * (sans ? knot([1, 1, 1.04, 1, 1]) : 1);
   const fall = lerp(78, 72, 76);
   const top = up(f, lerp(726, 747, 726));
   const foot = up(f, lerp(598, 587, 610));
   const wide = cut + fall;
   const x = (u: number) => (way === 1 ? X(u) : X(wide) + X(0) - X(u));
   const slope = Math.atan2(fall * k, top - foot);
-  return finish(f, [
-    measured(
+  const spread = sans ? Math.max(0.05, knot([way === 1 ? 0.2 : 0.1, 0.15, 0.1, 0.1, 0.05])) : 0;
+  if (!sans)
+    return finish(f, [
+      measured(
+        f,
+        straight(at(x(cut / 2), top), at(x(cut / 2 + fall), foot)),
+        cut * k * Math.cos(slope),
+        LEVEL,
+        LEVEL,
+      ),
+    ]);
+  /*
+   * The Sans's a wedge, as Geist's is: wider where it is cut at the top than
+   * at its foot, by two fifths at the Thin (the acute by a fifth) and a
+   * tenth at the Black. Two strokes of the foot's width, meeting there and
+   * apart at the top. Drawn as one stroke, the Regular's missed Geist's ink
+   * by 0.15; as a wedge, by nothing.
+   */
+  const narrow = cut * (1 - spread);
+  const edge = (from: number, to: number): Stroke => {
+    const lean = Math.atan2(Math.abs(x(to) - x(from)), top - foot);
+    return measured(
       f,
-      straight(at(x(cut / 2), top), at(x(cut / 2 + fall), foot)),
-      cut * k * Math.cos(slope),
+      straight(at(x(from), top), at(x(to), foot)),
+      narrow * k * Math.cos(lean),
       LEVEL,
       LEVEL,
-    ),
+    );
+  };
+  const topFrom = cut / 2 - (cut * (1 + spread)) / 2;
+  const topTo = cut / 2 + (cut * (1 + spread)) / 2;
+  return finish(f, [
+    edge(topFrom + narrow / 2, cut / 2 + fall),
+    edge(topTo - narrow / 2, cut / 2 + fall),
   ]);
 }
 

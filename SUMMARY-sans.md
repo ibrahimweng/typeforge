@@ -670,6 +670,17 @@ the SemiBold on the arms are a little longer, and the bars sit on the lines.
 The ] misfit falls from 0.13/0.21/0.18/0.17 to 0.009/0.010/0.009/0.004 at the
 Regular, SemiBold, UltraBlack and Black.
 
+**Grave and acute.** Geist's grave and acute are wedges: wider at the top cut
+than at the foot. The Sans now draws each as two strokes of the foot's width
+that meet at the foot and spread apart at the top. The spread is two fifths
+at the Thin (a fifth for the acute) and a tenth at the Black. At the
+SemiBold the cut is also 4% wider. The grave's misfit falls from
+0.20/0.15/0.20/0.10/0.12 to 0.04/0.002/0.09/0.06/0.09 at the Thin, Regular,
+SemiBold, UltraBlack and Black. The acute's falls from 0.15 to 0.005 at the
+Regular, and by about a third at the heavy weights; at the Thin it is
+0.03, where it had been 0.08. Every accented letter built on them improves
+slightly.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

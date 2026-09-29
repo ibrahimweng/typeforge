@@ -1887,3 +1887,19 @@ describe("the brackets", () => {
     expect(Math.abs(bars[bars.length - 1][0] - 648)).toBeLessThan(4);
   });
 });
+
+describe("the grave", () => {
+  it("is a wedge, as Geist's is", () => {
+    // Geist Regular's grave runs 133-203 at 600 and 63-152 at 700; drawn as
+    // one stroke it ran 121-203 and 60-142.
+    const { contours } = draw("grave", 87);
+    for (const [y, from, to] of [
+      [600, 133, 203],
+      [700, 63, 152],
+    ]) {
+      const [run] = filled(contours, y);
+      expect(Math.abs(run[0] - from), `at ${y}`).toBeLessThan(4);
+      expect(Math.abs(run[1] - to), `at ${y}`).toBeLessThan(4);
+    }
+  });
+});
