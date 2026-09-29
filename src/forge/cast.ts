@@ -939,16 +939,54 @@ export function outlined(shape: Contour[], width: number): Contour[] {
     for (const island of islands)
       reaches.set(island, Math.min(reaches.get(island) ?? width, reach));
   }
-  return sweptClean(
-    shape,
-    (contour, drawn) => {
-      const reach = reaches.get(drawn) ?? width;
-      return reach >= width
-        ? convolvedRound(contour, corners)
-        : convolvedRound(contour, figure(reach));
-    },
-    (contour) => reaches.get(contour) ?? width,
-  );
+  const grow = (): Contour[] =>
+    sweptClean(
+      shape,
+      (contour, drawn) => {
+        const reach = reaches.get(drawn) ?? width;
+        return reach >= width
+          ? convolvedRound(contour, corners)
+          : convolvedRound(contour, figure(reach));
+      },
+      (contour) => reaches.get(contour) ?? width,
+    );
+  /*
+   * Nor pinched in two. The reach is the counter's depth on average, and a
+   * counter narrower in one place than that -- the groove of an inline where
+   * the Sans's a's bowl leaves its bar -- was grown shut there and came back
+   * as two counters. Grown in less, as often as it takes, until it is one.
+   */
+  const holes = [...reaches.keys()].filter((one) => contourArea(one) < 0);
+  const islandsIn = (hole: Contour): Contour[] =>
+    solids.filter((solid) => contourContainsPoint(hole, solid.nodes[0].point));
+  let result = grow();
+  for (let pass = 0; pass < 4; pass++) {
+    const pinched = holes.filter((hole) => {
+      const islands = islandsIn(hole);
+      // The counters of the islands standing in it are theirs, not its.
+      return (
+        result.filter((one) => {
+          if (one.nodes.length < 2 || contourArea(one) >= 0) return false;
+          const at = one.nodes[0].point;
+          return (
+            contourContainsPoint(hole, at) &&
+            !islands.some((island) => contourContainsPoint(island, at))
+          );
+        }).length > 1
+      );
+    });
+    if (pinched.length === 0) break;
+    for (const hole of pinched) {
+      const reach = (reaches.get(hole) ?? width) * 0.6;
+      reaches.set(hole, reach);
+      for (const island of solids.filter((solid) =>
+        contourContainsPoint(hole, solid.nodes[0].point),
+      ))
+        reaches.set(island, Math.min(reaches.get(island) ?? width, reach));
+    }
+    result = grow();
+  }
+  return result;
 }
 
 /**

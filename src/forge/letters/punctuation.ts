@@ -293,7 +293,7 @@ function upperStop(f: Frame, radius: number): number {
     stem < 86
       ? 0.955 - 0.053 * Math.min(1, (86 - stem) / 56)
       : 0.955 + 0.01 * Math.min(1, (stem - 86) / 86);
-  return Math.min(Math.max(f.x * share - radius, radius * 3.7), f.x - radius);
+  return Math.min(Math.max(f.xOwn * share - radius, radius * 3.7), f.x - radius);
 }
 
 /**
@@ -302,24 +302,49 @@ function upperStop(f: Frame, radius: number): number {
  */
 function squareComma(f: Frame, radius: number): Stroke[] {
   const side = radius * 2;
-  const top = at(f.edge + side * 0.12, radius);
+  const stem = f.half * 2;
+  const light = Math.min(1, Math.max(0, (stem - 30) / 56));
+  const heavy = Math.min(1, Math.max(0, (stem - 86) / 86));
+  /*
+   * The Sans's tail as Geist's: out of the dot's foot near its right corner,
+   * leaning further at the Thin, and heavier than half the dot from the
+   * Regular on (0.85 of its half at the Thin, 1.05 at the UltraBlack).
+   * Out of the middle of the foot it stood 12 to 35 units left of Geist's.
+   */
+  const sans = f.style.metrics.xGrows !== undefined;
+  const weight = radius * (sans ? 0.85 + 0.1 * light + 0.1 * heavy : 0.95);
   /*
    * Its tail as deep as Geist's: 125 under the line at the Thin, 155 at the
    * Regular, 159 at the Black and no deeper past it. Drawn as deep as the
    * dot is big, a Black's ran well below the descender.
    */
-  const stem = f.half * 2;
   const depth =
     125 +
     30 * Math.min(1, Math.max(0, (stem - 30) / 56)) +
     4 * Math.min(1, Math.max(0, (stem - 86) / 86));
-  const foot = at(f.edge - side * 0.25, -(depth / 530) * f.x);
+  const foot = at(
+    f.edge - side * (sans ? 0.33 - 0.08 * light - 0.08 * heavy : 0.25),
+    -(depth / 530) * f.x,
+  );
+  /*
+   * The Sans's cut level along the dot's foot, its right side running out of
+   * the dot's corner as Geist's does: cut square across itself at the dot's
+   * middle, its corner stood out past the dot's side as a spur.
+   */
+  let top = at(f.edge + side * 0.12, radius);
+  if (sans) {
+    top = at(f.edge + radius * 0.5, 1);
+    for (let pass = 0; pass < 8; pass++) {
+      const lean = Math.atan2(top.x - foot.x, top.y - foot.y);
+      top = at(f.edge + radius * 0.93 - weight / 2 / Math.cos(lean), 1);
+    }
+  }
   return [
     dot(f, at(f.edge, radius), radius),
     {
       spine: straight(top, foot),
-      pen: { ...f.style.pen, contrast: 0, weight: radius * 0.95 },
-      start: BUTT,
+      pen: { ...f.style.pen, contrast: 0, weight },
+      start: sans ? LEVEL : BUTT,
       end: { ...f.end, open: true },
     },
   ];
@@ -350,7 +375,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const given = f.style.metrics.wordSpace;
     if (given) {
       const t = Math.min(1, blackness(f.style) / 0.67);
-      return { strokes: [], width: f.x * (given[0] + (given[1] - given[0]) * t) };
+      return { strokes: [], width: f.xOwn * (given[0] + (given[1] - given[0]) * t) };
     }
     return { strokes: [], width: f.arch * 1.1 };
   },

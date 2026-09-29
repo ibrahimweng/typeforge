@@ -16,6 +16,8 @@ import {
   grotesqueAcute,
   grotesqueBackslash,
   grotesqueBar,
+  grotesqueCapitalD,
+  grotesqueCapitalO,
   grotesqueCaret,
   grotesqueCircumflexAccent,
   grotesqueDieresis,
@@ -49,6 +51,7 @@ import {
   grotesqueCapitalU,
   grotesqueI,
   grotesqueCapitalV,
+  grotesqueCapitalX,
   grotesqueCapitalY,
   grotesqueAmpersand,
   grotesqueCapitalG,
@@ -70,12 +73,24 @@ import {
   grotesqueM,
   grotesqueN,
   grotesqueNine,
+  grotesqueNineSided,
   grotesqueOne,
   grotesqueQuestion,
   grotesqueR,
   grotesqueS,
   grotesqueSeven,
   grotesqueSix,
+  grotesqueFiveSided,
+  grotesqueSixSided,
+  grotesqueSmallM,
+  grotesqueSmallN,
+  grotesqueSmallB,
+  grotesqueSmallD,
+  grotesqueSmallP,
+  grotesqueSmallQ,
+  grotesqueSmallH,
+  grotesqueSmallX,
+  grotesqueThreeSided,
   grotesqueSmallR,
   grotesqueT,
   grotesqueSmallU,
@@ -1609,6 +1624,8 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["w", "A middle apex reaching the x-height, every stroke cut level.", grotesqueSmallW],
   ["V", "Both strokes cut level, meeting in a flat vertex on the baseline.", grotesqueCapitalV],
   ["Q", "A straight tail through the foot of the O, cut level.", grotesqueCapitalQ],
+  ["O", "Heavier at its sides than across its crowns, at Geist's width.", grotesqueCapitalO],
+  ["D", "A bowl flat along the lines, as heavy at its side as the O.", grotesqueCapitalD],
   ["e", "A level bar and a terminal cut level well up the right.", grotesqueE],
   ["c", "The o's ring cut level at both ends.", grotesqueC],
   ["C", "The O's ring cut level at both ends.", grotesqueCapitalC],
@@ -1682,6 +1699,15 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["T", "A wide bar hung from the cap line.", grotesqueCapitalT],
   ["U", "Set wide, with a round trough.", grotesqueCapitalU],
   ["i", "A square dot, less tall than wide at a heavy weight.", grotesqueI],
+  ["x", "Two straight strokes crossing, at a neo-grotesque's width.", grotesqueSmallX],
+  ["m", "Two arches, their counters a little narrower than the n's.", grotesqueSmallM],
+  ["n", "An arch that leaves the stem thinned, in a notch.", grotesqueSmallN],
+  ["b", "A bowl that meets the stem thinned, in notches.", grotesqueSmallB],
+  ["d", "A bowl that meets the stem thinned, in notches.", grotesqueSmallD],
+  ["p", "A bowl that meets the stem thinned, in notches.", grotesqueSmallP],
+  ["q", "A bowl that meets the stem thinned, in notches.", grotesqueSmallQ],
+  ["h", "The n's arch, leaving the stem thinned, on an ascending stem.", grotesqueSmallH],
+  ["X", "Two straight strokes crossing, at a neo-grotesque's width.", grotesqueCapitalX],
 ];
 for (const [name, hint, build] of GROTESQUE) {
   if (!ALTERNATES[name]) ALTERNATES[name] = [];
@@ -1763,6 +1789,30 @@ for (const [name, hint] of COLUMN) {
       },
     });
   ALTERNATES[name].push({ id: "typewriter", label: "Typewriter", hint, build });
+}
+
+/*
+ * The Sans's three, five, six and nine, as Geist's: the grotesque ones with
+ * their bowls lighter across where they meet or under a hood than at their
+ * outsides, coming down as the weight grows.
+ */
+const SIDED: Array<[LetterName, string, (style: Style) => Recipe]> = [
+  ["three", "Two bowls meeting at a waist lighter than their top and foot.", grotesqueThreeSided],
+  [
+    "five",
+    "A short leaning stem and a bowl lighter at its crown than its foot.",
+    grotesqueFiveSided,
+  ],
+  ["six", "A tall hood over a bowl lighter at its crown than its foot.", grotesqueSixSided],
+  ["nine", "A tall tail under a bowl lighter at its foot than its crown.", grotesqueNineSided],
+];
+for (const [name, hint, build] of SIDED) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build(style);
+  ALTERNATES[name].push({ id: "sided", label: "Grotesque, sided", hint, build: drawn });
 }
 
 /*

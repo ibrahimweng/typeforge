@@ -60,6 +60,7 @@ import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import {
   BASES,
+  blackness,
   capitalled,
   heavier,
   proportioned,
@@ -138,6 +139,17 @@ export function canDraw(name: string): boolean {
 /** What an accented letter is built from, or nothing if it is drawn outright. */
 export function builtFrom(name: string): Parts | null {
   return DRAWN.has(name) ? null : (accentsFor(DRAWN).get(name) ?? null);
+}
+
+/**
+ * How far this glyph may start left of its own origin, in units: what the
+ * face lists in `metrics.overhangs` for it, or for the letter under its mark.
+ */
+export function overhangOf(name: string, style: Style): number {
+  const hangs = style.metrics.overhangs;
+  if (!hangs) return 0;
+  const parts = builtFrom(name);
+  return (hangs[parts ? parts.base : name] ?? 0) * style.metrics.unitsPerEm;
 }
 
 /**
@@ -418,7 +430,11 @@ export function makeLetter(
    */
   const extra =
     !style.metrics.monospaced && !laid && !joinsUp && isCapitalLike(name)
-      ? spacingOf(style) * Math.max(0, (style.metrics.capitalSpacing ?? 1) - 1)
+      ? spacingOf(style) *
+        Math.max(0, (style.metrics.capitalSpacing ?? 1) - 1) *
+        (style.metrics.capitalCloses
+          ? Math.min(1, spacingOf(style) / style.metrics.sidebearing)
+          : 1)
       : 0;
   if (extra > 0) {
     centring += extra;
@@ -468,7 +484,16 @@ function marked(
   const gap = gapFor(em, isCapital(parts.base));
   // The face's own gap is for the marks over a letter: a cedilla or an
   // ogonek hangs from the foot as close as ever.
-  const above = gapFor(em, isCapital(parts.base), style.metrics.accents?.gap);
+  const accents = style.metrics.accents;
+  const heavyGap =
+    accents?.heavy && accents.heavyAt
+      ? ([0, 1].map(
+          (i) =>
+            accents.gap[i] +
+            (accents.heavy![i] - accents.gap[i]) * Math.min(1, blackness(style) / accents.heavyAt!),
+        ) as [number, number])
+      : accents?.gap;
+  const above = gapFor(em, isCapital(parts.base), heavyGap);
   const runs = [...base.runs];
   const contours = [...base.contours];
 
@@ -802,9 +827,27 @@ function fitted(
      * give back twenty.
      */
     const plain = style.metrics.sidebearing;
-    const unit = plain > 0 ? plain * Math.sqrt(spacingOf(style) / plain) : spacingOf(style);
-    const shift = unit * set[0] + opened - box.xMin;
-    return { shift, advance: box.xMax + shift + unit * set[1] + opened };
+    const half = plain > 0 ? plain * Math.sqrt(spacingOf(style) / plain) : spacingOf(style);
+    // A stem's side, where the entry names one, closes as fast as the n's.
+    // One the entry holds keeps the Regular's side at every weight.
+    const held = set[2] === "held" ? plain : null;
+    const unitLeft =
+      held ?? (set[2] === "closes" || set[2] === "stem-left" ? spacingOf(style) : half);
+    const unitRight =
+      held ?? (set[2] === "closes" || set[2] === "stem-right" ? spacingOf(style) : half);
+    const open = set[2] === "unopened" || held !== null ? 0 : opened;
+    // And moved at the Thin as far as the entry says, with the light opening.
+    const toThin = light?.open && opened > 0 ? opened / (light.open * (figure ? 2 : 1)) : 0;
+    const [thinLeft, thinRight] = set[3] ?? [0, 0];
+    // And at the Black as far as the entry says, run in with the weight.
+    const [blackLeft, blackRight] = set[4] ?? [0, 0];
+    const toBlack = set[4] ? Math.min(1, blackness(style) / 0.88) : 0;
+    const shift = unitLeft * set[0] + open + thinLeft * toThin + blackLeft * toBlack - box.xMin;
+    return {
+      shift,
+      advance:
+        box.xMax + shift + unitRight * set[1] + open + thinRight * toThin + blackRight * toBlack,
+    };
   }
   const top = figure || isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
   /*

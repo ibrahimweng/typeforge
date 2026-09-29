@@ -431,6 +431,8 @@ export interface Frame {
   /** Where ink may start, allowing for the pen's own width. */
   edge: number;
   x: number;
+  /** The face's own x-height, where `x` is drawn taller at a heavy weight (`metrics.xGrows`). */
+  xOwn: number;
   cap: number;
   asc: number;
   desc: number;
@@ -628,6 +630,25 @@ export const OVAL_CURVE = OVAL / 10;
 
 /** How much narrower down the middle a held bowl is at the Black: see `frame`. */
 const HEAVY_GIVE = 0.03;
+/**
+ * And a lowercase one, which gives a little more, and on to the current
+ * Geist's Black, a stem of 194 (1.31 of the older Black's measure): Geist's
+ * o is 565 across at its UltraBlack and 584 at its Black.
+ */
+/**
+ * How much taller the x-height is drawn at this weight, on a face whose
+ * x-height grows with it (`metrics.xGrows`): Geist's rises 4 units by its
+ * SemiBold, 8 by its UltraBlack and 10 by its Black.
+ */
+export function xGrowth(style: Style): number {
+  const grows = style.metrics.xGrows;
+  if (!grows) return 0;
+  const t = Math.min(1, Math.max(0, blackness(style) / grows.at));
+  return grows.by * t ** 0.8;
+}
+
+const HEAVY_GIVE_LOWER = 0.045;
+const HEAVY_GIVE_REACH = 1.31;
 
 export function frame(drawn: Style): Frame {
   // The style as a letter is drawn at this weight: see `blackness`.
@@ -650,7 +671,11 @@ export function frame(drawn: Style): Frame {
    * overshoot, at every weight -- and, at a width of one, exactly as wide,
    * which is what a circle is.
    */
-  const bowlH = Math.max(metrics.xHeight / 2 + metrics.overshoot - upright, least);
+  const bowlH0 = Math.max(metrics.xHeight / 2 + metrics.overshoot - upright, least);
+  // Taller at a heavy weight on a face whose x-height grows (`metrics.xGrows`),
+  // its bowls as wide as before.
+  const grownX = xGrowth(style);
+  const bowlH = bowlH0 + grownX / 2;
   /*
    * Lighter than the face's own pen, on a face that holds its widths
    * (`metrics.lightHeld`): each bowl and arch as wide through its middle as
@@ -676,14 +701,22 @@ export function frame(drawn: Style): Frame {
    */
   const heavierHeld = held && pen.weight > held.from;
   const heldUpright = held
-    ? Math.abs(reachAlong(at(0, 1), penReach({ ...pen, weight: held.from })).y)
+    ? Math.abs(
+        reachAlong(
+          at(0, 1),
+          penReach({ ...pen, weight: held.from, contrast: pen.sized ?? pen.contrast }),
+        ).y,
+      )
     : upright;
   const heavyKeep = heavierHeld ? 1 - HEAVY_GIVE * Math.min(1, blackness(style) / 0.67) : 1;
+  const lowerKeep = heavierHeld
+    ? 1 - HEAVY_GIVE_LOWER * Math.min(HEAVY_GIVE_REACH, blackness(style) / 0.67)
+    : 1;
   const bowlAcross = lighter
     ? Math.max(metrics.xHeight / 2 + metrics.overshoot - lightUpright, least) * lightGrow
     : heavierHeld
-      ? Math.max(bowlH, (metrics.xHeight / 2 + metrics.overshoot - heldUpright) * heavyKeep)
-      : bowlH;
+      ? Math.max(bowlH0, (metrics.xHeight / 2 + metrics.overshoot - heldUpright) * lowerKeep)
+      : bowlH0;
   const archWeight = lighter ? held.from : pen.weight;
   // In stem widths, and that is the whole of it: see `ASIDE`.
   const aside = style.parts.script.on ? pen.weight * ASIDE : 0;
@@ -706,7 +739,8 @@ export function frame(drawn: Style): Frame {
     style,
     half,
     edge: spacingOf(style) + half,
-    x: metrics.xHeight,
+    x: metrics.xHeight + grownX,
+    xOwn: metrics.xHeight,
     cap: metrics.capHeight,
     asc: metrics.ascender,
     desc: metrics.descender,
@@ -715,15 +749,15 @@ export function frame(drawn: Style): Frame {
       ((metrics.counterWidth + archWeight) / 2) * lightGrow * heldReach(style) * metrics.width,
       least,
       // A joined hand's arches open with its bowls at a Black: see `heldOpen`.
-      style.parts.script.on ? heldOpen(style, bowlH, upright) : 0,
+      style.parts.script.on ? heldOpen(style, bowlH0, upright) : 0,
     ),
-    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH, upright)),
+    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH0, upright)),
     grownBowl: Math.max(
-      (heavierHeld ? bowlH : bowlAcross) * wide,
+      (heavierHeld ? bowlH0 : bowlAcross) * wide,
       least,
-      heldOpen(style, bowlH, upright),
+      heldOpen(style, bowlH0, upright),
     ),
-    crown: metrics.xHeight * style.parts.shoulder.crest,
+    crown: (metrics.xHeight + grownX) * style.parts.shoulder.crest,
     aside,
     bowlH,
     /*
@@ -1807,6 +1841,23 @@ export function markBox(f: Frame): MarkBox {
   return { cx: f.edge + w, w, foot, top: foot + Math.min(height, w * 1.7) };
 }
 
+/**
+ * How tall a square dot is against its width at this weight: see
+ * `metrics.dotAspect`. One on every face that leaves it out.
+ */
+function dotAspect(style: Style): number {
+  const aspect = style.metrics.dotAspect;
+  if (!aspect) return 1;
+  const held = style.metrics.lightHeld;
+  const light =
+    held && style.pen.weight < held.from
+      ? Math.min(1, (held.from - style.pen.weight) / (held.from - 30))
+      : 0;
+  if (light > 0) return 1 + (aspect.thin - 1) * light;
+  const heavy = Math.min(1, Math.max(0, blackness(style) / aspect.at));
+  return 1 + (aspect.black - 1) * heavy;
+}
+
 export function dot(frame: Frame, centre: Vec2, radius: number): Stroke {
   /*
    * On a face that cuts its ends level the dots are cut level too: square,
@@ -1814,8 +1865,14 @@ export function dot(frame: Frame, centre: Vec2, radius: number): Stroke {
    * letter.
    */
   if (squareDots(frame)) {
+    /*
+     * As tall against its width as the face's own (`metrics.dotAspect`): a
+     * dot on the line keeps its foot there, one above it its top.
+     */
+    const tall = radius * 2 * dotAspect(frame.style);
+    const bottom = centre.y - radius < 1 ? centre.y - radius : centre.y + radius - tall;
     return {
-      spine: straight(at(centre.x, centre.y - radius), at(centre.x, centre.y + radius)),
+      spine: straight(at(centre.x, bottom), at(centre.x, bottom + tall)),
       pen: { ...frame.style.pen, contrast: 0, weight: radius * 2 },
       start: BUTT,
       end: BUTT,
@@ -1989,9 +2046,12 @@ export function stopRadius(f: Frame): number {
    */
   if (squareDots(f) && !f.style.parts.script.on) {
     const stem = f.half * 2;
-    const base = f.x * 0.0604;
-    const regular = base + 0.893 * Math.min(stem, 86);
-    const across = regular + 0.81 * Math.max(0, stem - 86);
+    // The current Geist's, which the Sans follows: 59, 113, 146 and 180 at
+    // the Thin, Regular, SemiBold and UltraBlack. Its Regular's stood 3 small.
+    const sans = f.style.metrics.xGrows !== undefined;
+    const base = f.x * (sans ? 0.0565 : 0.0604);
+    const regular = base + (sans ? 0.955 : 0.893) * Math.min(stem, 86);
+    const across = regular + (sans ? 0.76 : 0.81) * Math.max(0, stem - 86);
     return Math.min(across / 2, f.x * 0.2);
   }
   /*

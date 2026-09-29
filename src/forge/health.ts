@@ -21,7 +21,7 @@
 
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
-import { builtFrom, letterNames } from "./build";
+import { builtFrom, letterNames, overhangOf } from "./build";
 import { draw, familyOf, weighted, type Forge } from "./document";
 import { nameOfWeight, weightsOf } from "./family";
 
@@ -221,7 +221,11 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     if (accented) overAccent ||= high;
     else over ||= high;
     under ||= low;
-    if (leftEdge(drawn.contours, forge, bounds) < em * 0.005) touching.push(letter);
+    // Or past the letter's own side by more than the face lets it hang there:
+    // see `metrics.overhangs`.
+    const hang = overhangOf(letter, forge.style);
+    if (leftEdge(drawn.contours, forge, bounds) < (hang > 0 ? -hang : em * 0.005))
+      touching.push(letter);
   }
 
   const found: Trouble[] = [];

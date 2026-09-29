@@ -825,7 +825,9 @@ describe("slots through a crotch", () => {
     // Every piece of the slotted k is otherwise convex.
     const slotted = drawn("k", forgeOf("Sans", 260, { cuts: { slot: { count: 3, angle: 15 } } }));
     expect(inwardTurns(slotted)).toBe(0);
-    expect(piecesOf(slotted)).toBe(3);
+    // Three bands through it, and the Sans's k, drawn on Geist's measures,
+    // reaches its leg's foot past the lowest band: the foot is a fourth piece.
+    expect(piecesOf(slotted)).toBe(4);
   });
 });
 

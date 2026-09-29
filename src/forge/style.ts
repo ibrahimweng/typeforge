@@ -21,6 +21,17 @@ import type { JoinKind, Pen, SerifHead, SerifShape, Terminal, TerminalKind } fro
 import { NO_SCRIPT, type Script } from "./script";
 
 /** The heights and widths every letter is built against. */
+/**
+ * How a listed side closes at a heavy weight: as fast as the n's ("closes",
+ * or on a stem's side only), half as fast (`"half"`, as a side with no kind
+ * does), unopened at the Light, or held at the Regular's at every weight.
+ * A fourth entry moves either side by that many units at the Thin, going
+ * with the face's own light opening (`metrics.lightHeld`), and a fifth by
+ * that many at the Black (a `blackness` of 0.88), run in from the face's own
+ * weight and held there past it.
+ */
+export type SideKind = "closes" | "stem-left" | "stem-right" | "unopened" | "held" | "half";
+
 export interface Metrics {
   unitsPerEm: number;
   /** Height of the lowercase, where most of the reading happens. */
@@ -51,6 +62,12 @@ export interface Metrics {
    * capitals cramped.
    */
   capitalSpacing?: number;
+  /**
+   * Whether that extra closes at a heavy weight as the sidebearing does and
+   * as fast again: Geist gives its H 12 more than its n at the Regular, 7 at
+   * the UltraBlack and 6 at the Black.
+   */
+  capitalCloses?: boolean;
   /**
    * How wide every letter runs, as a multiple.
    *
@@ -97,8 +114,38 @@ export interface Metrics {
    * its B and R at 62 where their round sides would give back as much as a D.
    * Those letters are listed here, measured off Geist, and the rest are
    * fitted.
+   *
+   * They close at a heavy weight only half as fast as a fitted side does (see
+   * `fitted` in `build.ts`), unless marked "closes": Geist closes its bar,
+   * its stops and its t as fast as its n. "stem-left" and "stem-right" close
+   * just that side as fast: the stem beside a b's or a d's bowl. "unopened"
+   * sides are not opened towards the Thin (`lightHeld.open`).
    */
-  sides?: Record<string, [number, number]>;
+  /**
+   * How much taller the x-height is drawn by a heavy weight (`by` units, by a
+   * blackness of `at`): Geist's rises from 542 at its Regular to 552 at its
+   * Black. Only the letters are drawn taller; the face's x-height, and the
+   * weight measured against it, stay the face's own.
+   */
+  xGrows?: { by: number; at: number };
+  /**
+   * How tall a square dot stands against its width at the Thin and at the
+   * Black (by a blackness of `at`): Geist's full stop is a tenth taller than
+   * wide at its Thin, square at its Regular and 0.92 as tall at its Black.
+   */
+  dotAspect?: { thin: number; black: number; at: number };
+  /**
+   * How much faster the counters close midway to the Black than the straight
+   * line `heavyCounter` gives, as a share of it at its most: see `narrowed`.
+   */
+  counterBend?: number;
+  sides?: Record<
+    string,
+    | [number, number]
+    | [number, number, SideKind]
+    | [number, number, SideKind, [number, number]]
+    | [number, number, SideKind, [number, number], [number, number]]
+  >;
   /**
    * How much counter a heavy weight gives back for the stem it gains, unit
    * for unit, past the text weight (see `blackness`). Left out, a heavier pen keeps the
@@ -133,13 +180,33 @@ export interface Metrics {
    * acute is set with its foot over the middle of the letter rather than its
    * whole width, as a steep one is. Left out, see `gapFor`.
    */
-  accents?: { gap: [number, number]; byFoot?: boolean };
+  accents?: {
+    gap: [number, number];
+    byFoot?: boolean;
+    /**
+     * The gap over a lowercase letter and a capital at the Black
+     * (`blackness` of `heavyAt`), run in from `gap` as the weight grows and
+     * held there past it. Left out, the gap is `gap` at every weight.
+     */
+    heavy?: [number, number];
+    heavyAt?: number;
+  };
   /**
    * The most contrast a heavy weight takes on: see `heavierPen`. Left out,
    * the horizontals go on thinning to the pen's limit, which on a face with
    * little contrast of its own reads as a fat face rather than as an Ultra.
    */
   heavyContrast?: number;
+  /**
+   * How a heavy weight's contrast rises with its pen, where not in step with
+   * `blackness`: towards `to`, most of the way there `over` units of pen past
+   * `from`, and past `past` of the way to a Black climbing on as every other
+   * face's does. Geist's horizontals thin fast from its Regular and then
+   * level off -- its o's crown is 104 on a stem of 128 and 144 on 194 -- where
+   * in step with `blackness` they came to 116 and 137. Its bowls are still
+   * sized by the plain contrast: see `Pen.sized`.
+   */
+  contrastRise?: { from: number; to: number; over: number; past: number };
   /**
    * How much of the contrast a heavy weight gains the capitals and figures
    * take, as a share. Left out, all of it. Geist Black's E, T and 2 carry
@@ -148,6 +215,27 @@ export interface Metrics {
    * lighter than it.
    */
   capitalContrast?: number;
+  /**
+   * How much heavier than the pen a face's capitals and figures are drawn at
+   * its lightest (pen 30), run in from nothing at `lightHeld.from`. Geist
+   * Thin's capital and figure stems are 32 on a lowercase stem of 30.
+   */
+  capitalThin?: number;
+  /**
+   * The letters that hang past their own sides, and how far they may -- on
+   * the left before the health check calls them touching the letter before
+   * -- as a share of the em. A letter not listed starts at least half a
+   * hundredth in. Geist hangs its Y, j and # up to ten units past their
+   * sides, as a text face's overhangs do.
+   */
+  overhangs?: Record<string, number>;
+  /**
+   * The capitals and figures that overshoot their lines by their own amount,
+   * in units, rather than by `overshoot`. Geist's O and Q overshoot 16
+   * where its o overshoots 12; its other round capitals were fitted to 12,
+   * and fit worse at 16.
+   */
+  overshoots?: Record<string, number>;
   /** Set on the style a capital or figure is drawn with: see `capitalContrast`. Never saved. */
   capital?: boolean;
   /**
@@ -699,111 +787,167 @@ export const SANS: Style = {
     counterWidth: 250,
     sidebearing: 80,
     capitalSpacing: 1.15,
+    capitalCloses: true,
     fit: 1,
     // Geist's figures are proportional: its one is 385 wide, its zero 672.
     figures: "proportional",
     heavyCounter: 1.3,
     heavyContrast: 0.42,
     capitalContrast: 0.61,
+    // Geist Thin's capitals and figures stand on stems of 32 to its lowercase's 30.
+    capitalThin: 0.067,
+    // Geist's Y, j and # hang up to 10 past their left sides.
+    overhangs: { Y: 0.012, j: 0.012, numbersign: 0.012 },
+    overshoots: { O: 16, Q: 16 },
+    contrastRise: { from: 87, to: 0.27, over: 56, past: 0.82 },
     // Geist Thin's o and n are both a little wider down the stroke than the
     // Regular's, and set 5 units further apart on either side (its figures 10).
     lightHeld: { from: 87, grow: 0.085, open: 5 },
     // Geist's word space: 250 at the Thin and the Regular, 221 at the Black.
     wordSpace: [250 / 530, 221 / 530],
     // Geist stands its accents 55 over a lowercase letter and 66 over a
-    // capital, and sets its steep grave and acute by their feet.
-    accents: { gap: [0.055, 0.066], byFoot: true },
+    // capital, and sets its steep grave and acute by their feet; and closer
+    // over a heavy letter, 33 and 47 over Geist Black's.
+    accents: { gap: [0.055, 0.066], byFoot: true, heavy: [0.033, 0.047], heavyAt: 0.88 },
+    xGrows: { by: 10, at: 0.88 },
+    counterBend: 0.24,
+    dotAspect: { thin: 1.1, black: 0.92, at: 0.88 },
     /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
     sides: {
-      a: [0.59, 0.24],
-      c: [0.59, 0.46],
-      f: [0.75, 0.53],
-      // Its foot reaches back to the letter before (Geist -5); held inside.
-      j: [0.1, 1],
-      k: [1, 0.59],
+      a: [0.59, 0.24, "closes"],
+      // Geist's bowls stand 44 off at the Regular and 32 at the Black: a
+      // fitted round side gave back twice that as the bowls narrowed. Its
+      // v, w and y stand 3 closer at the Thin than the light opening gives,
+      // and its e closes as fast as its n.
+      b: [1, 0.52, "stem-left"],
+      c: [0.59, 0.46, "closes"],
+      d: [0.52, 1, "stem-right"],
+      e: [0.545, 0.545, "closes", [1, 1]],
+      o: [0.52, 0.52],
+      p: [1, 0.52, "stem-left"],
+      q: [0.52, 1, "stem-right"],
+      g: [0.52, 1, "stem-right"],
+      f: [0.75, 0.53, "closes", [0, 0], [-7, -3]],
+      // Its foot reaches back under the letter before (Geist -5 to -3).
+      j: [-0.06, 1, "closes", [-5, -2]],
+      k: [1, 0.59, "stem-left"],
       // Fitted, its arm's side closed to 20 at the Light; Geist Thin's is 50.
-      r: [1, 0.55],
-      l: [1, 0.5],
-      v: [0.28, 0.28],
-      w: [0.28, 0.28],
-      t: [0.69, 0.46],
+      r: [1, 0.55, "closes"],
+      // Its foot turns out nearly to the advance, as Geist's does (24 off).
+      l: [1, 0.3, "closes"],
+      v: [0.28, 0.28, "half", [-3, -3]],
+      w: [0.28, 0.28, "half", [-3, -3]],
+      y: [0.28, 0.28, "half", [-3, -3]],
+      t: [0.69, 0.46, "closes", [0, 0], [-8, -5]],
       x: [0.59, 0.59],
-      z: [0.71, 0.71],
-      A: [0.11, 0.11],
-      B: [1, 0.63],
-      C: [0.46, 0.4],
-      G: [0.46, 0.53],
-      J: [0.69, 0.81],
-      K: [1, 0.19],
-      L: [1, 0.44],
-      R: [1, 0.63],
+      // Geist sets its z 51 off either side from the Regular to the Black.
+      z: [0.64, 0.64, "held", [2, 2]],
+      A: [0.11, 0.11, "held", [5, 5]],
+      // Geist closes its B, K, L, R, U and its a, c, f, j, l and r as fast
+      // as its n (its B stands 62 off its bowl at the Regular, 43 at the
+      // Black); closed half as fast, they stood 8 to 16 units loose there.
+      // Geist Thin sets the right of its B, E, F, L, P and R 7 units closer
+      // than its Regular, where opened with the rest they stood 11 to 16 loose.
+      B: [1, 0.63, "closes", [0, -12]],
+      // Geist's D: 92 off its stem, 41 off its bowl; fitted, the bowl's side
+      // closed to 25 at the heavy weights.
+      D: [1, 0.36, "stem-left"],
+      E: [1, 0.55, "closes", [0, -11]],
+      F: [1, 0.5, "closes", [0, -12]],
+      P: [1, 0.5, "closes", [0, -12]],
+      C: [0.41, 0.35, "held", [5, 5]],
+      G: [0.41, 0.48, "held", [5, 5]],
+      J: [0.69, 0.81, "closes"],
+      K: [1, 0.04, "closes"],
+      L: [1, 0.44, "closes", [0, -12]],
+      R: [1, 0.63, "closes", [0, -12]],
       // Geist stands its T 12 off either side; 15 here, which still leaves
       // the A and T enough white for the kerning to close.
-      T: [0.04, 0.04],
+      T: [0.04, 0.04, "half", [-6, -6]],
       // Set by the measured fit the O closed to 25 at the Black; Geist's is 40.
-      O: [0.41, 0.41],
-      Q: [0.41, 0.41],
-      U: [0.81, 0.81],
-      V: [0.11, 0.11],
-      W: [0.33, 0.33],
+      // Geist's round and diagonal capitals hardly close at a heavy weight:
+      // theirs are held at the Regular's, and give back only the extra a
+      // capital closes by (see `capitalCloses`).
+      O: [0.41, 0.41, "held", [5, 5]],
+      Q: [0.41, 0.41, "held", [5, 5]],
+      U: [0.77, 0.77, "closes"],
+      // Geist's S stands 55 off either side at the Regular and 50 at the
+      // Black, closing as its figures do; fitted, it closed to 40.
+      S: [0.54, 0.54, "held", [5, 5]],
+      V: [0.11, 0.11, "held", [5, 5]],
+      W: [0.33, 0.33, "held", [5, 5]],
       X: [0.04, 0.04],
-      // Geist's Y reaches 6 past both its sides; held just inside them, as far
-      // as the health check's "touching the letter before it" allows.
-      Y: [-0.04, -0.04],
-      // Its bars reach further than the Y's arms: set as the Y was.
+      // Geist's Y reaches past both its sides (6 and 4 at the Regular, 9 and
+      // 7 at the Black), as `overhangs` lets it; held inside, it stood 12 in.
+      Y: [-0.225, -0.2, "half", [-1, -4]],
+      // Its bars reach further than the Y's arms: held just inside its sides.
       yen: [0.11, 0.11],
-      Z: [0.19, 0.19],
-      zero: [0.68, 0.68],
+      Z: [0.19, 0.19, "held", [5, 5]],
+      zero: [0.63, 0.63],
       one: [0.5, 1.38],
       two: [0.75, 0.75],
       three: [0.63, 0.63],
       four: [0.38, 0.63],
       five: [0.75, 0.75],
       six: [0.63, 0.5],
-      // Geist's seven reaches right to its advance; held just inside it.
-      seven: [0.25, 0.1],
+      // Geist's seven reaches right to its advance (held a unit inside it),
+      // and its Thin's stands where its Regular's does, unopened.
+      seven: [0.25, 0.02, "unopened"],
       eight: [0.5, 0.5],
       nine: [0.5, 0.63],
-      question: [0.59, 0.59],
-      period: [0.59, 0.59],
-      comma: [0.59, 0.59],
-      colon: [1.15, 1.15],
-      semicolon: [1.15, 1.15],
-      quotesingle: [0.61, 0.61],
-      quotedbl: [0.61, 0.61],
+      question: [0.55, 0.55, "closes"],
+      // Geist's stops and quote stand 2 to 4 closer than the first fit had
+      // them; its colons 2 to 4 closer again from the SemiBold on, and its
+      // quote closes a little slower than the n toward the Black.
+      period: [0.565, 0.565, "closes"],
+      comma: [0.565, 0.565, "closes"],
+      colon: [1.15, 1.15, "closes", [0, 0], [-4, -2]],
+      semicolon: [1.15, 1.15, "closes", [0, 0], [-4, -2]],
+      quotesingle: [0.57, 0.57, "half", [0, 0], [2, 1]],
+      quotedbl: [0.56, 0.56],
       // Geist's parentheses stand 45 off the side they open from and 15 off
       // the side they close on.
       parenleft: [0.56, 0.19],
       parenright: [0.19, 0.56],
-      slash: [0.5, 0.81],
-      hyphen: [0.59, 0.59],
-      // Geist's reaches past both its sides (-10 and -5); held just inside.
-      numbersign: [0.1, 0.1],
-      percent: [0.59, 0.59],
-      asterisk: [0.59, 0.59],
-      asciicircum: [0.5, 0.5],
+      // Geist closes its slashes as fast as its n, the slash's right faster.
+      slash: [0.5, 0.72, "closes", [-5, 2]],
+      // Geist closes its hyphen and underscore as fast as its n (44 off at
+      // the Regular, 32 at the Black); half as fast, they stood 8 loose.
+      hyphen: [0.55, 0.55, "closes"],
+      // Geist's reaches past both its sides at the Regular (-10 and -5), and
+      // stands 8 and 10 in at the Black.
+      numbersign: [-0.125, -0.06, "half", [-5, -6], [22, 18]],
+      // Geist closes its % * and brackets as fast as its n: half as fast,
+      // they stood 8 to 16 units loose at the Black.
+      percent: [0.55, 0.55, "closes"],
+      asterisk: [0.55, 0.55, "closes"],
+      asciicircum: [0.5, 0.5, "held"],
       // Geist's brackets and braces stand well off the side they open from.
-      bracketleft: [1.15, 0.19],
-      bracketright: [0.19, 1.15],
+      bracketleft: [1.15, 0.19, "closes"],
+      bracketright: [0.19, 1.15, "closes"],
       braceleft: [0.56, 0.19],
       braceright: [0.19, 0.56],
-      backslash: [0.5, 0.5],
-      plus: [0.5, 0.5],
-      less: [0.5, 0.62],
-      greater: [0.62, 0.5],
-      equal: [0.5, 0.5],
-      underscore: [0.55, 0.55],
-      asciitilde: [0.5, 0.5],
+      // Geist Thin's stands 60 off either side, its Regular's 40.
+      backslash: [0.5, 0.5, "closes", [15, 15]],
+      // Geist sets its signs 40 off either side at every weight (50 off the
+      // open side of an angle); closed with the letters they stood 6 tight
+      // at the Black and opened 5 loose at the Thin.
+      plus: [0.5, 0.5, "held"],
+      less: [0.5, 0.62, "held"],
+      greater: [0.62, 0.5, "held"],
+      equal: [0.5, 0.5, "held"],
+      underscore: [0.55, 0.55, "closes"],
+      asciitilde: [0.5, 0.5, "held"],
       // Geist's stands 55 off either side at the Regular; fitted, 44 and 34.
       dollar: [0.69, 0.69],
       // Geist stands its ! 50 off either side and its bar 92.
       exclam: [0.63, 0.63],
       // Geist's ampersand stands 40 off its left and 20 off its right.
-      ampersand: [0.5, 0.25],
-      bar: [1.15, 1.15],
+      ampersand: [0.5, 0.25, "closes", [5, 5]],
+      bar: [1.15, 1.15, "closes"],
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
-      at: [0.61, 0.61],
+      at: [0.56, 0.57],
     },
     /*
      * Each letter's width against the rhythm, fitted to Geist's by measuring
@@ -898,6 +1042,17 @@ export const SANS: Style = {
     C: "grotesque",
     P: "grotesque",
     Q: "grotesque",
+    O: "grotesque",
+    D: "grotesque",
+    x: "grotesque",
+    X: "grotesque",
+    m: "grotesque",
+    n: "grotesque",
+    h: "grotesque",
+    b: "grotesque",
+    d: "grotesque",
+    p: "grotesque",
+    q: "grotesque",
     V: "grotesque",
     Y: "grotesque",
     s: "grotesque",
@@ -937,13 +1092,13 @@ export const SANS: Style = {
     bar: "grotesque",
     zero: "grotesque",
     two: "grotesque",
-    three: "grotesque",
+    three: "sided",
     four: "grotesque",
-    five: "grotesque",
-    six: "grotesque",
+    five: "sided",
+    six: "sided",
     seven: "grotesque",
     eight: "grotesque",
-    nine: "grotesque",
+    nine: "sided",
     ampersand: "grotesque",
     question: "grotesque",
     E: "grotesque",
@@ -3407,43 +3562,59 @@ export function heavierPen(style: Style): Pen {
       own: pen.own ?? pen.contrast,
     };
   }
-  const { heavyContrast, capitalContrast } = style.metrics;
+  const { heavyContrast, capitalContrast, contrastRise } = style.metrics;
   if (style.metrics.lighterAcross) return pen;
-  let wanted = Math.min(0.56, 0.37 * blackness(style));
   const own = pen.own ?? pen.contrast;
   const capital = style.metrics.capital && capitalContrast !== undefined;
-  /*
-   * Given back past the Black, towards the lowercase's own at an Ultra: the
-   * capitals' and figures' counters are as short as the lowercase's by then,
-   * and an 8 or a 4 with horizontals a third heavier closed up.
-   */
-  if (capital && wanted > own) {
-    const past = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.83));
-    const share = capitalContrast + (1 - capitalContrast) * past * past;
-    wanted = own + (wanted - own) * share;
-  }
-  /*
-   * Eased into the face's limit rather than stopped at it, and only past the
-   * Black: the same pen as ever up to there.
-   */
-  if (heavyContrast !== undefined) {
-    const ease = heavyContrast * 0.3;
-    const knee = heavyContrast - ease;
-    if (wanted > knee) wanted = knee + ease * (1 - Math.exp((knee - wanted) / ease));
-  }
+  const settled = (raw: number): number => {
+    let wanted = raw;
+    /*
+     * Given back past the Black, towards the lowercase's own at an Ultra: the
+     * capitals' and figures' counters are as short as the lowercase's by then,
+     * and an 8 or a 4 with horizontals a third heavier closed up.
+     */
+    if (capital && wanted > own) {
+      const past = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.83));
+      const share = capitalContrast + (1 - capitalContrast) * past * past;
+      wanted = own + (wanted - own) * share;
+    }
+    /*
+     * Eased into the face's limit rather than stopped at it, and only past the
+     * Black: the same pen as ever up to there.
+     */
+    if (heavyContrast !== undefined) {
+      const ease = heavyContrast * 0.3;
+      const knee = heavyContrast - ease;
+      if (wanted > knee) wanted = knee + ease * (1 - Math.exp((knee - wanted) / ease));
+    }
+    return wanted;
+  };
+  const plain = settled(Math.min(0.56, 0.37 * blackness(style)));
+  // Risen as the face's own measures have it, its bowls still sized by the plain one.
+  const wanted = contrastRise
+    ? settled(
+        Math.min(
+          0.56,
+          contrastRise.to *
+            Math.tanh(Math.max(0, pen.weight - contrastRise.from) / contrastRise.over) +
+            0.37 * Math.max(0, blackness(style) - contrastRise.past),
+        ),
+      )
+    : plain;
+  const sized = contrastRise ? { sized: Math.max(plain, own) } : {};
   /*
    * Never less than the pen already has -- but a capital's is worked out
    * afresh from the face's own, since the style it is drawn from was made
    * heavier for the lowercase first.
    */
   if (capital) {
-    if (wanted <= own) return pen.own === undefined ? pen : { ...pen, contrast: own };
-    return wanted === pen.contrast && pen.own !== undefined
+    if (wanted <= own) return pen.own === undefined ? pen : { ...pen, contrast: own, ...sized };
+    return wanted === pen.contrast && pen.own !== undefined && pen.sized === sized.sized
       ? pen
-      : { ...pen, contrast: wanted, own };
+      : { ...pen, contrast: wanted, own, ...sized };
   }
   if (wanted <= pen.contrast) return pen;
-  return { ...pen, contrast: wanted, own };
+  return { ...pen, contrast: wanted, own, ...sized };
 }
 
 const CAPITALLED = new WeakMap<Style, Map<string, Style>>();
@@ -3478,7 +3649,23 @@ export function capitalled(style: Style, name: string): Style {
   }
   const had = known.get(name);
   if (had) return had;
-  const made = { ...style, metrics: { ...style.metrics, capital: true } };
+  // Heavier towards the Thin, where the face asks for it: see `metrics.capitalThin`.
+  const heavier = style.metrics.capitalThin;
+  const held = style.metrics.lightHeld;
+  const light =
+    heavier && held && held.from > 30
+      ? Math.min(1, Math.max(0, (held.from - style.pen.weight) / (held.from - 30)))
+      : 0;
+  const made = {
+    ...style,
+    pen:
+      light > 0 ? { ...style.pen, weight: style.pen.weight * (1 + heavier! * light) } : style.pen,
+    metrics: {
+      ...style.metrics,
+      capital: true,
+      overshoot: style.metrics.overshoots?.[name] ?? style.metrics.overshoot,
+    },
+  };
   known.set(name, made);
   return made;
 }
@@ -3663,6 +3850,17 @@ export function narrowed(style: Style): number {
    * Bold does as far as the Bold, and past it a quarter as fast: a Black
    * carried on at a Bold's rate had the feet of its m's serifs meeting.
    */
+  /*
+   * Bent, on a face that closes its counters faster on the way to its Black
+   * than at either end (`metrics.counterBend`): Geist's n is 9 units
+   * narrower at its SemiBold than a straight line from its Regular to its
+   * UltraBlack gives, and as wide again at both.
+   */
+  const bend = metrics.counterBend;
+  if (bend) {
+    const t = Math.min(1, blackness(style) / 0.67);
+    gained *= 1 + bend * 4 * t * (1 - t);
+  }
   const bold = metrics.bold ? metrics.bold.at * BLACK_SPAN * metrics.xHeight : Infinity;
   if (gained > bold) gained = bold + (gained - bold) * 0.25;
   /*

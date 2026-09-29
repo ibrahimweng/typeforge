@@ -281,7 +281,10 @@ export function cutInk(
   if (strokes.length > 0) {
     shape = withoutSlivers(shape, straight, Math.min(stem * 0.07, hairlineOf(strokes, stem) * 0.3));
   }
-  shape = withoutNotches(shape, slots, stem * 0.2);
+  // A quarter of a stem deep: the Sans's Black k, its leg leaving the arm
+  // a little further out, left a notch of paper 50 units into the band's
+  // edge at 260, past the fifth of a stem this once looked.
+  shape = withoutNotches(shape, slots, stem * 0.25);
   shape = withoutWedges(shape, strokes, straight);
 
   const chamfered: Vec2[] = [];
@@ -394,7 +397,14 @@ function withoutHairs(contour: Contour): Contour {
  * the swell's inside is buried in the bowl, and read as the letter's hairline
  * that half pen let a slot's splinter half a hairline thick stand as a piece.
  */
-function hairlineOf(strokes: Stroke[], stem: number): number {
+function hairlineOf(given: Stroke[], stem: number): number {
+  /*
+   * Read off whole runs: the Sans's arches and bowls leave their stems on a
+   * pen thin across for a quarter, and taken for a hairline that quarter
+   * told the splinter sweep a Black a meant to draw strokes a quarter of a
+   * stem thick, so a slot's shaving off its terminal was kept as a piece.
+   */
+  const { strokes } = runsOf(given);
   const samples = strokes.map((stroke) => alongSpine(stroke.spine, SAMPLES));
   const buried = (index: number): boolean =>
     strokes.length > 1 &&
@@ -1019,7 +1029,7 @@ function inlineTool(
    * and a stretch of arch swept on its own crossed itself and cut the groove
    * off at a slant at the foot of the m.
    */
-  const core = eroded(shape, wall);
+  const core = withoutNecks(eroded(shape, wall), Math.max(1, width * 0.2));
   // A groove shorter than it is wide is not a groove: see below. A letter
   // from a font file has no skeleton to hold its grooves back at the ends,
   // but the serifs of a Lora E left flecks of groove just the same.
@@ -1135,6 +1145,30 @@ function inlineTool(
 }
 
 /**
+ * A groove parted where it runs through a neck no wider than twice `reach`.
+ *
+ * Where a bowl meets its stem thinned, in the notch the Sans's b, d, p and q
+ * cut there, the ink is barely two walls across, and the groove down the stem
+ * met the groove round the bowl through a neck a unit or so wide: a hairline
+ * of paper that any rim grown after it shut, so the one groove came back as
+ * two. Parted at the neck, it is two grooves from the start, as it reads.
+ * Only the necks go: the rounding an opening would give the groove's corners
+ * and ends is left out.
+ */
+function withoutNecks(core: Contour[], reach: number): Contour[] {
+  if (core.length === 0) return core;
+  const opened = outlined(eroded(core, reach), reach);
+  const solids = (contours: Contour[]) => contours.filter((one) => contourArea(one) > 0);
+  const kept = solids(opened);
+  if (kept.length <= solids(core).length) return core;
+  const bridges = solids(subtract(core, opened, "winding")).filter(
+    (piece) =>
+      kept.filter((one) => intersect(outlined([piece], 1), [one], "winding").length > 0).length > 1,
+  );
+  return bridges.length > 0 ? subtract(core, bridges, "winding") : core;
+}
+
+/**
  * Where each end of an open spine is and which way out of the stroke it
  * points, or nothing for a ring. The heading is read off the last piece that
  * has any length: the bowl of a Sans e ends on a piece of none.
@@ -1220,6 +1254,84 @@ function splitTool(
 
 /** The knife the breaks are cut with, and which pairs of strokes it parts. */
 function splitPlan(
+  given: Stroke[],
+  split: Cuts["split"],
+  stem: number,
+  xHeight: number,
+  joins = false,
+): { knives: Contour[]; parted: Set<string>; lips: Contour[] } {
+  /*
+   * One run drawn in pieces is planned as the one run it is.
+   *
+   * The Sans's arch leaves its stem on a pen thin across, for its first
+   * quarter only, and carries on round on the stem's own pen: two strokes
+   * meeting end to end, heading the same way. Planned as two, the break fell
+   * on the short first quarter and the knife was kept off the second
+   * quarter's ink, which stood across the gap as a bridge -- the arch of a
+   * split n stayed on its stem.
+   */
+  const { strokes, from } = runsOf(given);
+  const plan = splitPlanOf(strokes, split, stem, xHeight, joins);
+  if (strokes.length === given.length) return plan;
+  const parted = new Set<string>();
+  for (const key of plan.parted) {
+    const [one, other] = key.split(":").map(Number);
+    for (const a of from[one]) for (const b of from[other]) parted.add(pairKey(a, b));
+  }
+  return { ...plan, parted };
+}
+
+/**
+ * The strokes with every pair that runs on end to end -- the first's end
+ * buried where the second's start is, heading the same way -- drawn as one,
+ * on the pen of the longer; and which of the given strokes each one is.
+ */
+function runsOf(given: Stroke[]): { strokes: Stroke[]; from: number[][] } {
+  const strokes = given.map((one) => one);
+  const from = given.map((_, index) => [index]);
+  const onward = (a: Stroke, b: Stroke): boolean => {
+    if (a.spine.closed || b.spine.closed) return false;
+    if (a.end.open === true || b.start.open === true) return false;
+    const last = a.spine.segments.at(-1);
+    const first = b.spine.segments[0];
+    if (!last || !first) return false;
+    const leaves = endOf(last, "back");
+    const arrives = endOf(first, "front");
+    if (Math.hypot(leaves.at.x - arrives.at.x, leaves.at.y - arrives.at.y) > 0.5) return false;
+    return leaves.away.x * arrives.away.x + leaves.away.y * arrives.away.y > Math.cos(Math.PI / 18);
+  };
+  let merged = true;
+  while (merged) {
+    merged = false;
+    for (let a = 0; a < strokes.length && !merged; a++) {
+      for (let b = 0; b < strokes.length && !merged; b++) {
+        if (a === b || !onward(strokes[a], strokes[b])) continue;
+        const [one, other] = [strokes[a], strokes[b]];
+        const longer = spineLength(one.spine) >= spineLength(other.spine) ? one.pen : other.pen;
+        const run: Stroke = {
+          ...one,
+          spine: { segments: [...one.spine.segments, ...other.spine.segments], closed: false },
+          pen: longer,
+          end: other.end,
+          swash: one.swash === true || other.swash === true ? true : undefined,
+        };
+        if (run.swash === undefined) delete run.swash;
+        // And a run that comes back round onto its own start is a ring: the
+        // Sans's b, d, p and q draw their bowls as two halves, the one along
+        // the stem on a pen thin across.
+        if (onward(run, run)) run.spine = { ...run.spine, closed: true };
+        strokes[a] = run;
+        from[a] = [...from[a], ...from[b]];
+        strokes.splice(b, 1);
+        from.splice(b, 1);
+        merged = true;
+      }
+    }
+  }
+  return { strokes, from };
+}
+
+function splitPlanOf(
   strokes: Stroke[],
   split: Cuts["split"],
   stem: number,
@@ -1992,9 +2104,14 @@ function gapBeside(
         Math.min(total, at + around),
       );
       if (piece.segments.length === 0) return null;
+      /*
+       * A little wider than the stroke: at 1.2 of its pen the knife trimmed
+       * to it left a hairline of a heavy ring's outside past its end, and a
+       * Black g's bowl stayed on its stem at one pen in ten.
+       */
       const local = sweep({
         spine: piece,
-        pen: { ...giving.pen, weight: giving.pen.weight * 1.2 + 2 },
+        pen: { ...giving.pen, weight: giving.pen.weight * 1.3 + 4 },
         start: { kind: "butt" },
         end: { kind: "butt" },
         join: "round",
