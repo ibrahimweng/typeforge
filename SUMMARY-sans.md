@@ -275,6 +275,17 @@ right side, and the Sans's diagonal is laid again on a pen half as light
 across, as heavy as Geist's (184 across at the Black). Each weight now stands
 within 10 units of Geist's 300 up.
 
+**The ?'s neck.** Geist's hook leaves its bowl and rounds into the neck on
+a wide turn, the neck's left side leaning from well above the dot. Draw's
+turned upright on a tight turn: 350 up its neck ran 247-280 at the Thin where
+Geist's runs 291-331, 252-405 at the Regular against 282-407, and at the
+UltraBlack, off a full-depth hook, 255-505 against 231-458. The turn is now
+twice as wide, the hook leaves its bowl where Geist's does at each weight,
+and from the SemiBold on the hook is a tenth shallower, as Geist's is. The
+white over the dot is Geist's at each weight (88 at the Regular, 65 at the
+UltraBlack, 60 at the Black), measured from the dot's own top, which is less
+tall than wide at a heavy weight: the neck stopped 13 to 17 units high there.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
@@ -422,6 +433,9 @@ strokes as white; they now use a filled (nonzero) ruler.
   stem's pen, so the ring's left third stands about 17 units high and the
   hook about 28 heavy. A leaning ring needs a spine of arcs fitted to a
   sheared ellipse.
+- **The ?'s terminal.** Geist cuts its hook's left end on a slant at the
+  heavy weights, so its lower corner stands about 24 units in from Draw's
+  level cut 500 up.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o

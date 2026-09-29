@@ -1372,3 +1372,30 @@ describe("the two's diagonal", () => {
     }
   });
 });
+
+describe("the question mark's neck", () => {
+  it("leans into its bowl and stops over the dot where Geist's does", () => {
+    // Geist's neck 350 up runs 291-331 at the Thin, 282-407 at the Regular
+    // and 231-458 at the UltraBlack. On a tight turn out of a full-depth
+    // hook it ran 247-280, 252-405 and 255-505.
+    const geist: Record<number, [number, number]> = {
+      30: [291, 331],
+      87: [282, 407],
+      172: [231, 458],
+    };
+    for (const [weight, [from, to]] of Object.entries(geist)) {
+      const [left, right] = filled(draw("question", Number(weight)).contours, 350)[0];
+      expect(Math.abs(left - from)).toBeLessThan(10);
+      expect(Math.abs(right - to)).toBeLessThan(15);
+    }
+    // And the white over the dot as Geist's: its neck stops 232 up at the
+    // UltraBlack and 240 at the Black, where it stood 245 and 257.
+    for (const [weight, foot] of [
+      [172, 232],
+      [194, 240],
+    ]) {
+      const up = filled(draw("question", weight).contours, 300, "x");
+      expect(Math.abs(up[1][0] - foot)).toBeLessThan(6);
+    }
+  });
+});

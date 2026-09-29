@@ -1538,26 +1538,41 @@ export function grotesqueQuestion(style: Style): Recipe {
   // SemiBold.
   const u = large(f) * (1 + atWeights(f, -0.028, 0.021, 0.043, 0.036, 0.023));
   const side = stopRadius(f);
-  const dotTop = side * 2;
+  // The dot's own top: a square dot is less tall than wide at a heavy weight.
+  const dotTop = spineEnd(dot(f, at(0, side), side).spine).y;
   /*
    * The white between the neck and the dot closes as the pen grows: Geist's
-   * is 151 at the Thin, 94 at the Regular and 65 at the Black. Held to two
-   * stems, a Thin's neck ran down nearly onto its dot and a Black's stopped
-   * far above it.
+   * is 151 at the Thin, 88 at the Regular, 77 at the SemiBold, 65 at the
+   * UltraBlack and 60 at the Black. Held to two stems, a Thin's neck ran
+   * down nearly onto its dot and a Black's stopped far above it.
    */
-  const stem = f.half * 2;
-  const gap = stem < 86 ? 94 + 1.02 * (86 - stem) : Math.max(94 - 0.34 * (stem - 86), 50);
+  const gap = Math.max(atWeights(f, 157, 88, 77, 65, 60), 50);
   const neckFoot = dotTop + (gap / 710) * f.cap;
   const crest = f.crest(f.cap);
   const halfW = held(f, 191 * u);
-  const halfH = held(f, Math.min((156 / 710) * f.cap, (crest - neckFoot) / 2.6));
+  /*
+   * From the SemiBold on the hook is a tenth shallower, as Geist's is: at
+   * the full depth its lower right stood 48 units out past Geist's 350 up at
+   * the UltraBlack and the neck ran on round it.
+   */
+  const halfH = held(
+    f,
+    Math.min((156 / 710) * f.cap, (crest - neckFoot) / 2.6) * atWeights(f, 1.05, 1, 0.9, 0.9, 0.9),
+  );
   const centre = at(f.edge + halfW, crest - halfH);
   const neckX = f.edge + 189 * u;
-  const hook = bend(f, centre, halfH, 190, -50, halfW);
+  // Left where Geist's hook leaves its bowl for the neck, at each weight.
+  const hook = bend(f, centre, halfH, 190, atWeights(f, -40, -45, -40, -50, -50), halfW);
   const last = hook.segments[hook.segments.length - 1];
   const from = spineEnd(hook);
   const h = headingAt(last, "end");
-  const radius = held(f, 70 * u);
+  /*
+   * Geist's neck rounds into its diagonal on a wide turn, its left side
+   * leaning from well above the dot: on a turn half as wide, the Regular's
+   * neck stood upright, 15 to 30 units left of Geist's from 300 to 400 up.
+   * A little tighter at the heavy weights, where the turn is short.
+   */
+  const radius = held(f, atWeights(f, 150, 150, 150, 110, 100) * u);
   // Along the diagonal until a left turn of this radius lands upright on the
   // neck's line.
   const along = Math.max((neckX + radius + radius * h.y - from.x) / h.x, 1);
