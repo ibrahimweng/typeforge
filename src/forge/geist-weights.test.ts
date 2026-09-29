@@ -694,6 +694,14 @@ describe("the widths of the letters redrawn to the current Geist", () => {
       six: [478, 503, 533, 564, 579],
       seven: [469, 504, 518, 531, 538],
       nine: [478, 503, 536, 569, 586],
+      // And the diagonals: the x 13 wide at the SemiBold and 11 narrow at
+      // the Black, the X 19 wide at the Regular and 17 narrow at the Black,
+      // the k 17 narrow and the slashes 25 narrow at the Black.
+      x: [438, 491, 536, 581, 603],
+      X: [558, 576, 634, 693, 722],
+      k: [436, 463, 512, 560, 584],
+      slash: [327, 375, 422, 468, 491],
+      backslash: [327, 375, 421, 468, 491],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {

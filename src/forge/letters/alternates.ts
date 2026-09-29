@@ -51,6 +51,7 @@ import {
   grotesqueCapitalU,
   grotesqueI,
   grotesqueCapitalV,
+  grotesqueCapitalX,
   grotesqueCapitalY,
   grotesqueAmpersand,
   grotesqueCapitalG,
@@ -81,6 +82,7 @@ import {
   grotesqueSix,
   grotesqueFiveSided,
   grotesqueSixSided,
+  grotesqueSmallX,
   grotesqueThreeSided,
   grotesqueSmallR,
   grotesqueT,
@@ -1588,6 +1590,8 @@ const GROTESQUE: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["T", "A wide bar hung from the cap line.", grotesqueCapitalT],
   ["U", "Set wide, with a round trough.", grotesqueCapitalU],
   ["i", "A square dot, less tall than wide at a heavy weight.", grotesqueI],
+  ["x", "Two straight strokes crossing, at a neo-grotesque's width.", grotesqueSmallX],
+  ["X", "Two straight strokes crossing, at a neo-grotesque's width.", grotesqueCapitalX],
 ];
 for (const [name, hint, build] of GROTESQUE) {
   if (!ALTERNATES[name]) ALTERNATES[name] = [];

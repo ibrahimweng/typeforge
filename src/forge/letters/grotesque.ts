@@ -51,6 +51,7 @@ import {
   inherit,
   ink,
   LEVEL,
+  openVee,
   pointOn,
   type Recipe,
   ring,
@@ -137,6 +138,40 @@ function refit(f: Frame, regular: number, black: number, thin = regular): number
 function figureFit(f: Frame, regular: number, black: number, thin: number, past: number): number {
   return refit(f, regular, black, thin) + past * Math.max(0, Math.min(heavyT(f), nowBlack()) - 1);
 }
+
+/**
+ * A measure taken off Geist at its five weights -- Thin, Regular, SemiBold,
+ * UltraBlack and Black -- and run straight between them, and on past the
+ * Black as it ran from the UltraBlack.
+ */
+function atWeights(
+  f: Frame,
+  thin: number,
+  regular: number,
+  semi: number,
+  ultra: number,
+  black: number,
+): number {
+  const light = thinness(f);
+  if (light > 0) return regular + (thin - regular) * light;
+  const t = Math.min(heavyT(f), 2.24);
+  const knots: Array<[number, number]> = [
+    [0, regular],
+    [T_SEMIBOLD, semi],
+    [T_ULTRABLACK, ultra],
+    [nowBlack(), black],
+  ];
+  for (let i = 1; i < knots.length; i++) {
+    const [t0, v0] = knots[i - 1];
+    const [t1, v1] = knots[i];
+    if (t <= t1 || i === knots.length - 1) return v0 + ((v1 - v0) * (t - t0)) / (t1 - t0);
+  }
+  return black;
+}
+
+/** Where Geist's SemiBold (a stem of 130) and UltraBlack (172) fall, as `heavyT` counts. */
+const T_SEMIBOLD = 0.413;
+const T_ULTRABLACK = 1.004;
 
 /** How far past the Regular a heavy weight is, as `squared` counts it: nought at and below the Regular. */
 function heavyT(f: Frame): number {
@@ -1741,6 +1776,33 @@ export function grotesqueSix(style: Style): Recipe {
   return finish(f, sixStrokes(f, false), true);
 }
 
+/**
+ * The x and the X, as the plain ones are drawn, at Geist's widths: its x
+ * grows with the pen by as much as the pen at every weight, where the plain
+ * x grew 56 units from the Regular to the SemiBold and 43 on to the Black
+ * (13 wide at the SemiBold, 11 narrow at the Black), and its X stood 19
+ * wide at the Regular and 17 narrow at the Black.
+ */
+export function grotesqueSmallX(style: Style): Recipe {
+  const f = frame(style);
+  const width = f.arch * 1.7 + openVee(f) * 2 + atWeights(f, -8, -2, -13, 9, 11);
+  const left = f.edge;
+  return finish(f, [
+    ink(f, straight(at(left, f.x), at(left + width, 0)), f.end, f.end),
+    ink(f, straight(at(left, 0), at(left + width, f.x)), f.end, f.end),
+  ]);
+}
+
+export function grotesqueCapitalX(style: Style): Recipe {
+  const f = frame(style);
+  const width = f.capBowl * 1.55 + openVee(f) * 2 + atWeights(f, 3, -19, -6, 13, 17);
+  const left = f.edge;
+  return finish(f, [
+    ink(f, straight(at(left, f.cap), at(left + width, 0)), f.end, f.end),
+    ink(f, straight(at(left, 0), at(left + width, f.cap)), f.end, f.end),
+  ]);
+}
+
 /** The Sans's six: its bowl as Geist's, lighter at its crown (see `sixBowl`). */
 export function grotesqueSixSided(style: Style): Recipe {
   const f = frame(lighterAcross(style));
@@ -2004,8 +2066,17 @@ export function grotesqueK(style: Style): Recipe {
   const f = frame(style);
   return finish(f, [
     ink(f, straight(at(f.edge, 0), at(f.edge, f.asc)), f.end, f.end),
-    // A little wider towards the Thin, as Geist Thin's k is.
-    ...kay(f, small(f, 1) * thinned(f, -0.035), f.x, 123, [133, 476, 530], [305, 491, 530]),
+    // A little wider towards the Thin, as Geist Thin's k is, and at the
+    // heavy weights, where it stood 13 narrow at UltraBlack and 17 at the
+    // Black.
+    ...kay(
+      f,
+      small(f, 1) * thinned(f, -0.035) * refit(f, -0.005, 0.034, -0.002),
+      f.x,
+      123,
+      [133, 476, 530],
+      [305, 491, 530],
+    ),
   ]);
 }
 
@@ -2863,8 +2934,9 @@ export const grotesqueBraceRight = (style: Style): Recipe => grotesqueBrace(styl
 export function grotesqueBackslash(style: Style): Recipe {
   const f = frame(style);
   const u = large(f);
+  const run = 295.8 * u + slashGain(f);
   return finish(f, [
-    ink(f, straight(at(f.edge, up(f, 750)), at(f.edge + 295.8 * u, up(f, -110))), LEVEL, LEVEL),
+    ink(f, straight(at(f.edge, up(f, 750)), at(f.edge + run, up(f, -110))), LEVEL, LEVEL),
   ]);
 }
 
@@ -4056,12 +4128,25 @@ export function grotesqueParenRight(style: Style): Recipe {
   return finish(f, [paren(f, -1)]);
 }
 
+/**
+ * How much further the slash runs across than its measures give: Geist's
+ * widens with the pen faster than a level cut on the Sans's pen does (327
+ * at the Thin, 375 at the Regular, 491 at the Black), where ours stood 12
+ * wide at the Thin and 25 narrow at the Black.
+ */
+function slashGain(f: Frame): number {
+  return (
+    roundGain(f, -7, 11, -12) + (14 * Math.max(0, Math.min(heavyT(f), nowBlack()) - 0.41)) / 0.9
+  );
+}
+
 /** The slash: from below the baseline to above the ascender, cut level at both. */
 export function grotesqueSlash(style: Style): Recipe {
   const f = frame(style);
   const u = large(f);
+  const run = 295.8 * u + slashGain(f);
   return finish(f, [
-    ink(f, straight(at(f.edge, up(f, -110)), at(f.edge + 295.8 * u, up(f, 750))), LEVEL, LEVEL),
+    ink(f, straight(at(f.edge, up(f, -110)), at(f.edge + run, up(f, 750))), LEVEL, LEVEL),
   ]);
 }
 

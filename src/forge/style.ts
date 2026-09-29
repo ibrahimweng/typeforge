@@ -771,7 +771,8 @@ export const SANS: Style = {
       // the side they close on.
       parenleft: [0.56, 0.19],
       parenright: [0.19, 0.56],
-      slash: [0.5, 0.81],
+      // Geist closes its slashes as fast as its n, the slash's right faster.
+      slash: [0.5, 0.72, "closes"],
       hyphen: [0.59, 0.59],
       // Geist's reaches past both its sides (-10 and -5); held just inside.
       numbersign: [0.1, 0.1],
@@ -783,7 +784,7 @@ export const SANS: Style = {
       bracketright: [0.19, 1.15],
       braceleft: [0.56, 0.19],
       braceright: [0.19, 0.56],
-      backslash: [0.5, 0.5],
+      backslash: [0.45, 0.45, "closes"],
       plus: [0.5, 0.5],
       less: [0.5, 0.62],
       greater: [0.62, 0.5],
@@ -896,6 +897,8 @@ export const SANS: Style = {
     Q: "grotesque",
     O: "grotesque",
     D: "grotesque",
+    x: "grotesque",
+    X: "grotesque",
     V: "grotesque",
     Y: "grotesque",
     s: "grotesque",

@@ -167,6 +167,17 @@ own heading, as Geist's does; it turned at the letter's middle, 80 units
 above Geist's. The @'s mismatch against Geist fell by a third at every
 weight.
 
+**The diagonals.** Geist's x grows with the pen by as much as the pen at every
+weight. The plain x grew 56 units from the Regular to the SemiBold and 43 on
+to the Black, so it stood 13 wide at the SemiBold and 11 narrow at the Black.
+The plain X stood 19 wide at the Regular and 17 narrow at the Black. The Sans
+now draws its own x and X (new "grotesque" forms, the plain strokes at
+Geist's widths, measured at its five weights by a new `atWeights`). The k
+grows to Geist's width at the heavy weights (17 narrow at the Black). The
+slashes widen with the pen as Geist's do (12 wide at the Thin, 25 narrow at
+the Black), and their sides close as fast as the n's. All are within 2 of
+Geist's width at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
@@ -314,10 +325,8 @@ strokes as white; they now use a filled (nonzero) ruler.
   stem's pen, so the ring's left third stands about 17 units high and the
   hook about 28 heavy. A leaning ring needs a spine of arcs fitted to a
   sheared ellipse.
-- **Backslash at the Black.** It follows the Sans slash, which is about 45
-  units narrower than Geist Black's.
-- **m and X at the Light.** They are plain forms, shared with every base. At
-  pen 30 the m is about 19 units wider than Geist Thin's and the X 22 narrower.
+- **m.** It is the plain form, shared with every base. At pen 30 it is about
+  20 units wider than Geist Thin's, and 18 at the SemiBold.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o
