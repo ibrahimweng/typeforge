@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "./geometry";
 import { blankGlyph } from "./library";
-import { addSlabs, findTerminals } from "./slab";
+import { addSlabs, findTerminals, weighSlabs } from "./slab";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
 import { type Contour, DEFAULT_PARAMS, emptyTypeface, type GlyphParams, type Vec2 } from "./types";
 
@@ -347,6 +347,24 @@ describe("which ends a slab serif gives a slab", () => {
     expect(ends.map((end) => Math.round(end.centre.x))).toEqual([45, 45]);
   });
 
+  /*
+   * Regression: the spur of Geist's G stands on the bottom of its bowl, and
+   * the foot laid across it reached out over the bowl on that side and
+   * jutted out of it.
+   */
+  it("reaches out only on the side of a stroke end that is not joined to ink", () => {
+    const spur = stem(300, 0, 100, 400);
+    const bowl = stem(0, 0, 300, 100);
+    const slabs = addSlabs([spur, bowl], { projection: 80, thickness: 60, maxWidth: WIDE }).slice(
+      2,
+    );
+    const foot = slabs
+      .map((slab) => contoursBounds([slab]))
+      .find((box) => box.yMin < 1 && box.xMin > 200)!;
+    expect(foot.xMin).toBeCloseTo(300, 0);
+    expect(foot.xMax).toBeCloseTo(480, 0);
+  });
+
   it("puts no slab on a slanted end", () => {
     // The tail of Geist's & ends on a cut a few degrees off level, and a slab
     // laid along it stuck out like a stick.
@@ -373,6 +391,22 @@ describe("which ends a slab serif gives a slab", () => {
       expect(Math.abs(terminal.inward.x)).toBeLessThan(1e-9);
       expect(Math.abs(terminal.inward.y)).toBeCloseTo(1, 9);
     }
+  });
+});
+
+describe("weighing slabs", () => {
+  /*
+   * A slab end flush with the letter's own edge finishes where the weight
+   * left that edge; made lighter, still no shorter than any slab is kept.
+   * Without the floor, a slab as wide as a thin stem went to a sliver.
+   */
+  it("keeps a flush slab end no shorter than a lighter slab is kept", () => {
+    const letter = [stem(0, 0, 100, 700)];
+    const slab = stem(0, 0, 100, 60);
+    const lighter = [stem(40, 0, 20, 700)];
+    const [weighed] = weighSlabs([slab], letter, -40, 1000, lighter);
+    const box = contoursBounds([weighed]);
+    expect(box.xMax - box.xMin).toBeGreaterThanOrEqual(100 / 3 - 0.5);
   });
 });
 
@@ -447,6 +481,55 @@ describe("slabs on a letter, with the other controls", () => {
     expect(right.xMin).toBeLessThanOrEqual(left.xMax);
   });
 
+  /*
+   * Regression: a slab kept off another piece is weighed lighter, and once
+   * one was, every slab was weighed on its own, and two that end a crack
+   * apart were no longer made one.
+   */
+  it("still makes one slab of two when one of them is weighed lighter", () => {
+    // The two stems, and a square standing just past the right one's slab.
+    const one = letter([stem(100, 0, 100, 700), stem(240, 0, 100, 700), stem(405, 0, 60, 60)], 600);
+    const feet = (contours: Contour[]) =>
+      contours
+        .slice(3)
+        .map((contour) => contoursBounds([contour]))
+        .filter((box) => box.yMin < 1)
+        .sort((a, b) => a.xMin - b.xMin);
+    const rest = at(one, { slab: 60 }).contours;
+    const { contours } = at(one, { slab: 60, weight: 10 });
+    expect(contours).toHaveLength(rest.length);
+    const [left, right] = feet(contours);
+    const square = contoursBounds([contours[2]]);
+    const drawnGap = contoursBounds([rest[2]]).xMin - feet(rest)[1].xMax;
+    // The right foot gave up weight for the square...
+    expect(square.xMin - right.xMax).toBeGreaterThan(drawnGap / 2 - 0.5);
+    // ...and the two feet are still one.
+    expect(right.xMin).toBeLessThanOrEqual(left.xMax);
+  });
+
+  /*
+   * Regression: the top of a stem that a mark just over it held back went
+   * back to its line, and the underside of the slab on it was squeezed by
+   * all the weight the top had not grown: the top slab of the sample font's
+   * I under its acute came out half as thick again as the I's own.
+   */
+  it("gives a stem under a mark the same top slab as the stem alone", () => {
+    const I = letter([stem(100, 0, 100, 700)], 300, "I", 73);
+    const accented = letter([stem(100, 0, 100, 700), stem(110, 760, 80, 80)], 300, "Iacute", 0xcd);
+    const top = (contours: Contour[]) =>
+      contours
+        .slice(1)
+        .map((contour) => contoursBounds([contour]))
+        .filter((box) => box.yMax > 690 && box.yMax < 710)
+        .map((box) => box.yMax - box.yMin)[0];
+    const alone = top(at(I, { slab: 30, weight: 60 }).contours);
+    const under = top(
+      at(accented, { slab: 30, weight: 60 }).contours.filter((_, index) => index !== 1),
+    );
+    expect(alone).toBeGreaterThan(0);
+    expect(Math.abs(under - alone)).toBeLessThan(alone * 0.1);
+  });
+
   it("puts no slab on a dot, nor on punctuation", () => {
     // An i: a stem and a square dot as wide as it.
     const i = letter([stem(100, 0, 100, 500), stem(100, 600, 100, 100)], 300, "i", 105);
@@ -474,6 +557,65 @@ describe("slabs on a letter, with the other controls", () => {
     expect(top(l.contours).xMax).toBeCloseTo(stemOf(l.contours).xMax, 0);
     // ...and the I's bar reaches both ways.
     expect(top(I.contours).xMax).toBeGreaterThan(stemOf(I.contours).xMax + 10);
+  });
+
+  /*
+   * Regression: the flag on the i and j of Geist, reaching out to the left
+   * of the stem, was read at its middle, beside the stem, as standing on
+   * nothing. At the heaviest weight it grew the whole weight up past the
+   * top of the stem and met the dot.
+   */
+  it("keeps the flag on a dotted stem level with the stem, clear of the dot", () => {
+    const i = letter([stem(80, 0, 84, 530), stem(78, 613, 88, 98)], 244, "i", 0x69);
+    const heavy = at(i, { weight: 60 }).contours;
+    const slabbed = at(i, { weight: 60, slab: 100 }).contours;
+    const dot = (contours: Contour[]) => contoursBounds([contours[1]]).yMin;
+    const flag = slabbed.slice(2).find((slab) => contoursBounds([slab]).yMin > 100)!;
+    expect(contoursBounds([flag]).yMax).toBeCloseTo(contoursBounds([slabbed[0]]).yMax, 0);
+    expect(dot(slabbed) - contoursBounds([flag]).yMax).toBeCloseTo(
+      dot(heavy) - contoursBounds([heavy[0]]).yMax,
+      0,
+    );
+  });
+
+  /*
+   * Regression: the beak on the end of the sample font's f hangs from the
+   * hook level with its underside. Made heavier, the underside grew less
+   * than the weight, for the white under it, and the beak grown the whole
+   * weight hung below it, nearly closing on the crossbar.
+   */
+  it("ends a beak level with the underside of the arm it hangs from", () => {
+    // A stem with an arm off its top to the right, and a bar as long close
+    // under it: the weight leaves the beak no room to reach down.
+    const f = letter(
+      [
+        polygon([
+          { x: 100, y: 0 },
+          { x: 100, y: 1000 },
+          { x: 500, y: 1000 },
+          { x: 500, y: 900 },
+          { x: 200, y: 900 },
+          { x: 200, y: 800 },
+          { x: 500, y: 800 },
+          { x: 500, y: 700 },
+          { x: 200, y: 700 },
+          { x: 200, y: 0 },
+        ]),
+      ],
+      600,
+      "F",
+      0x46,
+    );
+    const { contours } = at(f, { weight: 40, slab: 100 });
+    const arm = contours[0].nodes
+      .map((node) => node.point)
+      .filter((point) => point.x > 300 && point.y > 800);
+    const underside = Math.min(...arm.map((point) => point.y));
+    const beak = contours
+      .slice(1)
+      .map((slab) => contoursBounds([slab]))
+      .find((box) => box.yMin > 800 && box.xMax > 400)!;
+    expect(beak.yMin).toBeCloseTo(underside, 0);
   });
 
   it("leaves the top of a t plain, a stub on its crossbar", () => {

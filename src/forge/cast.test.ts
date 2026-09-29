@@ -21,6 +21,7 @@ import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { importFont } from "@/font/parse";
+import { drawn as outlineOf, LORA_A, loopsAnywhere } from "../../test/outlines";
 import { cutScaleOf } from "@/font/transform";
 
 import { readyToShape } from "./layers";
@@ -795,5 +796,25 @@ describe("a rim after a cut that cannot reach an imported letter", () => {
       expect(ink(after.contours), char).toBeCloseTo(ink(alone), 0);
       expect(ink(alone), char).toBeGreaterThan(ink(raw) * 1.05);
     }
+  });
+});
+
+describe("a rim that ties no loops", () => {
+  /*
+   * Regression: the boolean that resolves the rim can lose a crossing between
+   * two nearly tangent curves and leave a tiny figure-eight tied in the
+   * answer, of the right size, so the area check passed it. Lora's a, at its
+   * own stem, came back with one.
+   */
+  it("gives Lora's a a rim that does not cross itself", () => {
+    const a = outlineOf(LORA_A);
+    const scale = { stem: 87, ascender: 1006, descender: -274, xHeight: 500 };
+    const rim = cast((one) => {
+      one.outline.on = true;
+    });
+    const rimmed = shapedInk(a, [], scale, undefined, rim, "nesting").contours;
+    // A rim, and all of it.
+    expect(ink(rimmed)).toBeGreaterThan(ink(a) * 1.05);
+    for (const contour of rimmed) expect(loopsAnywhere(contour)).toBe(false);
   });
 });

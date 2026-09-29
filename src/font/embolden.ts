@@ -34,8 +34,10 @@ import {
   splitCubic,
   contourArea,
   contourSegments,
+  crossesMoreThan,
   cubicAt,
   cubicDerivativeAt,
+  FINE_STEPS,
   distance,
   isClockwise,
   lerp,
@@ -43,7 +45,6 @@ import {
   sub,
   type Segment,
 } from "./geometry";
-import { contoursIntersect } from "./outline";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 /**
@@ -337,6 +338,14 @@ export function applyWeight(
    * opening every weight keeps.
    */
   whiteKept = 0,
+  /**
+   * A repair the caller makes to what comes back, which the checks below are
+   * asked of: putting back a condensed letter's strokes folds small inside
+   * corners that `unfold` then lays flat, and judged before that, the fold
+   * backed the whole give off. Lora's ¼ and ¾ condensed at the heaviest
+   * weight lost a quarter of their ink.
+   */
+  repair: (trial: Contour) => Contour = (trial) => trial,
 ): Contour {
   const nodes = contour.nodes;
   const count = nodes.length;
@@ -353,6 +362,10 @@ export function applyWeight(
    */
   const sign = (isClockwise(contour) ? -1 : 1) * (isOuter ? 1 : -1) * Math.sign(amount);
   const move = (heading: Vec2): Vec2 => shape({ x: heading.y * sign, y: -heading.x * sign });
+  // And which side of the outline its ink is on, the other way from where
+  // weight moves it: as `cross(offset, heading)` has it, which is the normal
+  // above measured along.
+  const inkward = -(isClockwise(contour) ? -1 : 1) * (isOuter ? 1 : -1);
   const wanted = Math.abs(amount);
   const bolder = amount > 0;
   const em = around.unitsPerEm;
@@ -1122,7 +1135,16 @@ export function applyWeight(
       if (index === seg || other.kind !== "line") return;
       const u = lineDirection(index);
       if (t.x * u.x + t.y * u.y > -0.97) return;
-      const gap = Math.abs(cross(sub(other.from, from), t));
+      /*
+       * Across the ink, where the stroke is. The two sides of a counter face
+       * each other across the white, and so do the insides of an n's stems:
+       * the straight right side of Geist's д, taken for the partner of its
+       * counter's slanted left one, was turned to lie parallel to it, and at
+       * the lightest weight its corner ran out through the stem beside it.
+       */
+      const side = cross(sub(other.from, from), t);
+      if (side * inkward <= 0) return;
+      const gap = Math.abs(side);
       if (gap > em * 0.3 || gap < 1) return;
       // Beside it for at least half of the shorter of the two.
       const a = (other.from.x - from.x) * t.x + (other.from.y - from.y) * t.y;
@@ -1150,7 +1172,27 @@ export function applyWeight(
       if (!pair) return;
       const a = out[pair.seg].point;
       const b = out[(pair.seg + 1) % count].point;
-      let direction = normalize(sub(b, a));
+      /*
+       * Turned as far as the leaned side turned, not laid parallel to it: the
+       * two sides of a wedge are not drawn parallel. Laid parallel to the
+       * sloped underside of a serif of Crimson Pro's Y, its flat top tilted
+       * and stood sixty units over the cap height. And not by a side the
+       * weight all but swallowed, whose direction says nothing: the underside
+       * of a top serif of Lora Bold's v, brought from sixty units to six,
+       * tilted the top ten degrees.
+       */
+      if (distance(a, b) < lengths[pair.seg] * 0.5) return;
+      const drawnLean = lineDirection(pair.seg);
+      const nowLean = normalize(sub(b, a));
+      const turn = Math.atan2(
+        cross(drawnLean, nowLean),
+        drawnLean.x * nowLean.x + drawnLean.y * nowLean.y,
+      );
+      const partnerWas = lineDirection(pair.partner);
+      let direction = {
+        x: partnerWas.x * Math.cos(turn) - partnerWas.y * Math.sin(turn),
+        y: partnerWas.x * Math.sin(turn) + partnerWas.y * Math.cos(turn),
+      };
       /*
        * Both sides of the stroke held in, at opposite ends -- the diagonal of
        * an M, held at the stem at the top and at the point at the bottom.
@@ -1519,7 +1561,8 @@ export function applyWeight(
     const rounded = roundSwallowed(out, wanted * share);
     if (!rounded) return plain;
     const filleted: Contour = { closed: true, nodes: rounded };
-    return contoursIntersect([filleted]) && !contoursIntersect([plain]) ? plain : filleted;
+    // Unless rounding them crosses the outline anywhere it did not cross.
+    return crossesMoreThan(plain, FINE_STEPS)(filleted) ? plain : filleted;
   };
 
   const facingBefore = Math.sign(contourArea(contour));
@@ -1546,26 +1589,32 @@ export function applyWeight(
           whiteKept > 0 ? meanWidth(contour) * COUNTER_KEPT : 0,
         )
       : 0;
+  /*
+   * Crossed asked finely, and against the letter as drawn: the fold at the
+   * thin join of the arch of Geist's r to its stem, a light letter widened,
+   * slipped past the quick check, and a letter that ships crossing itself
+   * may keep its crossings but add none.
+   */
+  const crossedMore = crossesMoreThan(contour, FINE_STEPS);
+  // The cheap tests first; the crossing is asked of what passes them.
   const intact = (trial: Contour): boolean =>
     // Turned inside out is as broken as crossed: ink become a hole.
     Math.sign(contourArea(trial)) === facingBefore &&
-    !contoursIntersect([trial]) &&
-    (leastWidth === 0 || meanWidth(trial) >= leastWidth);
-  const full = build(1);
+    (leastWidth === 0 || meanWidth(trial) >= leastWidth) &&
+    !crossedMore(trial);
+  const built = (by: number): Contour => repair(build(by));
+  const full = built(1);
   if (intact(full)) return full;
-  // The letter already crossed itself before anything moved -- some fonts ship
-  // outlines like that -- so there is nothing here to preserve.
-  if (contoursIntersect([contour])) return full;
   // Otherwise back the whole contour off evenly until it is sound; an even
   // retreat keeps the stroke even.
   let low = 0;
   let high = 1;
   for (let step = 0; step < BACK_OFF_STEPS; step++) {
     const middle = (low + high) / 2;
-    if (intact(build(middle))) low = middle;
+    if (intact(built(middle))) low = middle;
     else high = middle;
   }
-  return low === 0 ? contour : build(low);
+  return low === 0 ? contour : built(low);
 }
 
 /**

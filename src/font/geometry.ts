@@ -294,6 +294,46 @@ export function reverseContour(contour: Contour): Contour {
 }
 
 /**
+ * How finely to flatten a curve to ask whether a reshaped outline crosses
+ * itself. The fold at the join of the arch of Geist's r to its stem, a light
+ * letter widened, showed only from twenty-four pieces a curve.
+ */
+export const FINE_STEPS = 32;
+
+/**
+ * How near a crossing must stay to where it was, from one step of a
+ * reshaping to the next, to be the same crossing, as a share of the size of
+ * the outline: about ten units on a letter a thousand tall. One that moves
+ * further in a step is looked for again in two half steps. The three
+ * crossings the flattened pieces of two curves meeting at a shallow angle can
+ * make, where the curves cross once, lie well within it.
+ */
+const NEAR = 0.01;
+
+/**
+ * The finest step a reshaping is followed in, as a share of the whole, and
+ * the most it may be asked in. A crossing that cannot be followed at the
+ * finest step is one the reshaping tied rather than carried, and a reshaping
+ * that cannot be followed in that many is taken to have tied one.
+ */
+const LEAST_STEP = 1 / 256;
+const MOST_STEPS = 1024;
+
+/**
+ * Where a corner radius changes an outline -- it merges points and adds
+ * others, so it cannot be followed point by point -- a crossing it carries
+ * moves by no more than the radius across the curves, and along them by that
+ * over the sine of the angle they meet at, which is taken as at least this:
+ * about seventeen degrees, so a crossing may be found no further than three
+ * radii from one the letter had. At a tenth, ten radii, a rounding could tie
+ * a knot a quarter of the letter away from a shallow crossing and pass.
+ */
+const LEAST_SINE = 0.3;
+
+/** How near two outlines drawn a hair apart come to count as touching. */
+const TOUCHING = 0.5;
+
+/**
  * Whether a contour runs back over its own ink.
  *
  * A shape is its own boundary, so an outline that crosses itself is not one:
@@ -305,77 +345,776 @@ export function reverseContour(contour: Contour): Contour {
  *
  * Asked of the curves rather than of a polyline, and asked cheaply: two
  * segments whose control boxes miss each other cannot meet, and on a letter
- * almost every pair misses. Only the survivors are flattened and tested, so an
- * outline that does not double back pays a few hundred rectangle comparisons.
+ * almost every pair misses. Only the survivors are flattened, and of those
+ * only the pieces that reach the other's span are compared.
  *
- * Segments that share an end are skipped. Every contour touches itself there,
- * and a touch is not a crossing.
+ * Each curve is asked of itself too, unless its control points make a convex
+ * outline, which cannot loop: the offset of a curve tighter than the weight
+ * ties a loop inside one piece. And neighbours are compared like any others
+ * but for the two pieces that meet at their shared end -- every contour
+ * touches itself there, and a touch is not a crossing -- since a fold at a
+ * corner crosses the curve beside it away from where they meet.
+ *
+ * Curves are flattened in `steps` pieces each. Eight is enough for a letter a
+ * person drew; the loop a fold or a boolean ties where two curves nearly
+ * touch can be a unit across on a long curve, and needs `FINE_STEPS`.
  */
-export function crossesItself(contour: Contour): boolean {
-  const segments = contourSegments(contour);
-  if (segments.length < 4) return false;
+export function crossesItself(contour: Contour, steps = 8): boolean {
+  return selfCrossings(laidOut(contour, steps), 1).length > 0;
+}
 
-  /* The control polygon bounds the curve, which is all a rejection needs. */
-  const boxes = segments.map((segment) => {
-    const points =
+/**
+ * How many times an outline crosses itself, as pieces of its flattened curves
+ * crossing, up to `limit`.
+ */
+export function crossingsOf(contour: Contour, steps = 8, limit = Infinity): number {
+  return selfCrossings(laidOut(contour, steps), limit).length;
+}
+
+/**
+ * A test of whether a reshaped outline crosses itself anywhere `drawn` did
+ * not.
+ *
+ * A letter that comes in crossing itself -- some fonts ship outlines like
+ * that -- is not let off: a reshaping may carry its crossings along with its
+ * curves, or lose them, but tie none. That is asked by following the
+ * reshaping. The drawn outline is eased into the trial, every point and
+ * handle along a straight line, and each crossing at every step must be one
+ * of the step before: near where that one was, on the same two curves or the
+ * next ones along, past the point where they join. A step a crossing cannot
+ * be followed across is halved, however far the reshaping moves the curves
+ * and however shallow the angle it slides along them at; one that cannot be
+ * followed at the finest step was tied there. So one crossing undone at the
+ * top of a letter and another tied at the bottom is not a trade, and a wall
+ * bulged through a curve it crossed once, in and out and in again, crosses
+ * more.
+ *
+ * The trial is taken point for point with the drawing, as every reshaping
+ * but a corner radius leaves it. Given a `reach` it is not -- a radius merges
+ * points and adds others -- and a crossing need only lie within that of one
+ * of the drawing's, and further along the curves where they meet at a
+ * shallow angle. Only a letter drawn crossing, and a trial that crosses, is
+ * followed; the drawn outline is asked once, and only when a trial crosses.
+ * Outlines are laid out in `layouts`, which the checks of one reshaping can
+ * share.
+ */
+export function crossesMoreThan(
+  drawn: Contour,
+  steps = 8,
+  layouts: Layouts = new WeakMap(),
+): (trial: Contour, reach?: number) => boolean {
+  let had: Stage | undefined;
+  return (trial, reach) => {
+    const lay = layOf(trial, steps, layouts);
+    // Where the drawing crosses nowhere, one crossing is all there is to know.
+    if (!had?.found.length) {
+      if (selfCrossings(lay, 1).length === 0) return false;
+      if (!had) {
+        const laid = layOf(drawn, steps, layouts);
+        had = stageOf(drawn, laid, [...selfCrossings(laid, Infinity), ...selfTouches(laid)]);
+      }
+      if (had.found.length === 0) return true;
+    }
+    const found = selfCrossings(lay, Infinity);
+    const near = nearness(layOf(drawn, steps, layouts).box);
+    if (reach !== undefined || !sameShape(drawn, trial))
+      return !found.every((crossing) => lies(crossing, had?.found ?? [], near, reach ?? 0));
+    return !followed(had, stageOf(trial, lay, found), near, (share) => {
+      const between = eased(drawn, trial, share);
+      const laid = laidOut(between, steps);
+      return stageOf(between, laid, selfCrossings(laid, Infinity));
+    });
+  };
+}
+
+/**
+ * The same asked of a letter's contours against each other: a test of
+ * whether reshaped contours, each point for point with the drawn one in its
+ * place, cross one another anywhere the drawing did not.
+ *
+ * Contours that overlap as drawn -- an unmerged font -- may carry their
+ * overlap along with their walls, followed as one outline's crossings are; a
+ * wall driven through another anywhere else, the far side of the stem it
+ * overlapped included, is refused. A pair the trial leaves as drawn, the
+ * same two outlines, is not asked again, and each drawn pair is asked once.
+ * Given a list, every pair that crosses more is put in it, rather than only
+ * the first being looked for.
+ *
+ * Given which contours are ink, two of ink that overlap or touch as drawn
+ * are not asked: what they fill together is what is drawn, however far
+ * into each other they grow. Asked, the bar of an H-bar drawn across its
+ * stems, grown into their serifs, read as a new crossing, and the descender
+ * of a Cyrillic dzhe drawn standing on the letter's foot could not be moved
+ * without one. Only two that touch each other, though, not two that each
+ * touch a third with white between them -- the bowl and the stem of the a
+ * inside Outfit's @ -- and only as the letter was drawn, `asDrawn`, point
+ * for point, not as a step before this one left it: two pieces the weight
+ * had brought to touching were never asked again, and the caron of Outfit's
+ * t-caron was driven into the t. Nor is a counter asked against ink laid
+ * over it from outside -- the stem of the E of Outfit's OE, drawn touching
+ * the counter of its O, whose ink covers the white -- but it is of its own
+ * outline, of an island of ink standing in it, and of the other counters. A
+ * sharp end hidden inside ink it overlaps is not asked either, and could run
+ * out on its mitre through the far side unrefused.
+ */
+export function overlapsMoreThan(
+  drawn: Contour[],
+  steps = 8,
+  layouts: Layouts = new WeakMap(),
+  ink?: boolean[],
+  asDrawn: Contour[] = drawn,
+  /** Pairs not asked at all: what the caller sees to itself. */
+  skip?: (one: number, other: number) => boolean,
+): (trial: Contour[], pairs?: Array<[number, number]>) => boolean {
+  const lay = (contour: Contour) => layOf(contour, steps, layouts);
+  const original = (which: number) => (which < asDrawn.length ? asDrawn[which] : drawn[which]);
+  const joined = new Map<string, boolean>();
+  const touching = (one: number, other: number): boolean => {
+    const key = `${one}:${other}`;
+    let together = joined.get(key);
+    if (together === undefined) {
+      const a = original(one);
+      const b = original(other);
+      together = !misses(lay(a).box, lay(b).box, TOUCHING) && clearance(a, b, steps) <= TOUCHING;
+      joined.set(key, together);
+    }
+    return together;
+  };
+  // A point inside each contour, off its outline, to ask what it lies in.
+  const insides = new Map<number, Vec2 | null>();
+  const insideOf = (which: number): Vec2 | null => {
+    if (!insides.has(which)) insides.set(which, pointInside(original(which)));
+    return insides.get(which) ?? null;
+  };
+  // The outline each counter is the counter of: the smallest ink round it.
+  const owners = new Map<number, number | undefined>();
+  const ownerOf = (hole: number): number | undefined => {
+    if (!owners.has(hole)) {
+      const at = insideOf(hole);
+      let best: number | undefined;
+      let smallest = Infinity;
+      drawn.forEach((_, which) => {
+        const contour = original(which);
+        if (!ink?.[which] || !at || !contourContainsPoint(contour, at)) return;
+        const size = Math.abs(contourArea(contour));
+        if (size < smallest) {
+          smallest = size;
+          best = which;
+        }
+      });
+      owners.set(hole, best);
+    }
+    return owners.get(hole);
+  };
+  const inkTogether = (one: number, other: number): boolean => {
+    if (!ink) return false;
+    if (ink[one] && ink[other]) return touching(one, other);
+    if (!ink[one] && !ink[other]) return false;
+    const [hole, stroke] = ink[one] ? [other, one] : [one, other];
+    if (ownerOf(hole) === stroke) return false;
+    // An island standing in the counter is asked; ink laid over it is not.
+    const at = insideOf(stroke);
+    return !(at && contourContainsPoint(original(hole), at));
+  };
+  const drawnPairs = new Map<string, Crossing[]>();
+  const drawnBetween = (one: number, other: number): Crossing[] => {
+    const key = `${one}:${other}`;
+    let had = drawnPairs.get(key);
+    if (!had) {
+      had = crossingsBetween(lay(drawn[one]), lay(drawn[other]), Infinity);
+      drawnPairs.set(key, had);
+    }
+    return had;
+  };
+  const crossesMore = (trial: Contour[], one: number, other: number): boolean => {
+    const first = lay(trial[one]);
+    const second = lay(trial[other]);
+    if (misses(first.box, second.box)) return false;
+    // Where the drawing is not yet known to cross here, one crossing of the
+    // trial is enough to look for first: most trials have none.
+    const known = drawnPairs.get(`${one}:${other}`);
+    let found = crossingsBetween(first, second, known?.length ? Infinity : 1);
+    if (found.length === 0) return false;
+    const had = known ?? drawnBetween(one, other);
+    if (had.length === 0) return true;
+    if (!known?.length) found = crossingsBetween(first, second, Infinity);
+    const near = nearness(union(lay(drawn[one]).box, lay(drawn[other]).box));
+    if (!sameShape(drawn[one], trial[one]) || !sameShape(drawn[other], trial[other]))
+      return !found.every((crossing) => lies(crossing, had, near, 0));
+    const start: Stage = {
+      found: had,
+      one: outlineOf(drawn[one], lay(drawn[one])),
+      other: outlineOf(drawn[other], lay(drawn[other])),
+    };
+    const end: Stage = {
+      found,
+      one: outlineOf(trial[one], first),
+      other: outlineOf(trial[other], second),
+    };
+    // A contour the trial leaves as drawn stays as drawn all the way.
+    const partly = (which: number, share: number): [Contour, Laid] => {
+      if (trial[which] === drawn[which]) return [drawn[which], lay(drawn[which])];
+      const contour = eased(drawn[which], trial[which], share);
+      return [contour, laidOut(contour, steps)];
+    };
+    const between = (share: number): Stage => {
+      const [a, laidA] = partly(one, share);
+      const [b, laidB] = partly(other, share);
+      return {
+        found: crossingsBetween(laidA, laidB, Infinity),
+        one: outlineOf(a, laidA),
+        other: outlineOf(b, laidB),
+      };
+    };
+    return !followed(start, end, near, between);
+  };
+  return (trial, pairs) => {
+    let any = false;
+    for (let one = 0; one < trial.length; one++)
+      for (let other = one + 1; other < trial.length; other++) {
+        if (trial[one] === drawn[one] && trial[other] === drawn[other]) continue;
+        if (misses(lay(trial[one]).box, lay(trial[other]).box)) continue;
+        if (inkTogether(one, other) || skip?.(one, other)) continue;
+        if (!crossesMore(trial, one, other)) continue;
+        if (!pairs) return true;
+        pairs.push([one, other]);
+        any = true;
+      }
+    return any;
+  };
+}
+
+/**
+ * Outlines laid out for the crossing checks, which the checks of one
+ * reshaping can share, so that each is flattened once however many ask. Kept
+ * by the outline itself, and for one number of steps.
+ */
+export type Layouts = WeakMap<Contour, Laid>;
+
+function layOf(contour: Contour, steps: number, layouts: Layouts): Laid {
+  let laid = layouts.get(contour);
+  if (!laid) {
+    laid = laidOut(contour, steps);
+    layouts.set(contour, laid);
+  }
+  return laid;
+}
+
+/** A place on an outline: which of its pieces, as `contourSegments` lists them, and how far along. */
+interface Along {
+  place: number;
+  t: number;
+}
+
+/**
+ * Where an outline crosses itself, or two cross each other: on which curves,
+ * and the sine of the angle they cross at.
+ */
+interface Crossing {
+  at: Vec2;
+  one: Along;
+  other: Along;
+  sine: number;
+}
+
+/** An outline laid out to be asked where it crosses: its pieces, boxed, flattened when first asked. */
+interface Laid {
+  closed: boolean;
+  pieces: Array<{ segment: Segment; place: number; box: Bounds }>;
+  box: Bounds;
+  flat: (index: number) => Flat;
+}
+
+type Flat = { points: Vec2[]; span: Bounds };
+
+function laidOut(contour: Contour, steps: number): Laid {
+  /*
+   * Without the pieces that go nowhere. A corner the weight swallows leaves
+   * its points on one spot, and a piece of no length between two others made
+   * them look like strangers rather than neighbours: they meet at a point
+   * that agrees to fifteen digits and not to all of them, and the collapsed
+   * apex of the counter of Lora's heavy A was reported crossed.
+   */
+  const pieces = contourSegments(contour).flatMap((segment, place) => {
+    const corners =
       segment.kind === "line"
         ? [segment.from, segment.to]
         : [segment.from, segment.c1, segment.c2, segment.to];
-    return {
-      xMin: Math.min(...points.map((one) => one.x)),
-      xMax: Math.max(...points.map((one) => one.x)),
-      yMin: Math.min(...points.map((one) => one.y)),
-      yMax: Math.max(...points.map((one) => one.y)),
-    };
+    if (corners.every((point) => distance(point, segment.from) <= 1e-9)) return [];
+    // The control polygon bounds the curve, which is all a rejection needs.
+    return [{ segment, place, box: boundsOf(corners) }];
   });
-
-  const STEPS = 8;
-  const flattened = new Map<number, Vec2[]>();
-  const flatOf = (index: number): Vec2[] => {
-    const had = flattened.get(index);
-    if (had) return had;
-    const segment = segments[index];
-    const points: Vec2[] = [segment.from];
-    if (segment.kind === "line") points.push(segment.to);
-    else
-      for (let step = 1; step <= STEPS; step++)
-        points.push(cubicAt(segment.from, segment.c1, segment.c2, segment.to, step / STEPS));
-    flattened.set(index, points);
-    return points;
+  const box = pieces.reduce((all, piece) => union(all, piece.box), NO_BOUNDS);
+  const flattened = new Map<number, Flat>();
+  return {
+    closed: contour.closed,
+    pieces,
+    box,
+    flat: (index) => {
+      const had = flattened.get(index);
+      if (had) return had;
+      const { segment } = pieces[index];
+      const points: Vec2[] = [segment.from];
+      if (segment.kind === "line") points.push(segment.to);
+      else
+        for (let step = 1; step <= steps; step++)
+          points.push(cubicAt(segment.from, segment.c1, segment.c2, segment.to, step / steps));
+      const flat = { points, span: boundsOf(points) };
+      flattened.set(index, flat);
+      return flat;
+    },
   };
-
-  const count = segments.length;
-  for (let one = 0; one < count; one++) {
-    for (let other = one + 1; other < count; other++) {
-      // Neighbours share an end, and on a closed contour so do the two ends.
-      if (other === one + 1) continue;
-      if (contour.closed && one === 0 && other === count - 1) continue;
-      const a = boxes[one];
-      const b = boxes[other];
-      if (a.xMax < b.xMin || b.xMax < a.xMin || a.yMax < b.yMin || b.yMax < a.yMin) continue;
-      if (meets(flatOf(one), flatOf(other))) return true;
-    }
-  }
-  return false;
 }
 
-/** Whether two polylines properly cross, ends touching not counted. */
-function meets(one: Vec2[], other: Vec2[]): boolean {
-  for (let i = 0; i + 1 < one.length; i++) {
-    for (let j = 0; j + 1 < other.length; j++) {
-      if (crossing(one[i], one[i + 1], other[j], other[j + 1])) return true;
-    }
+/** The crossings of one outline, up to `limit` of them. */
+function selfCrossings(laid: Laid, limit: number): Crossing[] {
+  const found: Crossing[] = [];
+  const { pieces } = laid;
+  const total = pieces.length;
+  /*
+   * A curve against itself: the offset of a curve tighter than the weight
+   * ties a loop inside the one piece, which nothing else touches.
+   */
+  for (let one = 0; one < total && found.length < limit; one++) {
+    const { segment, place } = pieces[one];
+    if (segment.kind === "line") continue;
+    // A curve whose control points make a convex outline cannot loop.
+    const corners = [segment.from, segment.c1, segment.c2, segment.to];
+    const turns = corners.map((point, k) => {
+      const next = corners[(k + 1) % 4];
+      const after = corners[(k + 2) % 4];
+      return (next.x - point.x) * (after.y - next.y) - (next.y - point.y) * (after.x - next.x);
+    });
+    if (turns.every((turn) => turn >= 0) || turns.every((turn) => turn <= 0)) continue;
+    const { points } = laid.flat(one);
+    const pieceCount = points.length - 1;
+    for (let i = 0; i + 1 < points.length && found.length < limit; i++)
+      for (let j = i + 2; j + 1 < points.length && found.length < limit; j++) {
+        const hit = crossingOf(points[i], points[i + 1], points[j], points[j + 1]);
+        if (hit)
+          found.push({
+            at: hit.at,
+            one: { place, t: (i + hit.u) / pieceCount },
+            other: { place, t: (j + hit.v) / pieceCount },
+            sine: hit.sine,
+          });
+      }
   }
-  return false;
+  for (let one = 0; one < total && found.length < limit; one++)
+    for (let other = one + 1; other < total && found.length < limit; other++) {
+      if (misses(pieces[one].box, pieces[other].box)) continue;
+      /*
+       * Neighbours share an end, and on a closed contour so do the last and
+       * the first; only the two pieces that meet there are let off. The
+       * rest of them are compared like any others: two curves either side
+       * of a corner can cross away from it, as a fold at a corner does.
+       */
+      const after = other === one + 1;
+      const around = laid.closed && one === 0 && other === total - 1;
+      meets(laid, one, laid, other, after, around, limit, found);
+    }
+  return found;
 }
 
-function crossing(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
+/**
+ * Where an outline touches itself without crossing: a point of it lying on
+ * a piece of it that does not end there. Crimson Pro draws its 4 as one
+ * outline, with two points of the stem on the bottom of the bar; any weight
+ * at all makes each of them a crossing, and taken for new ones they left the
+ * 4 unweighed. So each is a crossing the reshaped outline may carry on.
+ */
+function selfTouches(laid: Laid): Crossing[] {
+  const found: Crossing[] = [];
+  const { pieces } = laid;
+  const total = pieces.length;
+  for (let one = 0; one < total; one++) {
+    const at = pieces[one].segment.from;
+    for (let other = 0; other < total; other++) {
+      // Not the piece it starts, nor the one ending at it.
+      if (other === one || other === (one - 1 + total) % total) continue;
+      const box = pieces[other].box;
+      if (
+        at.x < box.xMin - SELF_TOUCH ||
+        at.x > box.xMax + SELF_TOUCH ||
+        at.y < box.yMin - SELF_TOUCH ||
+        at.y > box.yMax + SELF_TOUCH
+      )
+        continue;
+      const { points } = laid.flat(other);
+      for (let k = 0; k + 1 < points.length; k++) {
+        const [a, b] = [points[k], points[k + 1]];
+        const run = sub(b, a);
+        const length = run.x * run.x + run.y * run.y;
+        if (!(length > 0)) continue;
+        const u = Math.max(0, Math.min(1, ((at.x - a.x) * run.x + (at.y - a.y) * run.y) / length));
+        if (distance(at, lerp(a, b, u)) > SELF_TOUCH) continue;
+        found.push({
+          at,
+          one: { place: pieces[one].place, t: 0 },
+          other: { place: pieces[other].place, t: (k + u) / (points.length - 1) },
+          sine: 1,
+        });
+        break;
+      }
+    }
+  }
+  return found;
+}
+
+/** How near a point of an outline lies to another piece of it to touch it, in units. */
+const SELF_TOUCH = 0.05;
+
+/** Where two outlines cross each other, up to `limit` of them. */
+function crossingsBetween(one: Laid, other: Laid, limit: number): Crossing[] {
+  const found: Crossing[] = [];
+  if (misses(one.box, other.box)) return found;
+  for (let first = 0; first < one.pieces.length && found.length < limit; first++)
+    for (let second = 0; second < other.pieces.length && found.length < limit; second++) {
+      if (misses(one.pieces[first].box, other.pieces[second].box)) continue;
+      meets(one, first, other, second, false, false, limit, found);
+    }
+  return found;
+}
+
+/**
+ * Where two pieces of outline, flattened, properly cross, ends touching not
+ * counted, added to `found` up to `limit`. `after` when the second begins
+ * where the first ends, `around` when the first begins where the second
+ * ends; the two flattened pieces that meet there are not compared. Only the
+ * pieces of each that reach the other's span can cross it: by a shared end,
+ * the few nearest it.
+ */
+function meets(
+  oneLaid: Laid,
+  oneIndex: number,
+  otherLaid: Laid,
+  otherIndex: number,
+  after: boolean,
+  around: boolean,
+  limit: number,
+  found: Crossing[],
+): void {
+  const one = oneLaid.flat(oneIndex);
+  const other = otherLaid.flat(otherIndex);
+  const onePlace = oneLaid.pieces[oneIndex].place;
+  const otherPlace = otherLaid.pieces[otherIndex].place;
+  const a = one.points;
+  const b = other.points;
+  const last = a.length - 2;
+  const end = b.length - 2;
+  const within = (p: Vec2, q: Vec2, span: Bounds) =>
+    Math.max(p.x, q.x) >= span.xMin &&
+    Math.min(p.x, q.x) <= span.xMax &&
+    Math.max(p.y, q.y) >= span.yMin &&
+    Math.min(p.y, q.y) <= span.yMax;
+  for (let i = 0; i + 1 < a.length; i++) {
+    if (!within(a[i], a[i + 1], other.span)) continue;
+    for (let j = 0; j + 1 < b.length; j++) {
+      if (after && i === last && j === 0) continue;
+      if (around && i === 0 && j === end) continue;
+      if (!within(b[j], b[j + 1], one.span)) continue;
+      const hit = crossingOf(a[i], a[i + 1], b[j], b[j + 1]);
+      if (!hit) continue;
+      found.push({
+        at: hit.at,
+        one: { place: onePlace, t: (i + hit.u) / (a.length - 1) },
+        other: { place: otherPlace, t: (j + hit.v) / (b.length - 1) },
+        sine: hit.sine,
+      });
+      if (found.length >= limit) return;
+    }
+  }
+}
+
+/** Where two straight pieces properly cross, how far along each, and at what angle. */
+function crossingOf(
+  a: Vec2,
+  b: Vec2,
+  c: Vec2,
+  d: Vec2,
+): { at: Vec2; u: number; v: number; sine: number } | null {
   const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
   const one = side(a, b, c);
   const two = side(a, b, d);
   const three = side(c, d, a);
   const four = side(c, d, b);
-  return one * two < 0 && three * four < 0;
+  if (!(one * two < 0 && three * four < 0)) return null;
+  const u = three / (three - four);
+  const turn = (b.x - a.x) * (d.y - c.y) - (b.y - a.y) * (d.x - c.x);
+  const sine = Math.abs(turn) / (distance(a, b) * distance(c, d));
+  return { at: lerp(a, b, u), u, v: one / (one - two), sine };
+}
+
+/** Where one outline, or two, cross at one step of a reshaping, and the outlines themselves. */
+interface Stage {
+  found: Crossing[];
+  one: Outline;
+  other: Outline;
+}
+
+/** An outline's points, whether it closes, and which of its pieces have any length. */
+interface Outline {
+  nodes: GlyphNode[];
+  closed: boolean;
+  live: Set<number>;
+}
+
+function outlineOf(contour: Contour, laid: Laid): Outline {
+  return {
+    nodes: contour.nodes,
+    closed: contour.closed,
+    live: new Set(laid.pieces.map((piece) => piece.place)),
+  };
+}
+
+function stageOf(contour: Contour, laid: Laid, found: Crossing[]): Stage {
+  const outline = outlineOf(contour, laid);
+  return { found, one: outline, other: outline };
+}
+
+/**
+ * A drawn outline `share` of the way to a reshaped one, point for point:
+ * every point and handle along the straight line between them. A handle
+ * either leaves out starts or ends on its own point, which is what a missing
+ * handle is.
+ */
+function eased(from: Contour, to: Contour, share: number): Contour {
+  const handle = (was: Vec2 | null, wasAt: Vec2, now: Vec2 | null, nowAt: Vec2) =>
+    was === null && now === null ? null : lerp(was ?? wasAt, now ?? nowAt, share);
+  return {
+    closed: to.closed,
+    nodes: to.nodes.map((node, index) => {
+      const was = from.nodes[index];
+      return {
+        ...node,
+        point: lerp(was.point, node.point, share),
+        handleIn: handle(was.handleIn, was.point, node.handleIn, node.point),
+        handleOut: handle(was.handleOut, was.point, node.handleOut, node.point),
+      };
+    }),
+  };
+}
+
+/**
+ * Whether every crossing at the end of a reshaping follows from one at its
+ * start. The reshaping is taken whole first, then in steps that halve
+ * wherever a crossing cannot be followed across one, and double again after
+ * two taken in a row -- after every one, a crossing sliding steadily failed
+ * every other try -- down to `LEAST_STEP` and for at most `MOST_STEPS` tries.
+ */
+function followed(first: Stage, last: Stage, near: number, at: (share: number) => Stage): boolean {
+  let here = first;
+  let done = 0;
+  let step = 1;
+  let taken = 0;
+  for (let tries = 0; done < 1; tries++) {
+    if (tries >= MOST_STEPS) return false;
+    const to = Math.min(1, done + step);
+    const there = to === 1 ? last : at(to);
+    const carried = there.found.every((crossing) =>
+      here.found.some((was) => follows(crossing, was, there, near)),
+    );
+    if (carried) {
+      here = there;
+      done = to;
+      taken++;
+      if (taken >= 2) {
+        step *= 2;
+        taken = 0;
+      }
+    } else if (step <= LEAST_STEP) return false;
+    else {
+      step /= 2;
+      taken = 0;
+    }
+  }
+  return true;
+}
+
+/**
+ * Whether `crossing` is `was` a step on: near it, on the same two curves or
+ * the next along either way past the point that joins them, which it must
+ * then be beside, having slid past it. One outline's two curves may be found
+ * the other way round.
+ */
+function follows(crossing: Crossing, was: Crossing, there: Stage, near: number): boolean {
+  if (distance(crossing.at, was.at) > near) return false;
+  const on = (now: Along, then: Along, outline: Outline) =>
+    slid(now, then, outline, crossing.at, near);
+  return (
+    (on(crossing.one, was.one, there.one) && on(crossing.other, was.other, there.other)) ||
+    (there.one === there.other &&
+      on(crossing.one, was.other, there.one) &&
+      on(crossing.other, was.one, there.one))
+  );
+}
+
+/**
+ * Whether a crossing at `at`, on the piece `now` names, was on the piece
+ * `then` names: the same one, or the next with any length either way -- past
+ * any a swallowed corner left on one spot -- with the point that joins them
+ * near it.
+ */
+function slid(now: Along, then: Along, outline: Outline, at: Vec2, near: number): boolean {
+  if (now.place === then.place) return true;
+  const { nodes, closed, live } = outline;
+  const count = closed ? nodes.length : nodes.length - 1;
+  for (const way of [1, -1]) {
+    let place = then.place;
+    for (let step = 0; step < count; step++) {
+      const joint = (way > 0 ? place + 1 : place) % nodes.length;
+      place += way;
+      if (closed) place = (place + count) % count;
+      else if (place < 0 || place >= count) break;
+      if (place === now.place) return distance(nodes[joint].point, at) <= near;
+      if (live.has(place)) break;
+    }
+  }
+  return false;
+}
+
+/**
+ * And where the pieces do not line up, whether a crossing lies near one of
+ * those `had`: within `reach` across the curves, and along them by that over
+ * the sine of the angle they met at.
+ */
+function lies(crossing: Crossing, had: Crossing[], near: number, reach: number): boolean {
+  return had.some(
+    (was) => distance(crossing.at, was.at) <= near + reach / Math.max(was.sine, LEAST_SINE),
+  );
+}
+
+/** Whether a reshaped outline still lines up with the drawn one point for point. */
+function sameShape(drawn: Contour, trial: Contour): boolean {
+  return drawn.closed === trial.closed && drawn.nodes.length === trial.nodes.length;
+}
+
+function nearness(box: Bounds): number {
+  const size = Math.hypot(box.xMax - box.xMin, box.yMax - box.yMin);
+  return Number.isFinite(size) ? Math.max(1, NEAR * size) : 1;
+}
+
+const NO_BOUNDS: Bounds = { xMin: Infinity, yMin: Infinity, xMax: -Infinity, yMax: -Infinity };
+
+function boundsOf(points: Vec2[]): Bounds {
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  for (const point of points) {
+    if (point.x < xMin) xMin = point.x;
+    if (point.x > xMax) xMax = point.x;
+    if (point.y < yMin) yMin = point.y;
+    if (point.y > yMax) yMax = point.y;
+  }
+  return { xMin, xMax, yMin, yMax };
+}
+
+function union(a: Bounds, b: Bounds): Bounds {
+  return {
+    xMin: Math.min(a.xMin, b.xMin),
+    yMin: Math.min(a.yMin, b.yMin),
+    xMax: Math.max(a.xMax, b.xMax),
+    yMax: Math.max(a.yMax, b.yMax),
+  };
+}
+
+/** Whether two boxes are apart, which two things inside them then are too. */
+/** Whether two boxes lie more than `by` apart. */
+function misses(a: Bounds, b: Bounds, by = 0): boolean {
+  return (
+    a.xMax + by < b.xMin || b.xMax + by < a.xMin || a.yMax + by < b.yMin || b.yMax + by < a.yMin
+  );
+}
+
+/**
+ * How close two outlines come: the least distance between them, flattened in
+ * `steps` pieces a curve, and nothing if they cross.
+ */
+export function clearance(one: Contour, other: Contour, steps = 12): number {
+  return closestApproach(one, other, steps).distance;
+}
+
+/**
+ * Where two outlines come closest, and how close: a point on each. Every
+ * piece of one is measured against every piece of the other that could be
+ * nearer than the best found so far; where they cross, nothing apart at the
+ * crossing.
+ */
+export function closestApproach(
+  one: Contour,
+  other: Contour,
+  steps = 12,
+): { distance: number; on: Vec2; off: Vec2 } {
+  const a = flattenedLoop(one, steps);
+  const b = flattenedLoop(other, steps);
+  const none = { distance: Infinity, on: { x: 0, y: 0 }, off: { x: 0, y: 0 } };
+  if (a.length < 2 || b.length < 2) return none;
+  const apart = (p: Bounds, q: Bounds) =>
+    Math.max(p.xMin - q.xMax, q.xMin - p.xMax, p.yMin - q.yMax, q.yMin - p.yMax, 0);
+  const boxesA = a.slice(1).map((point, index) => boundsOf([a[index], point]));
+  const boxesB = b.slice(1).map((point, index) => boundsOf([b[index], point]));
+  let best = none;
+  const consider = (distance: number, on: Vec2, off: Vec2) => {
+    if (distance < best.distance) best = { distance, on, off };
+  };
+  for (let i = 0; i + 1 < a.length; i++)
+    for (let j = 0; j + 1 < b.length; j++) {
+      if (apart(boxesA[i], boxesB[j]) >= best.distance) continue;
+      const hit = crossingOf(a[i], a[i + 1], b[j], b[j + 1]);
+      if (hit) return { distance: 0, on: hit.at, off: hit.at };
+      for (const point of [a[i], a[i + 1]]) {
+        const near = nearestOn(point, b[j], b[j + 1]);
+        consider(distance(point, near), point, near);
+      }
+      for (const point of [b[j], b[j + 1]]) {
+        const near = nearestOn(point, a[i], a[i + 1]);
+        consider(distance(point, near), near, point);
+      }
+    }
+  return best;
+}
+
+/**
+ * A point inside an outline and off it: a unit in from the middle of the
+ * first of its pieces that has one there.
+ */
+export function pointInside(contour: Contour): Vec2 | null {
+  for (const segment of contourSegments(contour)) {
+    const middle =
+      segment.kind === "line"
+        ? lerp(segment.from, segment.to, 0.5)
+        : cubicAt(segment.from, segment.c1, segment.c2, segment.to, 0.5);
+    const ahead =
+      segment.kind === "line"
+        ? sub(segment.to, segment.from)
+        : cubicDerivativeAt(segment.from, segment.c1, segment.c2, segment.to, 0.5);
+    const size = Math.hypot(ahead.x, ahead.y);
+    if (!(size > 1e-9)) continue;
+    for (const side of [1, -1]) {
+      const at = { x: middle.x - (ahead.y / size) * side, y: middle.y + (ahead.x / size) * side };
+      if (contourContainsPoint(contour, at)) return at;
+    }
+  }
+  return null;
+}
+
+/** An outline flattened, back to its first point if it closes. */
+function flattenedLoop(contour: Contour, steps: number): Vec2[] {
+  const points = flattenContour(contour, steps);
+  return contour.closed && points.length > 0 ? [...points, points[0]] : points;
+}
+
+/** The nearest place to a point on a straight piece. */
+function nearestOn(point: Vec2, from: Vec2, to: Vec2): Vec2 {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = dx * dx + dy * dy;
+  const t =
+    length > 0
+      ? Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / length))
+      : 0;
+  return { x: from.x + t * dx, y: from.y + t * dy };
 }
 
 /** Even-odd containment test, used to tell counters from outer shapes. */

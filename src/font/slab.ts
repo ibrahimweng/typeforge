@@ -470,11 +470,20 @@ export function addSlabs(contours: Contour[], options: SlabOptions): Contour[] {
     const reach = (side: -1 | 1): number => {
       const heading = { x: along.x * side, y: along.y * side };
       let room = Infinity;
+      let asked = 0;
       for (const share of GAP_DEPTHS) {
         const start = at(side * (half + 0.5), thickness * share);
         if (insideInk(polylines, start)) continue;
+        asked++;
         room = Math.min(room, rayHitDistance(polylines, start, heading));
       }
+      /*
+       * Ink all the way up that side: the stroke is joined to something
+       * there, and a slab reaching out over it is a step in the join. The
+       * spur of Geist's G stands on the bottom of its bowl, and the foot laid
+       * across it jutted out of the bowl.
+       */
+      if (asked === 0) return 0;
       return Math.max(0, Math.min(projection, room * SHARE_OF_GAP - growth));
     };
 
@@ -576,14 +585,20 @@ export function weighSlabs(
   unitsPerEm: number,
   /** The letter as the weight left it, where it has been weighted. */
   weighted?: Contour[],
+  /**
+   * The share of the weight each slab grows by, where not all of it. Only
+   * its size: it stays flush with its stroke's end where the weight left it.
+   */
+  shares?: number[],
 ): Contour[] {
   const polylines = letter.map((contour) => flattenContour(contour, 12));
   const moved = weighted?.map((contour) => flattenContour(contour, 12));
   const hairline = unitsPerEm * 0.008;
-  const resize = (length: number): number =>
-    weight >= 0 ? length + 2 * weight : Math.max(length + 2 * weight, hairline, length / 3);
-  const bars = slabs.map((slab) => {
+  const bars = slabs.map((slab, which) => {
     if (slab.nodes.length !== 4) return null;
+    const grows = weight * (shares?.[which] ?? 1);
+    const resize = (length: number): number =>
+      grows >= 0 ? length + 2 * grows : Math.max(length + 2 * grows, hairline, length / 3);
     const q = slab.nodes.map((node) => node.point);
     const c = {
       x: (q[0].x + q[1].x + q[2].x + q[3].x) / 4,
@@ -593,15 +608,25 @@ export function weighSlabs(
       const next = q[(index + 1) % 4];
       const middle = { x: (point.x + next.x) / 2, y: (point.y + next.y) / 2 };
       const out = unit(c, middle);
-      return { middle, out, far: out.length };
+      return { middle, out, far: out.length, from: point, to: next };
     });
-    const probe = (index: number) => {
-      const { middle, out } = edges[index];
-      return insideInk(polylines, { x: middle.x + out.x, y: middle.y + out.y });
-    };
+    /*
+     * Along the whole edge, not only at its middle. A flag reaches out to one
+     * side of the stem it stands on, and its middle is beside the stem: read
+     * there, the flag on the i and j of Geist stood on nothing, grew the whole
+     * weight up past the stem's top, and closed the white under the dot.
+     */
+    const inked = (index: number) =>
+      [0.1, 0.3, 0.5, 0.7, 0.9].map((t) => {
+        const { from, to, out } = edges[index];
+        return insideInk(polylines, {
+          x: from.x + (to.x - from.x) * t + out.x,
+          y: from.y + (to.y - from.y) * t + out.y,
+        });
+      });
     let flush = -1;
     for (let index = 0; index < 4 && flush < 0; index++)
-      if (!probe(index) && probe((index + 2) % 4)) flush = index;
+      if (!inked(index).some(Boolean) && inked((index + 2) % 4).some(Boolean)) flush = index;
     const axis = edges[flush < 0 ? 0 : flush];
     const u = { x: axis.out.x, y: axis.out.y };
     const thickness = resize(axis.far * 2);
@@ -612,27 +637,58 @@ export function weighSlabs(
      * Else about the middle.
      */
     let outer = flush < 0 ? thickness / 2 : axis.far + weight;
+    /*
+     * Read from inside the stroke, as deep as the weight might have moved
+     * its end, or failing that less deep: a thin diagonal stroke, the foot of
+     * the circumflex over Work Sans' A, is left behind that deep, and the
+     * end was taken to have moved the whole weight when the A had held it to
+     * half of that. Its slab, weighed lighter, hung below it.
+     */
     if (flush >= 0 && moved) {
-      const depth = axis.far * 2 + 2 * Math.abs(weight);
-      const from = {
-        x: axis.middle.x - u.x * depth,
-        y: axis.middle.y - u.y * depth,
-      };
-      if (insideInk(moved, from)) {
+      for (const depth of [axis.far * 2 + 2 * Math.abs(weight), axis.far * 2, axis.far]) {
+        const from = {
+          x: axis.middle.x - u.x * depth,
+          y: axis.middle.y - u.y * depth,
+        };
+        if (!insideInk(moved, from)) continue;
         const out = rayHitDistance(moved, from, u) - depth;
         if (Number.isFinite(out) && Math.abs(out) <= Math.abs(weight) * 1.5 + 1)
           outer = axis.far + out;
+        break;
       }
     }
-    const side = resize(edges[flush < 0 ? 1 : (flush + 1) % 4].far * 2) / 2;
+    const along = edges[flush < 0 ? 1 : (flush + 1) % 4].far;
+    const side = resize(along * 2) / 2;
+    const v = { x: -u.y, y: u.x };
+    /*
+     * And an end that finishes flush with the letter's own edge -- the lower
+     * end of a beak, level with the underside of the arm it hangs from --
+     * finishes where the weight left that edge. The underside of the hook of
+     * the sample font's f grew less than the weight, for the white under it,
+     * and the beak grown the whole weight hung below it, nearly closing on
+     * the crossbar.
+     */
+    const end = (sign: -1 | 1): number => {
+      if (!moved) return side;
+      const at = { x: c.x + v.x * sign * along, y: c.y + v.y * sign * along };
+      const step = (by: number) => ({ x: at.x + v.x * sign * by, y: at.y + v.y * sign * by });
+      if (insideInk(polylines, step(1)) || !insideInk(polylines, step(-1))) return side;
+      const depth = Math.min(along, Math.abs(weight) * 2 + 2);
+      const from = step(-depth);
+      if (!insideInk(moved, from)) return side;
+      const out = rayHitDistance(moved, from, { x: v.x * sign, y: v.y * sign }) - depth;
+      if (!Number.isFinite(out) || Math.abs(out) > Math.abs(weight) * 1.5 + 1) return side;
+      // Made lighter, no shorter than `resize` keeps any slab.
+      return weight >= 0 ? along + out : Math.max(along + out, hairline / 2, along / 3);
+    };
     return {
       c,
       u,
-      v: { x: -u.y, y: u.x },
+      v,
       outer,
       inner: outer - thickness,
-      low: -side,
-      high: side,
+      low: -end(-1),
+      high: end(1),
     };
   });
 

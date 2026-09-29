@@ -205,6 +205,74 @@ describe("middle space", () => {
     expect(upper.xMax - upper.xMin).toBeGreaterThan(320);
   });
 
+  /*
+   * Regression: between two counters one above the other, each eased its
+   * map to nothing halfway to the other, so the ink in the gap stayed where
+   * it was while the ink above and below it moved: the wall there dented,
+   * and the serif on the arm of Lora's &, which stands in that gap, sheared.
+   */
+  it("moves the wall between two stacked counters with the rest of it", () => {
+    const outside = polygon([
+      { x: 0, y: 0 },
+      { x: 600, y: 0 },
+      { x: 600, y: 500 },
+      { x: 600, y: 1000 },
+      { x: 0, y: 1000 },
+    ]);
+    const letter = [outside, rect(100, 100, 400, 300), rect(100, 600, 300, 300)];
+    const [moved] = resolve(letter, 1.4);
+    const right = moved.nodes.filter((node) => node.point.x > 300).map((node) => node.point);
+    const ends = right.filter((point) => point.y !== 500).map((point) => point.x);
+    const middle = right.find((point) => point.y === 500)!.x;
+    expect(Math.min(...ends)).toBeGreaterThan(600);
+    expect(middle).toBeGreaterThanOrEqual(Math.min(...ends) - 0.5);
+    expect(middle).toBeLessThanOrEqual(Math.max(...ends) + 0.5);
+  });
+
+  /*
+   * Regression: the handover between two stacked counters changes with
+   * height, and a block standing in the gap between them -- the serif on the
+   * arm of Lora's & -- had its two sides moved by different amounts at their
+   * top and bottom, and leaned by nineteen units at 1.4.
+   */
+  it("keeps an upright edge upright where two stacked counters hand over", () => {
+    const outside = polygon([
+      { x: 0, y: 0 },
+      { x: 600, y: 0 },
+      { x: 600, y: 1000 },
+      { x: 0, y: 1000 },
+    ]);
+    const counters = [rect(100, 100, 400, 300), rect(100, 600, 300, 300)];
+    // As a plain rectangle, with a point halfway up its right side, and
+    // starting halfway up its left side: a run of one piece, of two, and of
+    // two across the join of the outline.
+    const blocks = [
+      rect(650, 440, 100, 120),
+      polygon([
+        { x: 650, y: 440 },
+        { x: 750, y: 440 },
+        { x: 750, y: 500 },
+        { x: 750, y: 560 },
+        { x: 650, y: 560 },
+      ]),
+      polygon([
+        { x: 650, y: 500 },
+        { x: 650, y: 440 },
+        { x: 750, y: 440 },
+        { x: 750, y: 560 },
+        { x: 650, y: 560 },
+      ]),
+    ];
+    for (const block of blocks) {
+      const moved = resolve([outside, ...counters, block], 1.4)[3];
+      const xs = moved.nodes.map((node) => node.point.x);
+      const left = xs.filter((x) => x < Math.min(...xs) + 50);
+      const right = xs.filter((x) => x > Math.max(...xs) - 50);
+      expect(Math.max(...left) - Math.min(...left)).toBeLessThan(0.5);
+      expect(Math.max(...right) - Math.min(...right)).toBeLessThan(0.5);
+    }
+  });
+
   it("moves the outside of the letter across with the counter, never up or down", () => {
     const resolved = resolve(ring(1000, 100), 1.4);
     const box = contoursBounds([resolved[0]]);

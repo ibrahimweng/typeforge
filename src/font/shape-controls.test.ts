@@ -16,6 +16,13 @@ import { blankGlyph } from "./library";
 import { contoursIntersect } from "./outline";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
 import {
+  drawn,
+  GEIST_TCARON,
+  gapBetween,
+  LORA_BOLD_HBAR,
+  loopsAnywhere,
+} from "../../test/outlines";
+import {
   DEFAULT_PARAMS,
   emptyTypeface,
   type Contour,
@@ -267,5 +274,72 @@ describe("a rounded elbow", () => {
     const thickness = Math.max(...distances) - Math.min(...distances);
     expect(thickness).toBeGreaterThan(30);
     expect(thickness).toBeLessThan(50);
+  });
+});
+
+describe("crossbar", () => {
+  /*
+   * Regression: lowering the bar of Geist's 4 runs its diagonal on down to
+   * meet it, and the corner came out sixty units into the side bearing,
+   * where the next letter is.
+   */
+  it("spaces a letter by the ink a moved bar puts beside it", () => {
+    const four = [
+      polygon([
+        [477, 0],
+        [391, 0],
+        [391, 154],
+        [30, 154],
+        [30, 232],
+        [385, 710],
+        [477, 710],
+        [477, 238],
+        [565, 238],
+        [565, 154],
+        [477, 154],
+      ]),
+      polygon([
+        [391, 578],
+        [134, 238],
+        [391, 238],
+      ]),
+    ];
+    const { typeface, glyph } = font(four);
+    glyph.advanceWidth = 615;
+    const lowered = contoursBounds(at(typeface, glyph, { crossbar: -80 }));
+    const advance = resolveAdvanceWidth(glyph, typeface);
+    expect(lowered.xMin).toBeCloseTo(30, 0);
+    expect(advance - lowered.xMax).toBeCloseTo(50, 0);
+  });
+
+  /*
+   * Regression: the bar and shoulder moves were judged by a crossing check
+   * that samples a curve in six chords, and lowering the arch of Lora
+   * Bold's h-bar, drawn in overlapping pieces, ran the join of the arch
+   * through the stem without it seeing.
+   */
+  it("lowers the arch of an h-bar drawn in pieces without running it through the stem", () => {
+    const { typeface, glyph } = font(drawn(LORA_BOLD_HBAR));
+    glyph.unicodes = [0x127];
+    glyph.advanceWidth = 621;
+    for (const contour of at(typeface, glyph, { shoulder: -80 }))
+      expect(loopsAnywhere(contour)).toBe(false);
+  });
+
+  /*
+   * Regression: a raised bar stopped only where it would cross something, so
+   * the bar of Geist's t-caron went up until it touched the caron beside the
+   * top of the stem, twenty-two units above it as drawn.
+   */
+  it("stops a raised bar short of a separate piece of ink above it", () => {
+    const { typeface, glyph } = font(drawn(GEIST_TCARON));
+    glyph.advanceWidth = 399;
+    const [caron, t] = at(typeface, glyph, { crossbar: 80 });
+    expect(gapBetween(caron, t)).toBeGreaterThan(10);
+    // And the bar still went up as far as that leaves it.
+    const bar = Math.max(
+      ...t.nodes.filter((node) => node.point.x > 300).map((node) => node.point.y),
+    );
+    expect(bar).toBeGreaterThan(535);
   });
 });

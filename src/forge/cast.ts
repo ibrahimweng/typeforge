@@ -26,6 +26,7 @@ import {
   contourContainsPoint,
   contoursBounds,
   cubicAt,
+  FINE_STEPS,
   flattenContour,
   type Bounds,
   rayHitDistance,
@@ -343,7 +344,7 @@ function extruded(shape: Contour[], extrude: Cast["extrude"], stem: number): Con
  */
 function sweptAlong(shape: Contour[], dx: number, dy: number): Contour[] {
   if (Math.hypot(dx, dy) < 1e-9) return shape;
-  return swept(shape, (contour) => convolved(contour, dx, dy));
+  return sweptClean(shape, (contour) => convolved(contour, dx, dy));
 }
 
 /**
@@ -455,12 +456,81 @@ function swept(
  */
 function groundOf(loop: Contour, solid: Contour): Contour[] {
   const least = contourArea(solid) * 0.999;
+  /*
+   * And that does not cross itself. The same lost crossing can leave a loop
+   * tied in the answer instead of taking area out of it, of the right size
+   * so nothing above noticed: the rim round Lora's a came back with a tiny
+   * figure-eight in its bowl. The next grid resolves it; failing all of
+   * them, the first answer of the right size stands.
+   */
+  let sized: Contour[] | null = null;
   for (const grid of [0, 1000, 100, 10]) {
     const ground = filled([grid === 0 ? loop : onGrid(loop, grid)]);
     const area = ground.reduce((total, one) => total + contourArea(one), 0);
-    if (area >= least) return ground;
+    if (area < least) continue;
+    if (!ground.some(looped)) return ground;
+    sized ??= ground;
   }
-  return [solid];
+  return sized ?? [solid];
+}
+
+const looped = (contour: Contour): boolean => crossesItself(contour, FINE_STEPS);
+
+/**
+ * The swept ground, checked once more for a loop tied in it.
+ *
+ * Each solid's ground is checked as it is made, in `groundOf`; the unions
+ * and cuts after it -- counters taken out, islands laid back on -- can lose
+ * a crossing too. So the finished ground is asked once, and where it crosses
+ * itself the whole sweep is made again from the shape set to a thousandth of
+ * a unit, then a hundredth, then a tenth, each coarser than the last and all
+ * far below anything a font file records. The grids `groundOf` tries are of
+ * each solid's loop; these are for the cuts and unions after it, and a loop
+ * is rare enough that trying them costs nothing in the usual case. Failing
+ * all of them the first answer stands.
+ */
+function sweptClean(
+  shape: Contour[],
+  /*
+   * Handed the outline to sweep and the one it was drawn as, which is the
+   * same outline except on a retry, where it has been set to a grid: what is
+   * known about an outline (the rim's reach into each counter) is known by
+   * the outline as drawn.
+   */
+  convolve: (contour: Contour, drawn: Contour) => Contour,
+  // As `swept` takes it: how far a grown figure reaches from a counter's edge.
+  reachOf?: (drawn: Contour) => number,
+): Contour[] {
+  const first = swept(shape, (contour) => convolve(contour, contour), reachOf);
+  if (!first.some(looped)) return first;
+  /*
+   * And covering the shape, as the ground a shape covers must: a retry whose
+   * unions lost a piece comes back without its loop and without the ink
+   * round it, the dot of an i and its rim. Its size says too little. The
+   * first answer's is the one known to be wrong -- a counter's paper left
+   * in it as a loop rather than taken out makes it larger than the right
+   * answer -- and a rim adds so much to a shape that one without a dot is
+   * still larger than the shape. Asked of the shape set to the same grid, so
+   * that the edges the two share line up.
+   */
+  for (const grid of [1000, 100, 10]) {
+    const snapped = shape.map((contour) => onGrid(contour, grid));
+    const drawnAs = new Map(snapped.map((one, at) => [one, shape[at]]));
+    const drawn = (contour: Contour): Contour => drawnAs.get(contour) ?? contour;
+    const again = swept(
+      snapped,
+      (contour) => convolve(contour, drawn(contour)),
+      reachOf && ((contour) => reachOf(drawn(contour))),
+    );
+    if (again.some(looped)) continue;
+    const bare = subtract(snapped, again, "winding");
+    const size = snapped.reduce((total, one) => total + contourArea(one), 0);
+    // Signed, so that a sliver of ring left round a counter counts as the
+    // ring, not as the ring and its hole both.
+    if (Math.abs(bare.reduce((total, one) => total + contourArea(one), 0)) <= size * 1e-3)
+      return again;
+  }
+  return first;
 }
 
 /**
@@ -869,10 +939,10 @@ export function outlined(shape: Contour[], width: number): Contour[] {
     for (const island of islands)
       reaches.set(island, Math.min(reaches.get(island) ?? width, reach));
   }
-  return swept(
+  return sweptClean(
     shape,
-    (contour) => {
-      const reach = reaches.get(contour) ?? width;
+    (contour, drawn) => {
+      const reach = reaches.get(drawn) ?? width;
       return reach >= width
         ? convolvedRound(contour, corners)
         : convolvedRound(contour, figure(reach));
