@@ -747,9 +747,10 @@ export const SANS: Style = {
       V: [0.11, 0.11],
       W: [0.33, 0.33],
       X: [0.04, 0.04],
-      // Geist's Y reaches 6 past both its sides; held just inside them, as far
-      // as the health check's "touching the letter before it" allows.
-      Y: [-0.04, -0.04],
+      // Geist's Y reaches 6 past both its sides: held just inside its left, as
+      // far as the health check's "touching the letter before it" allows,
+      // and past its right as Geist's is (it stood 15 units in).
+      Y: [-0.04, -0.23],
       // Its bars reach further than the Y's arms: set as the Y was.
       yen: [0.11, 0.11],
       Z: [0.19, 0.19],
@@ -789,7 +790,7 @@ export const SANS: Style = {
       bracketright: [0.19, 1.15],
       braceleft: [0.56, 0.19],
       braceright: [0.19, 0.56],
-      backslash: [0.45, 0.45, "closes"],
+      backslash: [0.5, 0.5, "closes"],
       plus: [0.5, 0.5],
       less: [0.5, 0.62],
       greater: [0.62, 0.5],

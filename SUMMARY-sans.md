@@ -151,7 +151,9 @@ does (it stood 16 units loose at every weight), and the K's arm side is 0.04
 (12 loose). All are within 6 of Geist at the Regular and the Black. The S, g and y,
 fitted, closed too far at the Black (the S to 40 against Geist's 50, the g's
 bowl side to 17 against 32), and the question and ampersand, listed, closed
-too slowly; they are now listed as Geist's are, within 5.
+too slowly; they are now listed as Geist's are, within 5. The Y reaches past its right
+side as Geist's does (it stood 15 units in); its left is held 5 units inside,
+as the health check's "touching the letter before it" requires.
 
 **Hyphen, quotes, asterisk and @ at the heavy weights.** Geist's hyphen
 deepens to 0.78 of the stem at the Black (152); on the stem's pen ours stopped
