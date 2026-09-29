@@ -621,6 +621,14 @@ Thin, Regular, SemiBold, UltraBlack and Black. The test that the bar's end
 drops straight into the right side now allows Geist's own 8 units at the
 Regular and 14 at the UltraBlack.
 
+**The five's bowl.** The five's bowl is now rounder than the face's other
+bowls, and a little fuller at the Black, as Geist's is. Its misfit falls from
+0.166/0.053/0.047/0.039/0.039 to 0.155/0.041/0.042/0.038/0.038 at the Thin,
+Regular, SemiBold, UltraBlack and Black. It keeps its 26 nodes. Geist's heavy
+bowl is also fuller at the upper right and leaner at the upper left. Drawing
+that quarter separately would follow it, but at twice the nodes, so I left
+it.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

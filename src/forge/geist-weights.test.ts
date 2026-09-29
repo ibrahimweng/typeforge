@@ -1805,3 +1805,17 @@ describe("the e's shoulders", () => {
     }
   });
 });
+
+describe("the five's bowl", () => {
+  it("is as round as Geist's", () => {
+    // 100 up Geist Regular's five's bowl comes in from the right to 419 and
+    // Thin's to 477; as the face's superellipse it came to 429 and 475.
+    for (const [weight, inside, ink] of [
+      [87, 419, 1],
+      [30, 477, 1],
+    ]) {
+      const row = filled(draw("five", weight).contours, 100);
+      expect(Math.abs(row[ink][0] - inside), `5 at ${weight}`).toBeLessThan(6);
+    }
+  });
+});

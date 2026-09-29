@@ -2181,13 +2181,17 @@ function fiveBowl(
       ),
     ];
   const { g, bowls } = sidedPair(f, centre, halfH, figureCrown(f));
+  /*
+   * Rounder than the face's bowls, a little fuller again at the Black, as
+   * Geist's is: as the face's superellipse the bowl missed Geist's ink by a
+   * fifth more at the Thin and the Regular. (Geist's heavy bowl is fuller
+   * still at its upper right and leaner at its upper left, which a quarter
+   * drawn apart would follow at twice the nodes.)
+   */
+  const round = Math.min(0.15, Math.max(0.1, atWeights(f, 0.1, 0.1, 0.1, 0.1, 0.15)));
   return bowls.map(([middle, half]) => {
-    const one = ink(
-      g,
-      bend(g, middle, half, leaves, angleAt(g, middle, halfW, half, cut, true) - 360, halfW),
-      BUTT,
-      f.end,
-    );
+    const to = angleAt(g, middle, halfW, half, cut, true) - 360;
+    const one = ink(g, bend({ ...g, curve: round }, middle, half, leaves, to, halfW), BUTT, f.end);
     return inherit(one, { ...one, pen: g.style.pen });
   });
 }
