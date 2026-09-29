@@ -21,7 +21,7 @@ import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { importFont } from "@/font/parse";
-import { drawn as outlineOf, LORA_A } from "../../test/outlines";
+import { drawn as outlineOf, LORA_A, loopsAnywhere } from "../../test/outlines";
 import { cutScaleOf } from "@/font/transform";
 
 import { readyToShape } from "./layers";
@@ -32,7 +32,6 @@ import {
   contoursBounds,
   flattenContour,
   reverseContour,
-  crossesItself,
 } from "@/font/geometry";
 import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter, letterNames } from "./build";
@@ -816,6 +815,6 @@ describe("a rim that ties no loops", () => {
     const rimmed = shapedInk(a, [], scale, undefined, rim, "nesting").contours;
     // A rim, and all of it.
     expect(ink(rimmed)).toBeGreaterThan(ink(a) * 1.05);
-    for (const contour of rimmed) expect(crossesItself(contour, 32)).toBe(false);
+    for (const contour of rimmed) expect(loopsAnywhere(contour)).toBe(false);
   });
 });

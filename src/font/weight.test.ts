@@ -19,16 +19,19 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { exportFont } from "./export";
-import {
-  contoursBounds,
-  contourSegments,
-  crossesItself,
-  cubicAt,
-  flattenContour,
-} from "./geometry";
+import { contoursBounds, contourSegments, cubicAt, flattenContour } from "./geometry";
 import { importFont } from "./parse";
 import { contoursIntersect } from "./outline";
-import { drawn, GEIST_N, GEIST_R, LORA_N, LORA_U } from "../../test/outlines";
+import {
+  drawn,
+  GEIST_N,
+  GEIST_R,
+  LORA_D_LOWER,
+  LORA_N,
+  LORA_N_LOWER,
+  LORA_U,
+  loopsAnywhere,
+} from "../../test/outlines";
 import { resolveAdvanceWidth, resolveGlyphContours } from "./transform";
 import { blankGlyph } from "./library";
 import {
@@ -784,7 +787,47 @@ describe("widened and lightened together", () => {
       [-30, 1.4],
     ]) {
       const [wide] = at(typeface, r, { weight, width });
-      expect(crossesItself(wide, 32), `${weight} ${width}`).toBe(false);
+      expect(loopsAnywhere(wide), `${weight} ${width}`).toBe(false);
     }
+  });
+});
+
+describe("heavy and widened", () => {
+  /*
+   * Regression: moved onto a crossing check that compared no curve with
+   * itself or with the curves beside it, the weight engine let through the
+   * loops a fold ties inside one curve, and Lora's d and n, heavy and
+   * widened, came back crossing themselves. Asked with a check of the
+   * tests' own, which shares no code with it.
+   */
+  it("keeps Lora's d and n from crossing themselves", () => {
+    const typeface = emptyTypeface();
+    typeface.metrics = { ...typeface.metrics, xHeight: 500, capHeight: 700 };
+    const d = {
+      ...blankGlyph("d", [0x64]),
+      advanceWidth: 600,
+      contours: drawn(LORA_D_LOWER),
+      params: {},
+    };
+    const n = {
+      ...blankGlyph("n", [0x6e]),
+      advanceWidth: 607,
+      contours: drawn(LORA_N_LOWER),
+      params: {},
+    };
+    typeface.glyphs = [d, n];
+    typeface.glyphIndex = new Map([
+      ["d", 0],
+      ["n", 1],
+    ]);
+    for (const [weight, width] of [
+      [60, 1.5],
+      [50, 1.4],
+    ])
+      for (const glyph of [d, n]) {
+        const out = at(typeface, glyph, { weight, width });
+        for (const contour of out)
+          expect(loopsAnywhere(contour), `${glyph.name} ${weight} ${width}`).toBe(false);
+      }
   });
 });

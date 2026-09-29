@@ -173,16 +173,67 @@ describe("crossesItself on long and open outlines", () => {
   });
 
   it("does not close an open outline to find a crossing", () => {
-    const zigzag: Contour = {
-      closed: false,
+    // Closed, the chord from the last point back to the first would cross
+    // the middle piece; open, there is no such chord.
+    const zigzag = (closed: boolean): Contour => ({
+      closed,
       nodes: [
         { x: 0, y: 0 },
         { x: 100, y: 0 },
-        { x: 0, y: 50 },
-        { x: 100, y: 100 },
         { x: 0, y: 100 },
+        { x: 100, y: 100 },
       ].map((point) => ({ point, handleIn: null, handleOut: null, type: "corner" as const })),
+    });
+    expect(crossesItself(zigzag(true))).toBe(true);
+    expect(crossesItself(zigzag(false))).toBe(false);
+  });
+
+  const curve = (from: Vec2, c1: Vec2, c2: Vec2, to: Vec2, rest: Vec2[]): Contour => ({
+    closed: true,
+    nodes: [
+      { point: from, handleIn: null, handleOut: c1, type: "corner" as const },
+      { point: to, handleIn: c2, handleOut: null, type: "corner" as const },
+      ...rest.map((point) => ({ point, handleIn: null, handleOut: null, type: "corner" as const })),
+    ],
+  });
+
+  // Found in review: the offset of a curve tighter than the weight ties a
+  // loop inside the one curve, and a fold at a corner crosses the curve
+  // beside it away from where they meet. Neither touches a third piece.
+  it("finds a loop inside one curve", () => {
+    const looped = curve(
+      { x: 0, y: 0 },
+      { x: 300, y: 300 },
+      { x: -200, y: 300 },
+      { x: 100, y: 0 },
+      [
+        { x: 100, y: -100 },
+        { x: 0, y: -100 },
+      ],
+    );
+    expect(crossesItself(looped, 32)).toBe(true);
+  });
+
+  it("finds a curve crossing the piece beside it", () => {
+    const folded: Contour = {
+      closed: true,
+      nodes: [
+        { point: { x: 0, y: 0 }, handleIn: null, handleOut: null, type: "corner" as const },
+        {
+          point: { x: 100, y: 0 },
+          handleIn: null,
+          handleOut: { x: 20, y: 100 },
+          type: "corner" as const,
+        },
+        {
+          point: { x: 50, y: -100 },
+          handleIn: { x: 50, y: -50 },
+          handleOut: null,
+          type: "corner" as const,
+        },
+        { point: { x: 0, y: -100 }, handleIn: null, handleOut: null, type: "corner" as const },
+      ],
     };
-    expect(crossesItself(zigzag)).toBe(false);
+    expect(crossesItself(folded, 32)).toBe(true);
   });
 });

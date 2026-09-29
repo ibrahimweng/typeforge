@@ -336,7 +336,7 @@ export function crossesItself(contour: Contour, steps = 8): boolean {
       (point) => Math.hypot(point.x - segment.from.x, point.y - segment.from.y) > 1e-9,
     );
   });
-  if (segments.length < 4) return false;
+  if (segments.length === 0) return false;
 
   /* The control polygon bounds the curve, which is all a rejection needs. */
   const boxes = segments.map((segment) => {
@@ -352,7 +352,6 @@ export function crossesItself(contour: Contour, steps = 8): boolean {
     };
   });
 
-  const STEPS = steps;
   const flattened = new Map<number, Vec2[]>();
   const flatOf = (index: number): Vec2[] => {
     const had = flattened.get(index);
@@ -361,31 +360,55 @@ export function crossesItself(contour: Contour, steps = 8): boolean {
     const points: Vec2[] = [segment.from];
     if (segment.kind === "line") points.push(segment.to);
     else
-      for (let step = 1; step <= STEPS; step++)
-        points.push(cubicAt(segment.from, segment.c1, segment.c2, segment.to, step / STEPS));
+      for (let step = 1; step <= steps; step++)
+        points.push(cubicAt(segment.from, segment.c1, segment.c2, segment.to, step / steps));
     flattened.set(index, points);
     return points;
   };
 
   const count = segments.length;
+  /*
+   * A curve against itself: the offset of a curve tighter than the weight
+   * ties a loop inside the one piece, which nothing else touches.
+   */
+  for (let one = 0; one < count; one++) {
+    if (segments[one].kind === "line") continue;
+    const points = flatOf(one);
+    for (let i = 0; i + 1 < points.length; i++)
+      for (let j = i + 2; j + 1 < points.length; j++)
+        if (crossing(points[i], points[i + 1], points[j], points[j + 1])) return true;
+  }
   for (let one = 0; one < count; one++) {
     for (let other = one + 1; other < count; other++) {
-      // Neighbours share an end, and on a closed contour so do the two ends.
-      if (other === one + 1) continue;
-      if (contour.closed && one === 0 && other === count - 1) continue;
       const a = boxes[one];
       const b = boxes[other];
       if (a.xMax < b.xMin || b.xMax < a.xMin || a.yMax < b.yMin || b.yMax < a.yMin) continue;
-      if (meets(flatOf(one), flatOf(other))) return true;
+      /*
+       * Neighbours share an end, and on a closed contour so do the last and
+       * the first; only the two pieces that meet there are let off. The
+       * rest of them are compared like any others: two curves either side
+       * of a corner can cross away from it, as a fold at a corner does.
+       */
+      const after = other === one + 1;
+      const around = contour.closed && one === 0 && other === count - 1;
+      if (meets(flatOf(one), flatOf(other), after, around)) return true;
     }
   }
   return false;
 }
 
-/** Whether two polylines properly cross, ends touching not counted. */
-function meets(one: Vec2[], other: Vec2[]): boolean {
+/**
+ * Whether two polylines properly cross, ends touching not counted. `after`
+ * when the second begins where the first ends, `around` when the first begins
+ * where the second ends; the two pieces that meet there are not compared.
+ */
+function meets(one: Vec2[], other: Vec2[], after = false, around = false): boolean {
+  const last = one.length - 2;
+  const end = other.length - 2;
   for (let i = 0; i + 1 < one.length; i++) {
     for (let j = 0; j + 1 < other.length; j++) {
+      if (after && i === last && j === 0) continue;
+      if (around && i === 0 && j === end) continue;
       if (crossing(one[i], one[i + 1], other[j], other[j + 1])) return true;
     }
   }
