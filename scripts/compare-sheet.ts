@@ -11,6 +11,7 @@
  */
 import { readFileSync, writeFileSync } from "node:fs";
 import { contoursToSvgPath } from "@/font/geometry";
+import { glyphNameFor } from "@/assemble/slots";
 import { importFont } from "@/font/parse";
 import { resolveGlyphContours, resolveAdvanceWidth } from "@/font/transform";
 import { proof, startFrom, type Forge } from "@/forge/document";
@@ -39,26 +40,6 @@ if (process.env.STYLE) {
       : b;
   forge = { ...forge, style: merge(forge.style, patch) };
 }
-// The forge keys figures and marks by glyph name, as fonts do.
-const GLYPH: Record<string, string> = {
-  "0": "zero",
-  "1": "one",
-  "2": "two",
-  "3": "three",
-  "4": "four",
-  "5": "five",
-  "6": "six",
-  "7": "seven",
-  "8": "eight",
-  "9": "nine",
-  "&": "ampersand",
-  "?": "question",
-  "!": "exclam",
-  ".": "period",
-  ",": "comma",
-  ":": "colon",
-  ";": "semicolon",
-};
 let maxX = 0;
 const emL = typeface.unitsPerEm;
 const emF = base.metrics.unitsPerEm;
@@ -79,7 +60,8 @@ function row(s: string, y: number, which: "lora" | "forge"): string {
       );
       x += resolveAdvanceWidth(g, typeface) * k;
     } else {
-      const r = proof(GLYPH[ch] ?? ch, forge);
+      // The forge keys figures and marks by glyph name, as fonts do.
+      const r = proof(glyphNameFor(ch), forge);
       if (!r) {
         x += 300;
         continue;
