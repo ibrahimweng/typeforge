@@ -371,6 +371,18 @@ export function seamHeading(
   unit?: number,
 ): Vec2 {
   let degrees = high ? 0 : Math.max(-60, Math.min(70, script.tilt));
+  /*
+   * A join across the waist runs level -- until the pen is heavy against the
+   * letter. Then a level join is a thin rule laid between two black shapes,
+   * and after an `o`, a `v`, a `w` or a `b` at the heaviest weight the word
+   * read as ruled rather than written. So past a pen of a third of the
+   * x-height it climbs a little, up to twelve degrees at twice that: nothing
+   * moves at any face's own weight.
+   */
+  if (high && x !== undefined && half !== undefined && x > 0) {
+    const heavy = Math.max(0, Math.min(1, ((half * 2) / x - 1 / 3) / (1 / 3)));
+    degrees = 12 * heavy;
+  }
   if (!high && degrees > 0 && x !== undefined && half !== undefined && half > 0) {
     const low = seamsOf(script, x, half, unit).low;
     const most = (2 * Math.atan2(low - half, runOf(script, half, unit)) * 180) / Math.PI;
@@ -2168,8 +2180,9 @@ export function planJoin(
    */
   const climbing = seamHeading(script, false, room.x, room.half, room.unit);
   // A join across the waist runs level; see `seamHeading`.
-  const entryWay = entryAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
-  const exitWay = exitAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
+  const across = seamHeading(script, true, room.x, room.half, room.unit);
+  const entryWay = entryAt > seams.low + 1e-9 ? across : climbing;
+  const exitWay = exitAt > seams.low + 1e-9 ? across : climbing;
   /*
    * The lead-in arrives along the letter's own stroke, pointing away from the
    * seam -- up the first stem of an `n`, so the two meet at the apex the way an

@@ -368,7 +368,13 @@ export function writtenLead(name: string, style: Style): Lead {
     high: false,
   };
   if (!high) return low;
-  return { y: seams.high - lift, way: seamHeading(script, true), weld, high, low };
+  return {
+    y: seams.high - lift,
+    way: seamHeading(script, true, f.x, f.half, unit),
+    weld,
+    high,
+    low,
+  };
 }
 
 /** Where a written lead-in crosses its seam and how; see `writtenLead`. */

@@ -488,8 +488,8 @@ describe("the s at a heavy weight", () => {
    * x-height over the line and hung under it: a black `§` in the word. It is
    * the Black s now, as on every other face, which lays its spine flatter
    * instead and keeps to the lines the `o` beside it keeps to -- within a
-   * tenth of an x-height at 260, where even a flat spine has no room left and
-   * it grows a little, as the Black s does on every face.
+   * twentieth of an x-height at 260, where even a flat spine has no room left
+   * and it grows a little, as the Black s does on every face.
    */
   it("keeps to the lines the o keeps to", () => {
     const out: string[] = [];
@@ -507,7 +507,7 @@ describe("the s at a heavy weight", () => {
         };
         const s = past("s");
         const o = past("o");
-        if (s > o + x * 0.12) out.push(`${name} @${weight}: s ${s.toFixed(0)}, o ${o.toFixed(0)}`);
+        if (s > o + x * 0.05) out.push(`${name} @${weight}: s ${s.toFixed(0)}, o ${o.toFixed(0)}`);
       }
     }
     expect(out).toEqual([]);
@@ -522,5 +522,25 @@ describe("a capital handing on", () => {
    */
   it("lifts after a T and a Y", () => {
     expect(["T", "Y", "I"].filter((letter) => joinEnds(letter).exit)).toEqual([]);
+  });
+});
+
+describe("the high hand-over at a heavy weight", () => {
+  /*
+   * Level at every face's own weight, and climbing a little once the pen is
+   * heavy against the letter. Held level at 260, it was a thin rule laid
+   * between two black shapes after every `o`, `v`, `w` and `b`.
+   */
+  it("climbs at 260 and runs level at the face's own weight", () => {
+    for (const name of JOINED) {
+      const own = base(name);
+      const x = own.metrics.xHeight;
+      const script = own.parts.script;
+      const unit = scriptUnit(own);
+      const atOwn = seamHeading(script, true, x, own.pen.weight / 2, unit);
+      const heavy = seamHeading(script, true, x, 130, unit);
+      expect([name, Math.abs(atOwn.y) < 1e-9]).toEqual([name, true]);
+      expect([name, heavy.y > 0.15]).toEqual([name, true]);
+    }
   });
 });

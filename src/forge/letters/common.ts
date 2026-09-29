@@ -2524,7 +2524,15 @@ function blackS(frame: Frame, height: number, left: number): SShape {
    */
   let grow = 0;
   let shape = laid(0);
-  while (shape.fall < 14 && grow < height) {
+  /*
+   * A joined hand lets its spine lie flatter first. Its x-height is small
+   * against the pen, and grown at fourteen degrees its s stood a tenth of an
+   * x-height over the line every other letter stops at. Its spine is a
+   * connecting stroke as much as a stem, and lies at six degrees and still
+   * reads; any flatter and the s became a zigzag.
+   */
+  const flattest = frame.style.parts.script.on ? 6 : 14;
+  while (shape.fall < flattest && grow < height) {
     grow += 4;
     shape = laid(grow);
   }
@@ -2533,7 +2541,11 @@ function blackS(frame: Frame, height: number, left: number): SShape {
   const inset = width * 0.04;
   const fromAngle = 60;
   const room = rightSide - inset - upper.x;
-  const end = Math.max((room * 0.88) / Math.cos(deg(fromAngle)), frame.least);
+  // A joined hand's terminals carried less far, as its spine lies flatter:
+  // at the full reach the Roundhand's top terminal came down onto the spine
+  // and closed its counter at the Bold.
+  const reach = frame.style.parts.script.on ? 0.6 : 0.88;
+  const end = Math.max((room * reach) / Math.cos(deg(fromAngle)), frame.least);
   const headX = Math.max(upper.x + 1, rightSide - inset - end * Math.cos(deg(fromAngle)));
   const footX = Math.min(lower.x - 1, left + inset + end * Math.cos(deg(fromAngle)));
   return { top, bottom, upper, lower, radius, leave, end, fromAngle, headX, footX };
