@@ -199,10 +199,10 @@ function eyed(
   const f = frame(style);
   // A text serif's: on a sans drawing this e, past a Black was left as it was.
   const heavy = textSerif(f) ? heaviness(f) : Math.min(1, heaviness(f));
-  const more =
-    heavy <= 1
-      ? E_TAIL * Math.min(1, Math.max(0, 1 - (heavy - 0.44) / 0.56))
-      : -E_SHORT * Math.min(1, (heavy - 1) / 0.5);
+  // Lora's reach is a text serif's: another face choosing this e keeps the
+  // construction's tail to a Black.
+  const reaches = textSerif(f) ? E_TAIL * Math.min(1, Math.max(0, 1 - (heavy - 0.44) / 0.56)) : 0;
+  const more = heavy <= 1 ? reaches : -E_SHORT * Math.min(1, (heavy - 1) / 0.5);
   /*
    * On the last piece that turns: a bend ends on pieces of no length, kept so
    * every weight has the same points, and those are moved to the new end.
@@ -221,14 +221,12 @@ function eyed(
     const by = Math.max((more * Math.PI) / 180, -span * 0.8);
     // Carried on in the first of the pieces of no length, or cut back on the
     // piece itself: either way the same points at every weight.
-    let end = lastTurn.endAngle + way * by;
+    const end = lastTurn.endAngle + way * by;
     if (more > 0 && turns + 1 < segments.length) {
       segments[turns + 1] = { ...lastTurn, startAngle: lastTurn.endAngle, endAngle: end };
       turns++;
-    } else if (more < 0) {
-      segments[turns] = { ...lastTurn, endAngle: end };
     } else {
-      end = lastTurn.endAngle;
+      segments[turns] = { ...lastTurn, endAngle: end };
     }
     for (let k = turns + 1; k < segments.length; k++) {
       segments[k] = { ...lastTurn, startAngle: end, endAngle: end };
@@ -620,9 +618,22 @@ function swollen(style: Style, recipe: Recipe): Recipe {
    * across on a stem of 142, where its Regular's are 102 on 87.
    */
   const swell = 1 + (SWELL - 1) * Math.max(0, 1 - (blackness(style) / 0.47) * 0.8);
+  /*
+   * And never so far that the counter folds: a zero set narrow, its ring
+   * tall on a short radius, pinched its inside to a point at the top and the
+   * bottom at a Semibold. Eased back toward the pen's own there; the points
+   * are the same either way.
+   */
+  const swelled = (stroke: Stroke): Stroke => {
+    let drawn = hairlined(stroke, swell);
+    for (let k = 1; k <= 4 && contoursIntersect(sweep(drawn)); k++) {
+      drawn = hairlined(stroke, swell - ((swell - 1) * k) / 4);
+    }
+    return drawn;
+  };
   return {
     ...recipe,
-    strokes: recipe.strokes.map((stroke) => (isBowl(stroke) ? hairlined(stroke, swell) : stroke)),
+    strokes: recipe.strokes.map((stroke) => (isBowl(stroke) ? swelled(stroke) : stroke)),
   };
 }
 
@@ -780,12 +791,20 @@ export function humanistJ(style: Style): Recipe {
   const radius = Math.max(f.arch * 0.5, f.least, f.half * 1.5);
   const stem = f.edge + radius * 1.35;
   const turnAt = f.dip(f.desc) + radius;
+  /*
+   * Round as far as keeps the tail's end well under the line, where a drop
+   * hangs: with the turn widened for a heavy pen held at 30, the end rose
+   * over it, the drop was refused and the serif laid across the curve came
+   * out as two slivers.
+   */
+  const under = (f.desc * J_UNDER - turnAt) / radius;
+  const end = under < -0.5 ? -180 + (Math.asin(Math.min(1, -under)) * 180) / Math.PI : -150;
   return finish(f, [
     ink(
       f,
       chain(
         straight(at(stem, f.x), at(stem, turnAt)),
-        turn(at(stem - radius, turnAt), radius, 0, -150),
+        turn(at(stem - radius, turnAt), radius, 0, end),
       ),
       f.end,
       f.end,
@@ -793,6 +812,9 @@ export function humanistJ(style: Style): Recipe {
     tittle(f, stem),
   ]);
 }
+
+/** How far under the line the j's tail ends at least, against the descender. */
+const J_UNDER = 0.45;
 
 /**
  * The five with a heavy flag and a hairline stem, as a broad nib held level
@@ -1165,21 +1187,40 @@ export function hairlineWeight(pen: Stroke["pen"]): number {
 }
 
 export function splitVees(given: Stroke[]): Stroke[] {
-  return given.flatMap((stroke) => {
+  // The y's arms drawn as hairlines, for the full arm meeting one to be cut to.
+  const hairlines: Stroke[] = [];
+  const split = given.flatMap((stroke) => {
     const segments = stroke.spine.segments;
     const thinWeight = hairlineWeight(stroke.pen);
     if (thinWeight >= stroke.pen.weight) return [stroke];
     const thinPen = { ...stroke.pen, weight: thinWeight, contrast: 0, own: 0 };
     const rises = risesSteeply;
+    // Taken apart wherever an arm rises at all, so the points do not change
+    // with the weight; drawn light only where it rises as a hairline does.
+    const risesAtAll = (from: Vec2, to: Vec2) => (to.x - from.x) * (to.y - from.y) > 0;
     const [first, ...rest] = segments;
     // The y's arm and tail.
     if (
       first?.kind === "line" &&
       rest.length > 0 &&
       rest.every((one) => one.kind === "arc") &&
-      rises(first.from, first.to)
+      rises(first.from, first.to) &&
+      // A whole arm, not the few units a stroke is begun back inside another
+      // by: the two's S, begun so inside its bowl, was thinned as a y's arm.
+      Math.hypot(first.to.x - first.from.x, first.to.y - first.from.y) > stroke.pen.weight
     ) {
-      return [inherit(stroke, { ...stroke, pen: thinPen })];
+      // With as much contrast as keeps the tail's bottom, running level, as
+      // deep as the full pen's: on a pen with none it came down fourteen
+      // units under the descender at the heaviest, and on the full pen's
+      // own it stood twenty-six over it.
+      const level = stroke.pen.weight * (1 - stroke.pen.contrast);
+      const contrast = Math.min(stroke.pen.contrast, Math.max(0, 1 - level / thinWeight));
+      const hairline = inherit(stroke, {
+        ...stroke,
+        pen: { ...stroke.pen, weight: thinWeight, contrast, own: 0 },
+      });
+      hairlines.push(hairline);
+      return [hairline];
     }
     if (stroke.spine.closed || segments.length < 2) return [stroke];
     if (!segments.every((one) => one.kind === "line")) return [stroke];
@@ -1192,7 +1233,7 @@ export function splitVees(given: Stroke[]): Stroke[] {
     // Steep pieces only, and at least one of them rising: not an arm and a
     // bar, as the 4's diagonal and foot are.
     if (dirs.some((d) => Math.abs(d.y) < 0.37)) return [stroke];
-    if (!segments.some((_, i) => rises(points[i], points[i + 1]))) return [stroke];
+    if (!segments.some((_, i) => risesAtAll(points[i], points[i + 1]))) return [stroke];
     const pens = segments.map((_, i) => (rises(points[i], points[i + 1]) ? thinPen : stroke.pen));
     const leftOf = (d: Vec2) => at(-d.y, d.x);
     const cross = (u: Vec2, v: Vec2) => u.x * v.y - u.y * v.x;
@@ -1278,6 +1319,43 @@ export function splitVees(given: Stroke[]): Stroke[] {
       });
     });
   });
+  return hairlines.length === 0 ? split : split.map((stroke) => metHairline(stroke, hairlines));
+}
+
+/**
+ * A full straight arm ending on a hairline, its end cut along the hairline's
+ * spine: the y's falling arm, which ended square on the rising arm's spine
+ * and, that arm thinned, stood its corners out past it -- a spur under the
+ * crotch that grew with the weight. Along the spine, not the far edge: the
+ * two meet at so shallow an angle that a cut along the far edge ran on past
+ * where the hairline turns into the tail.
+ */
+function metHairline(stroke: Stroke, hairlines: Stroke[]): Stroke {
+  const [only, ...more] = stroke.spine.segments;
+  if (more.length > 0 || only?.kind !== "line" || hairlines.includes(stroke)) return stroke;
+  const cross = (u: Vec2, v: Vec2) => u.x * v.y - u.y * v.x;
+  const u = towards(only.from, only.to);
+  for (const hairline of hairlines) {
+    const [first] = hairline.spine.segments;
+    if (first?.kind !== "line") continue;
+    const v = towards(first.from, first.to);
+    const facing = cross(u, v);
+    if (Math.abs(facing) < 1e-6) continue;
+    // Its end on the hairline's spine, within the hairline's straight run.
+    const off = at(only.to.x - first.from.x, only.to.y - first.from.y);
+    const along = off.x * v.x + off.y * v.y;
+    const length = Math.hypot(first.to.x - first.from.x, first.to.y - first.from.y);
+    if (Math.abs(cross(v, off)) > 1 || along < 0 || along > length) continue;
+    const pen = penReach(stroke.pen);
+    const shift = reachAlong(at(-u.y, u.x), pen);
+    const slide = -cross(shift, v) / facing;
+    const angle = (Math.atan(slide / pen.across) * 180) / Math.PI;
+    return inherit(stroke, {
+      ...stroke,
+      end: { kind: "angled", angle },
+    });
+  }
+  return stroke;
 }
 
 /**
@@ -1411,9 +1489,12 @@ function bookSpine(
    * in an s that leaned like an italic. A didone keeps the old reach, whose
    * counters close before its spine leans.
    */
-  const narrowest = didone > 0 ? 10 : 20;
+  // Eased from the one to the other as the contrast rises, so the slider
+  // does not jump the s at 0.6.
+  const toDidone = Math.min(1, didone);
+  const narrowest = Math.round(20 - 10 * toDidone);
   // And a spine allowed to lie flatter, a Black's, where it has little to fall.
-  const flatter = didone > 0 ? 0 : 8;
+  const flatter = Math.round(8 * (1 - toDidone));
   for (let k = 0; k <= narrowest; k++) {
     const a = (width / 2) * (1 - 0.6 * (k / 20));
     const most = Math.min(a * 2, tall / 2);
@@ -1589,31 +1670,38 @@ export function humanistAt(style: Style): Recipe {
   const tail = (centre.x + R - stem) / 2;
   const turnY = Math.min(bowl.y - bowlH + tail, centre.y - 1);
   const top = bowl.y + bowlH + bowlSide * (1 - f.style.pen.contrast);
-  return finish(
-    f,
-    [
-      lighter(ink(f, ring(f, bowl, bowlW, bowlH)), bowlShare),
-      lighter(
-        ink(
-          f,
-          inPieces(
-            chain(
-              straight(at(stem, top), at(stem, turnY)),
-              turn(at(stem + tail, turnY), tail, 180, 360),
-              straight(at(centre.x + R, turnY), at(centre.x + R, centre.y)),
-              turn(centre, R, 0, 312),
-            ),
-            4,
+  const run = (end: number) =>
+    lighter(
+      ink(
+        f,
+        inPieces(
+          chain(
+            straight(at(stem, top), at(stem, turnY)),
+            turn(at(stem + tail, turnY), tail, 180, 360),
+            straight(at(centre.x + R, turnY), at(centre.x + R, centre.y)),
+            turn(centre, R, 0, end),
           ),
-          BUTT,
-          BUTT,
+          4,
         ),
-        share,
+        BUTT,
+        BUTT,
       ),
-    ],
-    true,
-  );
+      share,
+    );
+  /*
+   * Stopping sooner where the ring's end would reach back over the tail's
+   * turn: cut square across a pen held at -60 past a Black, it did, and the
+   * one outline crossed itself. The points are the same either way.
+   */
+  let drawn = run(AT_END);
+  for (let end = AT_END - 6; end >= AT_END - 36 && contoursIntersect(sweep(drawn)); end -= 6) {
+    drawn = run(end);
+  }
+  return finish(f, [lighter(ink(f, ring(f, bowl, bowlW, bowlH)), bowlShare), drawn], true);
 }
+
+/** Where the at sign's ring stops, in degrees round from its right. */
+const AT_END = 312;
 
 /** Lora's at sign's ink reaches this far from its middle, against the cap height. */
 const AT_RADIUS = 0.51;
@@ -1644,7 +1732,9 @@ function bookS(style: Style, capital: boolean): Recipe {
   // The capital has the cap height to turn in, and is not lightened.
   const heavy = capital ? 0 : Math.min(1, Math.max(0, heaviness(f) - 0.5));
   // A didone's s as it was: see `S_UPRIGHT`.
-  const upright = f.style.pen.contrast > 0.6 ? S_DIDONE_UPRIGHT : S_UPRIGHT;
+  const upright =
+    S_UPRIGHT +
+    (S_DIDONE_UPRIGHT - S_UPRIGHT) * Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
   return finish(
     f,
     [
@@ -2196,7 +2286,9 @@ export function humanistCapitalR(style: Style): Recipe {
   // Lora's toe stands past its bowl a quarter of the leg's height at the
   // Regular, and at the Bold (whose bowl here is the wider) a little past it.
   const reach = R_TOE + (R_TOE_BOLD - R_TOE) * Math.min(1, heaviness(f) / 0.44);
-  toe = at(Math.max(toe.x, bowlRight + reach * Math.abs(from.y - base)), toeY);
+  // And never none: on a narrow R the bowl ends short of the turn, and the
+  // leg stopped at the foot of its turn with no toe at all.
+  toe = at(Math.max(toe.x + r * 0.5, bowlRight + reach * Math.abs(from.y - base)), toeY);
   return {
     ...recipe,
     strokes: [

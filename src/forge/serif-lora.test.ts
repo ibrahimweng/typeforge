@@ -10,7 +10,8 @@ import { contoursBounds, flattenContour } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
-import { SERIF, type Style } from "./style";
+import { humanistE } from "./letters/humanist";
+import { BASES, SERIF, type Style } from "./style";
 
 const forge = startFrom(SERIF);
 const at = (weight: number): Style => ({ ...SERIF, pen: { ...SERIF.pen, weight } });
@@ -91,6 +92,22 @@ describe("the Serif's s", () => {
       expect(b.xMax - low[low.length - 1][1], `s at ${weight}`).toBeLessThan(wide * 0.05);
     }
   });
+
+  it("changes a little at a time as the contrast rises into a didone's", () => {
+    for (const weight of [200, 260]) {
+      const widths: number[] = [];
+      for (let k = 0; k <= 12; k++) {
+        const contrast = 0.56 + k * 0.02;
+        const style: Style = { ...SERIF, pen: { ...SERIF.pen, weight, contrast } };
+        const b = contoursBounds(draw("s", weight, style).contours);
+        widths.push(b.xMax - b.xMin);
+      }
+      // Just past 0.6 the s at the slider's heaviest jumped 131 units wider.
+      for (let k = 1; k < widths.length; k++) {
+        expect(Math.abs(widths[k] - widths[k - 1]), `s at ${weight}, step ${k}`).toBeLessThan(40);
+      }
+    }
+  });
 });
 
 describe("the Serif's t", () => {
@@ -135,6 +152,22 @@ describe("the Serif's two and seven", () => {
       const upper = at[0] - at[1];
       const middle = at[1] - at[2];
       expect(middle, `2 at ${weight}`).toBeGreaterThan(upper * 1.12);
+    }
+  });
+
+  it("hands the two's bowl on to its diagonal without a step", () => {
+    for (const weight of [87, 142, 200]) {
+      // Down the right edge from the bowl's side into the diagonal. Thinned
+      // as a y's rising arm, the diagonal stood in from the bowl's end.
+      let before = Number.NaN;
+      for (let y = CAP * 0.62; y >= CAP * 0.3; y -= 5) {
+        const runs = row("two", weight, y);
+        const right = runs[runs.length - 1][1];
+        if (!Number.isNaN(before)) {
+          expect(Math.abs(right - before), `2 at ${weight}, row ${y.toFixed(0)}`).toBeLessThan(8);
+        }
+        before = right;
+      }
     }
   });
 
@@ -208,6 +241,18 @@ describe("the Serif's e", () => {
       // its end was sliced off against it.
       expect(barFoot - tail, `e at ${weight}`).toBeGreaterThan(weight * 0.08);
     }
+  });
+
+  it("leaves Lora's longer tail to the Serif: another face choosing this e keeps its own", () => {
+    const sans = BASES.find((base) => base.name === "Sans")!;
+    const belt = humanistE({ ...sans, pen: { ...sans.pen, weight: 87 } }).strokes[1];
+    const turning = belt.spine.segments.filter(
+      (one) => one.kind === "arc" && Math.abs(one.endAngle - one.startAngle) > 1e-6,
+    );
+    const last = turning[turning.length - 1];
+    // Where the Sans's humanist e ended its tail before Lora's reach was
+    // added to it: it had been carried five degrees further round too.
+    expect(last.kind === "arc" && last.endAngle).toBeCloseTo(5.6173, 3);
   });
 
   it("cuts its bowl under the bar without folding, the pen tilted either way", () => {
@@ -289,6 +334,37 @@ describe("the Serif's bracket control", () => {
   });
 });
 
+describe("the bracket control on every serifed base", () => {
+  it("changes the serif at every step of the slider, and leaves each base's own drawing alone", () => {
+    for (const name of ["Serif", "Didone", "Slab", "Typewriter"]) {
+      const base = BASES.find((one) => one.name === name)!;
+      for (const weight of [87, 200]) {
+        const drawnAt = (bracket: number) =>
+          JSON.stringify(
+            drawLetter(
+              "n",
+              {
+                ...base,
+                pen: { ...base.pen, weight },
+                parts: { ...base.parts, slab: { ...base.parts.slab, bracket } },
+              },
+              base.forms?.n ?? "",
+            )?.contours,
+          );
+        // A square serif held its fillet to the wing, and every base held a
+        // short serif's between its depth and its thickness: the Didone's n
+        // was the same from 0.55 to 1, the Slab's from 0.55 to 0.7.
+        let before = drawnAt(0);
+        for (let k = 1; k <= 20; k++) {
+          const now = drawnAt(k / 20);
+          expect(now === before, `${name} at ${weight}, bracket ${k / 20}`).toBe(false);
+          before = now;
+        }
+      }
+    }
+  });
+});
+
 describe("the Serif's spacing", () => {
   it("closes up at the Bold as Lora Bold does", () => {
     // Lora Bold sets its o 31 a side against the Regular's 41, and its e
@@ -365,10 +441,83 @@ describe("the Serif's diagonals", () => {
     expect(w[3] / w[2]).toBeLessThan(0.7);
   });
 
+  it("ends the y's full arm inside its hairline, and its tail on the descender", () => {
+    for (const weight of [87, 142, 200, 260]) {
+      // Down the right side from the crotch: the hairline's edge, leaning
+      // steadily left. The full arm's square end stood out past it in a spur.
+      let before = Infinity;
+      for (let y = 150; y >= -60; y -= 10) {
+        const runs = row("y", weight, y);
+        const right = runs[runs.length - 1][1];
+        expect(right, `y at ${weight}, row ${y}`).toBeLessThan(before + 1);
+        before = right;
+      }
+      // And the tail's foot on the line it was built to, as the full pen's
+      // was: on a hairline pen with no contrast it hung fourteen units under.
+      const b = box("y", weight);
+      expect(Math.abs(b.yMin - -271), `y at ${weight}`).toBeLessThan(3);
+    }
+  });
+
+  it("keeps the one's head flat on the cap line", () => {
+    for (const weight of [200, 230, 260]) {
+      // Its flag thinned as a hairline, the flag's end stood seven units over.
+      expect(box("one", weight).yMax, `1 at ${weight}`).toBeLessThan(SERIF.metrics.capHeight + 0.5);
+    }
+  });
+
   it("keeps the z's diagonal heavy, as Lora's is", () => {
     const [diagonal] = widths("z", 87, 250);
     // Thinned with the vees it would be 49; Lora's is 91.
     expect(diagonal).toBeGreaterThan(70);
+  });
+});
+
+describe("the Serif's j", () => {
+  it("hangs its tail's drop at every weight, the pen held either way", () => {
+    for (const angle of [-45, 30, 45]) {
+      const nodes = (weight: number) =>
+        draw("j", weight, { ...SERIF, pen: { ...SERIF.pen, weight, angle } }).contours.reduce(
+          (all, contour) => all + contour.nodes.length,
+          0,
+        );
+      // Past a Black the tail's end rose over the line a drop hangs under,
+      // and the serif laid across the curve instead came out as two slivers.
+      const regular = nodes(87);
+      for (const weight of [200, 230, 260]) {
+        expect(nodes(weight), `j at ${weight}, pen ${angle}`).toBe(regular);
+      }
+    }
+  });
+});
+
+describe("the Serif's zero", () => {
+  it("keeps its counter from pinching when set narrow", () => {
+    for (const weight of [110, 120, 130]) {
+      const style: Style = {
+        ...SERIF,
+        pen: { ...SERIF.pen, weight },
+        metrics: { ...SERIF.metrics, width: 0.6 },
+      };
+      // Its sides swollen on so short a radius, the inside folded to a point
+      // at the top and the bottom.
+      for (const contour of draw("zero", weight, style).contours) {
+        expect(contoursIntersect([contour]), `0 at ${weight}`).toBe(false);
+      }
+    }
+  });
+});
+
+describe("the Serif's at sign", () => {
+  it("stops its ring short of the tail with the pen held steeply", () => {
+    for (const weight of [230, 260]) {
+      const style: Style = { ...SERIF, pen: { ...SERIF.pen, weight, angle: -60 } };
+      // Its end, cut square across the pen, reached back over the tail's
+      // turn inside the one outline.
+      for (const contour of draw("at", weight, style).contours) {
+        expect(contoursIntersect([contour]), `@ at ${weight}`).toBe(false);
+      }
+    }
   });
 });
 

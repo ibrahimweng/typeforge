@@ -2755,22 +2755,43 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * they were.
        */
       /*
-       * And whatever the bracket asks for past the serif's own thickness
-       * carried on up the stroke, so the whole of the control does something:
-       * held to the depth alone, everything past it on the slider was the
-       * same serif. Counted from the thickness, not from the depth a short
-       * serif is cut down to, because every base's own bracket sits between
-       * the two somewhere, and counted from the depth, their defaults moved.
+       * And whatever the bracket asks for past what the serif can take carried
+       * on up the stroke, so the whole of the control does something: held to
+       * the depth alone, everything past it on the slider was the same serif.
+       *
+       * Counted from the thickness, a short serif -- cut down in depth, or
+       * capped under a sloped head, or with little wing to fillet -- held one
+       * drawing all the way from what it can take up to the thickness: a
+       * stretch of the slider that did nothing. Counted from what it can take
+       * instead, every base's own drawing moved, because every base's own
+       * bracket stands in that stretch somewhere (the Serif's X by forty units
+       * at a Black). So that stretch is read around the base's own bracket:
+       * below it the fillet is scaled down toward none, above it the rest
+       * carries on, and at it the drawing is exactly what it always was.
        */
       const asked = terminal.bracket ?? 0;
-      const held = Math.min(asked, deep, (tip - from) * 0.8, headCap);
-      const past = Math.max(0, asked - (terminal.thickness ?? asked));
+      const thick = terminal.thickness ?? asked;
+      const limit = Math.min(deep, (tip - from) * 0.8, headCap);
+      const home = terminal.bracketHome;
+      let held = Math.min(asked, limit);
+      let past = Math.max(0, asked - thick);
+      if (home !== undefined && !refused && limit < thick) {
+        const pivot = Math.min(Math.max(home, limit), thick);
+        if (pivot > 1e-9) {
+          held = asked >= pivot ? limit : (asked * limit) / pivot;
+          past = Math.max(0, asked - pivot);
+        }
+      }
       // A text serif's hollow runs from its tip to wherever it meets the
       // stem, so it can climb as far as it likes; a square serif's fillet
       // turns along the wing too, and stops short of its tip.
       const wedge = terminal.shape === "wedge";
-      const bracket = held + (wedge ? 0 : Math.max(0, Math.min(past, (tip - from) * 0.8 - held)));
-      const climb = wedge && !refused ? Math.min(past * BRACKET_CLIMB, headCap) : 0;
+      const wingRoom = wedge ? 0 : Math.max(0, (tip - from) * 0.8 - held);
+      const bracket = held + Math.min(past, wingRoom);
+      // And past what the wing has room for, a square serif's fillet climbs on
+      // up the stroke as a text serif's hollow does: held to the wing, every
+      // setting past it drew the same serif.
+      const climb = refused ? 0 : Math.min(Math.max(0, past - wingRoom) * BRACKET_CLIMB, headCap);
       /*
        * A face that undulates undulates here too, and the only way to say that
        * is to draw the bar as a stroke rather than as a shape.
@@ -3125,8 +3146,8 @@ const node = (point: Vec2): GlyphNode => ({
 const SERIF_BITE = 0.35;
 
 /**
- * How far up the stem a text serif's hollow climbs for each unit of bracket
- * asked for past the serif's own thickness.
+ * How far up the stem a serif's fillet climbs for each unit of bracket asked
+ * for past what the serif can take: see `serifsFor`.
  */
 const BRACKET_CLIMB = 2;
 
@@ -3218,9 +3239,11 @@ function wing(
   const shift = (v: number): number => lean * Math.min(v, cap);
   const edgeAt = (v: number): number => from + shift(v);
   const heldAt = (v: number): number => held + shift(v);
-  // And on a text serif, whatever the bracket asked for past the serif's
-  // depth, climbing on up the stroke: see `BRACKET_CLIMB`.
-  let rise = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * 0.8)) + (wedge ? climb : 0);
+  // And whatever the bracket asked for past what the serif can take,
+  // climbing on up the stroke: see `BRACKET_CLIMB`.
+  // How far along the wing the fillet runs, which the climb never adds to.
+  let along = Math.min(bracket, Math.max(0, (tip - edgeAt(deep)) * 0.8));
+  let rise = along + climb;
   /*
    * On the inside of a diagonal, no higher up the stroke than the edge is
    * followed, so the hollow arrives along the edge itself. Carried on past
@@ -3245,6 +3268,7 @@ function wing(
     deep *= share;
     tipDeep *= share;
     rise *= share;
+    along *= share;
   }
   const reachUp = deep + rise;
 
@@ -3320,13 +3344,16 @@ function wing(
      * The fillet: a quarter turn hollowing out the inside corner where the
      * serif meets the stem. Zero bracket leaves that corner square, which is a
      * slab serif; opening it out is what makes a text serif look grown from the
-     * stem rather than stuck on it.
+     * stem rather than stuck on it. A quarter of an ellipse where it climbs:
+     * along the wing no further than the wing has room for, and up the stem
+     * by that and whatever climbs past it. Drawn round, a fillet taller than
+     * the wing began out past the wing's tip and bulged over it.
      */
-    const cornerU = edgeAt(deep) + rise;
+    const cornerU = edgeAt(deep) + along;
     nodes.push({
       point: place(cornerU, deep),
       handleIn: null,
-      handleOut: place(cornerU - handle, deep),
+      handleOut: place(cornerU - 0.5523 * along, deep),
       type: "tangent",
     });
     nodes.push({

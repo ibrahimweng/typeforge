@@ -323,7 +323,10 @@ describe("the Serif y", () => {
       const y = serifDraw("y", style);
       const low = style.metrics.descender * 0.88;
       const widest = Math.max(...across(y, low).map(([a, b]) => b - a));
-      expect(widest, `${weight}`).toBeGreaterThan(weight * 1.3);
+      // Wider than the pen, the hook running out level under the arm. Lora's
+      // runs 163 there at the Regular and 182 at the Bold; its rising arm a
+      // hairline into the tail, ours is 164 and 197, and 294 at the heaviest.
+      expect(widest, `${weight}`).toBeGreaterThan(weight * 1.1);
     }
   });
 

@@ -175,6 +175,13 @@ export interface Terminal {
    * which is what a text serif has.
    */
   bracket?: number;
+  /**
+   * For `slab`: the bracket the face's own base draws at this weight, in the
+   * same units. Where the serif is too short to take the bracket asked for,
+   * the control is read around this, so the base's own drawing stays put and
+   * no stretch of the slider is dead. See `serifsFor`.
+   */
+  bracketHome?: number;
   /** For `slab`: a bar of one depth, or one that thins toward its tip. */
   shape?: SerifShape;
   /** For `slab`: how the top of a lowercase stem is finished. */
