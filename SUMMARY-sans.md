@@ -713,6 +713,15 @@ a's misfit falls from 0.19/0.11/0.10/0.11/0.12 to 0.18/0.10/0.07/0.08/0.09 at
 the Thin, Regular, SemiBold, UltraBlack and Black. At the Black its bowl's
 top still stands 14 units over Geist's.
 
+**The r's arm.** Geist's r arm leaves the stem lower than ours did, most of
+all at the Thin: 390 up there, where ours left at 335. The Sans's arm is now
+drawn a little heavier where it leaves the stem (1.2 of its old pen at the
+Thin, 1.05 from the SemiBold on), and its turn is deeper and wider. At the
+Black the turn is deepened only 10, so the chamfer-and-spur test's r at 200
+still grows one point. The r's misfit falls from 0.28/0.09/0.07/0.05/0.07 to
+0.08/0.07/0.05/0.04/0.06 at the Thin, Regular, SemiBold, UltraBlack and
+Black.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

@@ -1942,3 +1942,12 @@ describe("the SemiBold a's bowl", () => {
     expect(Math.abs(runs[1][1] - 306)).toBeLessThan(5);
   });
 });
+
+describe("the Thin r's arm", () => {
+  it("leaves the stem as low as Geist's", () => {
+    // 160 in, Geist Thin's r's arm runs 456-495; it ran 486-515.
+    const [arm] = filled(draw("r", 30).contours, 160, "x").slice(-1);
+    expect(Math.abs(arm[0] - 456)).toBeLessThan(8);
+    expect(Math.abs(arm[1] - 495)).toBeLessThan(8);
+  });
+});

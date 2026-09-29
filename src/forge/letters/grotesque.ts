@@ -1531,7 +1531,20 @@ export function grotesqueSmallR(style: Style): Recipe {
    * ninety-five units deep on the Regular, a hundred and ten on the Black.
    */
   const { pen } = f.style;
-  const narrow = pen.weight * (0.85 - 0.1 * Math.min(heaviness(f) / 0.67, 1));
+  /*
+   * The Sans's arm a little heavier where it leaves the stem, and its turn
+   * deeper and wider, as Geist's is -- most of all at the Thin, whose arm
+   * leaves the stem 390 up, where the Sans's left it at 335. Held at the
+   * Black's past it.
+   */
+  const sansR = f.style.metrics.xGrows !== undefined;
+  const pastBlackR = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knotR = (knots: [number, number, number, number, number], plain: number) =>
+    sansR ? (pastBlackR ? knots[4] : atWeights(f, ...knots)) : plain;
+  const narrow =
+    pen.weight *
+    (0.85 - 0.1 * Math.min(heaviness(f) / 0.67, 1)) *
+    knotR([1.2, 1.1, 1.05, 1.05, 1.05], 1);
   const across = pen.weight * (1 - pen.contrast);
   const armPen = { ...pen, weight: narrow, contrast: Math.max(0, 1 - across / narrow) };
   // Hung from the x-height by its own thickness, which a lighter pen may make less.
@@ -1545,9 +1558,14 @@ export function grotesqueSmallR(style: Style): Recipe {
   const thick = narrow * (1 - armPen.contrast);
   // Held at the Black's past it, where the turn is all an Ultra's arm has left.
   const tb = Math.min(heaviness(f) / 0.67, 1);
-  const across2 = Math.max((118 + 6 * tb) * (X(1) - X(0)) + narrow / 2, narrow * 0.54);
+  const across2 = Math.max(
+    (118 + 6 * tb) * (X(1) - X(0)) + narrow / 2 + knotR([30, 10, 30, 20, 10], 0),
+    narrow * 0.54,
+  );
   const down = Math.max(
-    ((138 - 34 * tb) / 530) * f.x * ((1 - spring) / 0.38) + thick / 2,
+    ((138 - 34 * tb) / 530) * f.x * ((1 - spring) / 0.38) +
+      thick / 2 +
+      knotR([80, 10, 10, 30, 10], 0),
     narrow * 0.54,
   );
   void wide;
