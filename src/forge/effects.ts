@@ -35,6 +35,7 @@ import {
   type PoolWhere,
   type RoughReach,
 } from "@/font/effects";
+import { addedOf, figuresOf, groovesOf, inGroove, untangled } from "./cast";
 import type { CutScale } from "./cut";
 import { alongSpine, spineLength } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
@@ -187,6 +188,12 @@ export function effectInk(
   // is nothing to do but hand the letter back as it was -- which is the same
   // answer the cut and the cast give while it is still on its way.
   const canCarve = loaded();
+  /*
+   * The motif's figures, which the roughening can wander into the shape of a
+   * crack: a diamond set in the eye of a Marker e was filled as one, and the
+   * e came back solid.
+   */
+  const figures = figuresOf.get(ink) ?? [];
 
   /*
    * Fused first, and this is the one place in the drawing where that is worth
@@ -202,8 +209,9 @@ export function effectInk(
    * once.
    */
   let shape = canCarve ? unite(ink, roles, "whole") : ink;
+  const given = shape.filter((contour) => contourArea(contour) > 0);
   if (canCarve && effects.press.on && strokes.length > 0) {
-    const wedges = pressWedges(shape, strokes, effects.press, stem);
+    const wedges = pressWedges(shape, strokes, effects.press, stem, groovesOf.get(ink) ?? []);
     if (wedges.length > 0) shape = takenAway(shape, wedges);
   }
   if (canCarve && effects.pool.on && strokes.length > 0) {
@@ -245,9 +253,71 @@ export function effectInk(
       (stroke) => stroke.pen.weight * (1 - Math.min(Math.max(stroke.pen.contrast, 0), 0.95)),
     ),
   );
-  return canCarve
-    ? swept(shape, stem).map((contour) => unsplintered(contour, stem, hairline))
-    : shape;
+  if (!canCarve) return shape;
+  // And no outline left crossing itself, as after the cut and the cast.
+  // And swept again after it, which can tie off a speck of its own: under a
+  // Formal Script k with points grown after the chamfer, one stood by the leg.
+  const done = swept(
+    untangled(
+      swept(shape, stem, strokes, figures).map((contour) => unsplintered(contour, stem, hairline)),
+      scale.slant,
+    ),
+    stem,
+    strokes,
+    figures,
+  ).map(unpinched);
+  /*
+   * Nor a crumb of what the cast grew. A point on the thin terminal of a
+   * light Brush e stood on a neck the pressure thinned and the roughening
+   * then parted, and it came back as a crumb beside the letter. A piece
+   * that broke off one the effects were given, is under half a stem square,
+   * and is mostly a point or a fillet goes. Only those: at its heaviest the
+   * Casual Script's roughening parts the tail of a p from its bowl, and the
+   * tail is the letter's own stroke.
+   */
+  const grown = addedOf.get(ink) ?? [];
+  const solids = done.filter((contour) => contourArea(contour) > 0);
+  const crumbs: Contour[] = [];
+  if (grown.length > 0 && solids.length > given.length) {
+    const inkOf = (contours: Contour[]) =>
+      contours.reduce((total, contour) => total + contourArea(contour), 0);
+    const from = new Map<number, Contour[]>();
+    for (const solid of solids) {
+      let parent = -1;
+      let most = 0;
+      given.forEach((one, at) => {
+        const shared = inkOf(intersect([solid], [one], "winding"));
+        if (shared > most) {
+          most = shared;
+          parent = at;
+        }
+      });
+      if (parent >= 0) from.set(parent, [...(from.get(parent) ?? []), solid]);
+    }
+    for (const family of from.values()) {
+      const largest = Math.max(...family.map((one) => contourArea(one)));
+      for (const one of family) {
+        const area = contourArea(one);
+        if (area >= largest || area >= stem * stem * 0.5) continue;
+        if (inkOf(intersect([one], grown, "winding")) > area * 0.5) crumbs.push(one);
+      }
+    }
+  }
+  const kept = crumbs.length > 0 ? done.filter((contour) => !crumbs.includes(contour)) : done;
+  /*
+   * Nor scraps of an inline's groove. A rim grown into the groove narrows it,
+   * and the roughening then pinched it shut in places: the letter was left
+   * pricked with slivers of groove, each a few units across. What is left of
+   * the groove smaller than a tenth of a stem square is filled.
+   */
+  const grooves = groovesOf.get(ink) ?? [];
+  if (grooves.length === 0) return kept;
+  return kept.filter(
+    (contour) =>
+      contourArea(contour) >= 0 ||
+      -contourArea(contour) >= stem * stem * 0.1 ||
+      !inGroove(contour, grooves),
+  );
 }
 
 /**
@@ -267,6 +337,46 @@ function takenAway(shape: Contour[], tool: Contour[]): Contour[] {
   const lost = inkOf(shape) - inkOf(result);
   const most = inkOf(unite(tool, "winding"));
   return lost <= most * 1.02 + 1 && lost >= -1 ? result : shape;
+}
+
+/**
+ * The outline without the loops of no width it ties off at a point.
+ *
+ * Where the outline comes back to exactly a point it has passed through, the
+ * run between is a loop of its own, and one that encloses nothing is a hair:
+ * roughened, the point grown on a saw tooth of a Brush e came back as a
+ * spike four units long and no width, out and back to the same point, and
+ * anything that fused the letter again found it a piece of its own. Runs too
+ * short for the splinter sweep, which is looking for strips, not hairs.
+ */
+function unpinched(contour: Contour): Contour {
+  let nodes = contour.nodes;
+  if (!contour.closed || nodes.length < 4) return contour;
+  for (let pass = 0; pass < 4; pass++) {
+    const count = nodes.length;
+    let cut: [number, number] | null = null;
+    for (let start = 0; start < count && !cut; start++) {
+      const from = nodes[start].point;
+      for (let step = 2; step <= 8 && step < count - 1; step++) {
+        const end = (start + step) % count;
+        const to = nodes[end].point;
+        if (Math.hypot(to.x - from.x, to.y - from.y) > 0.01) continue;
+        const loop = {
+          ...contour,
+          nodes: Array.from({ length: step }, (_, k) => nodes[(start + k) % count]),
+        };
+        if (Math.abs(contourArea(loop)) < 1) cut = [start, step];
+        break;
+      }
+    }
+    if (!cut) break;
+    const [start, step] = cut;
+    const drop = new Set(Array.from({ length: step }, (_, k) => (start + 1 + k) % count));
+    const kept = nodes.filter((_, index) => !drop.has(index));
+    if (kept.length < 3) break;
+    nodes = kept;
+  }
+  return nodes === contour.nodes ? contour : { ...contour, nodes };
 }
 
 /**
@@ -676,7 +786,13 @@ function skipTool(strokes: Stroke[], skip: Effects["skip"], stem: number): Conto
  * Only the outer contours are looked at, so a counter this size is left alone:
  * filling a hole is as wrong as leaving an island.
  */
-function swept(shape: Contour[], stem: number): Contour[] {
+function swept(
+  shape: Contour[],
+  stem: number,
+  strokes: Stroke[] = [],
+  // The counter motif's figures, which are never cracks however they wander.
+  figures: Contour[] = [],
+): Contour[] {
   if (shape.length < 2) return shape;
   const areas = shape.map((contour) => contourArea(contour));
   let widest = 0;
@@ -690,7 +806,12 @@ function swept(shape: Contour[], stem: number): Contour[] {
   const kept = shape.filter(
     (contour, at) =>
       !(Math.sign(areas[at]) === solid && Math.abs(areas[at]) < least) &&
-      !(Math.sign(areas[at]) !== solid && slit(contour, Math.abs(areas[at]), stem)),
+      !(
+        Math.sign(areas[at]) !== solid &&
+        slit(contour, Math.abs(areas[at]), stem) &&
+        !inGroove(contour, figures) &&
+        !(Math.abs(areas[at]) >= stem * stem * 0.08 && downTheMiddle(contour, strokes, stem))
+      ),
   );
   return kept.length > 0 ? kept : shape;
 }
@@ -707,6 +828,49 @@ function swept(shape: Contour[], stem: number): Contour[] {
  * its area over its perimeter, a slit is a fifth of a stem across or less,
  * and nothing a letter means to leave open is both that thin and that small.
  */
+/**
+ * Whether a hole runs down the middle of a stroke, as the inline's groove
+ * does, rather than between two, as a slit does.
+ *
+ * The two can be the same width: an inline tapers where its stroke thins,
+ * and round a Brush o or down a Handwriting stem it was as thin as the slits
+ * the Casual Script's joins leave, and was swept away with them. A slit lies
+ * where two strokes' edges meet, half a pen from either spine; a groove lies
+ * on one, so nearly all of its outline is within a sixth of a stem of it:
+ * the Casual Script's slits have half of theirs that near, or less. A speck
+ * of a hole is never a groove, wherever it lies.
+ */
+function downTheMiddle(contour: Contour, strokes: Stroke[], stem: number): boolean {
+  if (strokes.length === 0) return false;
+  const lines = strokes.map((stroke) => alongSpine(stroke.spine, 64));
+  const points = flattenContour(contour);
+  if (points.length === 0) return false;
+  const step = Math.max(1, Math.floor(points.length / 24));
+  let near = 0;
+  let count = 0;
+  for (let at = 0; at < points.length; at += step) {
+    count++;
+    const point = points[at];
+    if (lines.some((line) => nearLine(line, point, stem * 0.16))) near++;
+  }
+  return near >= count * 0.85;
+}
+
+/** Whether a point is within some distance of a sampled line. */
+function nearLine(line: Vec2[], point: Vec2, within: number): boolean {
+  for (let at = 0; at + 1 < line.length; at++) {
+    const a = line[at];
+    const b = line[at + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const span = dx * dx + dy * dy;
+    const t =
+      span > 0 ? Math.min(Math.max(((point.x - a.x) * dx + (point.y - a.y) * dy) / span, 0), 1) : 0;
+    if (Math.hypot(a.x + dx * t - point.x, a.y + dy * t - point.y) < within) return true;
+  }
+  return false;
+}
+
 function slit(contour: Contour, area: number, stem: number): boolean {
   if (area >= stem * stem) return false;
   const points = flattenContour(contour);
@@ -723,6 +887,8 @@ function pressWedges(
   strokes: Stroke[],
   press: Effects["press"],
   stem: number,
+  // The inline's groove, where there is one: see below.
+  grooves: Contour[] = [],
 ): Contour[] {
   if (press.amount <= 0) return [];
   /*
@@ -740,10 +906,28 @@ function pressWedges(
    * difference between an effect that works on five letters and one that works
    * on all of them.
    */
-  const edges = ink.map((contour) => flattenContour(contour, RAY_STEPS));
+  /*
+   * Measured on the letter with its groove filled, and spent on the wall.
+   *
+   * The spine runs down the middle of an inline's groove, and a ray from it
+   * found the groove's edge a unit or two off: the band was laid from there
+   * out past the flank, across the whole wall between the groove and the
+   * paper. On a hairline Formal Script the wall is a few units thick, and the
+   * pressed e came back with its wall cut through and its outline folded
+   * over itself. So the flank is found with the groove filled in, and the
+   * cut is a share of the wall that stands between the two.
+   */
+  const inGrooves = ink.filter((contour) => contourArea(contour) < 0 && inGroove(contour, grooves));
+  const edges = ink
+    .filter((contour) => !inGrooves.includes(contour))
+    .map((contour) => flattenContour(contour, RAY_STEPS));
+  const walls = inGrooves.map((contour) => flattenContour(contour, RAY_STEPS));
   const wedges: Contour[] = [];
 
   for (const stroke of strokes) {
+    // The stroke's own outline, uncut, for telling its flank from the side of
+    // a cut: see `flankAt`.
+    const own = sweep(stroke).map((contour) => flattenContour(contour, RAY_STEPS));
     if (stroke.spine.closed) continue;
     const reach = Math.max(stroke.pen.weight, stem) * 0.5;
     const walked = alongSpine(
@@ -772,7 +956,9 @@ function pressWedges(
     for (const side of [1, -1] as const) {
       const flank: Array<{ inner: Vec2; outer: Vec2 } | null> = [];
       for (let at = 0; at < walked.length; at++) {
-        flank.push(flankAt(walked, at, side, press.amount, press.at, opens, edges, half, stroke));
+        flank.push(
+          flankAt(walked, at, side, press.amount, press.at, opens, edges, half, stroke, own, walls),
+        );
       }
       /*
        * One band per unbroken run of flank, and not one quad per pair of
@@ -863,6 +1049,8 @@ function flankAt(
   edges: Vec2[][],
   half: number,
   stroke: Stroke,
+  own: Vec2[][] = [],
+  walls: Vec2[][] = [],
 ): { inner: Vec2; outer: Vec2 } | null {
   const before = walked[Math.max(0, at - 1)];
   const after = walked[Math.min(walked.length - 1, at + 1)];
@@ -887,8 +1075,26 @@ function flankAt(
    * between that sample and the next, and a slotted Formal Script g lost
    * three fifths of its ink to the press.
    */
-  if (hit < pen * SHORT) return null;
-
+  if (hit < pen * SHORT) {
+    // Unless the stroke itself is that thin there, as a contrast face's is
+    // towards a terminal: then the ray found its flank. Measured against the
+    // pen alone, every tapering end went unthinned.
+    const itself = own.length > 0 ? rayHitDistance(own, here, normal) : Number.POSITIVE_INFINITY;
+    // And not a ray that starts on the edge itself, where the spine runs on
+    // past the ink of a brush's terminal: the wedge cut from there is what
+    // tapers the tip, and has always been.
+    if (hit > 0.5 && !(hit >= itself * 0.8)) return null;
+  } else if (own.length > 0 && hit > 0.5) {
+    /*
+     * Nor where a cut made the edge rather than the stroke: the ink stops
+     * well inside the stroke's own flank. The corners a chamfer cuts off the
+     * stems of a heavy Formal Script take most of the hairline entry strokes
+     * on them with it, and a band laid along the faces the cut left notched
+     * them sample by sample: every chamfered corner came back a staircase.
+     */
+    const itself = rayHitDistance(own, here, normal);
+    if (Number.isFinite(itself) && hit < itself * 0.8) return null;
+  }
   const u = at / (walked.length - 1);
   /*
    * How far to cut is measured too, and against the ink that is really there.
@@ -904,7 +1110,11 @@ function flankAt(
    * fraction of itself wherever it is thin, and the two flanks together can
    * never take more of it than there is.
    */
-  const thin = Math.min(hit, pen) * Math.min(press * lightness(when, u, opens), MOST_OF_A_STROKE);
+  // Where a groove runs down the stroke, what there is to thin is the wall
+  // between it and the flank.
+  const groove = walls.length > 0 ? rayHitDistance(walls, here, normal) : Number.POSITIVE_INFINITY;
+  const body = groove < hit ? hit - groove : hit;
+  const thin = Math.min(body, pen) * Math.min(press * lightness(when, u, opens), MOST_OF_A_STROKE);
   return {
     inner: { x: here.x + normal.x * (hit - thin), y: here.y + normal.y * (hit - thin) },
     // Just past the edge that was measured, so the cut always starts in air.

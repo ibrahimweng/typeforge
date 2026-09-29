@@ -20,7 +20,7 @@
  * outline makes while that happens, resolved once (`swept`).
  */
 
-import { filled, intersect, loaded, subtract, unite, type Roles } from "@/font/boolean";
+import { filled, intersect, loaded, pieces, subtract, unite, type Roles } from "@/font/boolean";
 import {
   contourArea,
   contourContainsPoint,
@@ -30,6 +30,7 @@ import {
   rayHitDistance,
   reverseContour,
   splitCubic,
+  crossesItself,
 } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
@@ -88,6 +89,41 @@ export function reachesCast(cast: Cast | undefined, strokes: Stroke[]): boolean 
 }
 
 /**
+ * Where the inline cut its groove, for the contours the cut handed on.
+ *
+ * Kept against the very list the cut returns, which is what the cast is given
+ * when it goes second, since the shape of a hole cannot tell a groove from a
+ * counter: the narrow eye of a Formal Script e is as thin as a groove, and the
+ * counter of a Serif A lies as close to the paper all round.
+ */
+export const groovesOf = new WeakMap<Contour[], Contour[]>();
+
+/**
+ * Everything the cut took away, for the same list: a fillet grown at a join
+ * a slot has cut through reached into the band and stood in it as a bump.
+ */
+export const knivesOf = new WeakMap<Contour[], Contour[]>();
+
+/**
+ * The figures the counter motif set in the letter, for the same list: see
+ * `slit` in the effects, which took a roughened one for a crack.
+ */
+export const figuresOf = new WeakMap<Contour[], Contour[]>();
+
+/**
+ * The points and fillets the cast grew on the letter, for the same list: see
+ * the crumbs in the effects, which a point on a thin terminal can become.
+ */
+export const addedOf = new WeakMap<Contour[], Contour[]>();
+
+/** Whether a hole lies mostly in an inline's groove (`groovesOf`). */
+export function inGroove(hole: Contour, grooves: Contour[]): boolean {
+  if (grooves.length === 0) return false;
+  const shared = intersect([reverseContour(hole)], grooves, "winding");
+  return shared.reduce((total, one) => total + contourArea(one), 0) > -contourArea(hole) * 0.5;
+}
+
+/**
  * The letter with the cast put on it.
  *
  * The order inside the layer is not a preference. The spur and the weld are
@@ -110,28 +146,102 @@ export function castInk(
   // Where a chamfer has just cut corners off: see `spurTool`.
   chamfered: Vec2[] = [],
 ): Contour[] {
-  if (!reachesCast(cast, strokes) || ink.length === 0 || !loaded()) return ink;
+  if (ink.length === 0 || !loaded()) return ink;
+  /*
+   * With nothing it can do -- a weld on a letter from a font file, which has
+   * no skeleton to find joins on -- the letter is still handed on the way
+   * the cast hands on everything, fused and wound as ink is. Handed back as
+   * it came, in the file's own winding, a cut after it read every counter
+   * inside out: the chamfer cut the inside corners off a Lora H, and the
+   * motif took its n away altogether.
+   */
+  if (!reachesCast(cast, strokes)) return roles === "winding" ? ink : unite(ink, roles, "whole");
 
   let shape = unite(ink, roles, "whole");
   const stem = Math.max(scale.stem, 1);
+  // The smallest counter the letter really has. Not a pinhole the union of
+  // its overlapping strokes tied off -- a light Serif g has one of six units
+  // where its link meets the bowl -- which would hold every speck to its size.
+  // A small counter the letter does draw, the triangle under a Serif t's
+  // flag, is forty times that and still counts.
+  //
+  // Nor an inline's groove, which is paper the cut took rather than a counter:
+  // counted, it held the floor so low that what the rim left of the groove's
+  // ends beside the terminals of a Serif s stayed as ragged pockets.
+  const grooves = groovesOf.get(ink) ?? [];
+  const grooved = (hole: Contour): boolean => inGroove(hole, grooves);
   const smallest = Math.min(
     Infinity,
-    ...shape.map((contour) => -contourArea(contour)).filter((area) => area > 0),
+    ...shape
+      .filter((contour) => -contourArea(contour) > stem * stem * 0.02 && !grooved(contour))
+      .map((contour) => -contourArea(contour)),
   );
 
   const local: Contour[] = [];
-  if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem, chamfered));
-  if (cast.weld.on) local.push(...weldTool(strokes, cast.weld, stem, shape, breaks));
-  if (local.length > 0) shape = unite([...shape, ...local], "winding", "whole");
+  const grown: Contour[] = [];
+  if (cast.spur.on) {
+    local.push(...spurTool(shape, cast.spur, stem, chamfered, knivesOf.get(ink) ?? []));
+  }
+  if (cast.weld.on) {
+    local.push(
+      ...weldTool(strokes, cast.weld, stem, shape, breaks, grooves, knivesOf.get(ink) ?? []),
+    );
+  }
+  if (local.length > 0) {
+    /*
+     * Nothing a fillet or a point adds stands on its own. One grown at a join
+     * the letter's own strokes only nearly make -- where the link of a Serif
+     * g leaves its bowl -- came away beside it as a speck of ink. Never as
+     * large as the smallest piece the letter went in with, so the dot of an
+     * i is never taken for one.
+     */
+    const least = Math.min(
+      stem * stem * 0.1,
+      ...shape
+        .map((contour) => contourArea(contour))
+        .filter((area) => area > 0)
+        .map((area) => area * 0.5),
+    );
+    // Not one folded over on itself. A fillet grown into a corner too tight
+    // for it crosses itself, and the lobe wound the other way cancelled the
+    // ink it lay on: it cut a slit into the link of a Serif g where it was
+    // meant to fill the corner beside it. Fused alone it filled that as a
+    // jagged tooth instead, and the corner is better left as it was drawn.
+    const added = local
+      .filter((one) => !contoursIntersect([one]))
+      .map((one) => (contourArea(one) < 0 ? reverseContour(one) : one));
+    grown.push(...added);
+    shape = unite([...shape, ...added], "winding", "whole").filter(
+      (contour) => contourArea(contour) <= 0 || contourArea(contour) >= least,
+    );
+  }
 
   if (cast.extrude.on) shape = extruded(shape, cast.extrude, stem);
   if (cast.outline.on) shape = outlined(shape, cast.outline.width * stem);
-
+  /*
+   * Nor scraps of the inline's groove. A shadow or a rim grown over the
+   * groove shut most of it and left slivers of it standing in the ink, each
+   * a few units across; what is left of the groove smaller than a tenth of a
+   * stem square is filled. (The effects do the same after the roughening.)
+   */
+  if (grooves.length > 0 && (cast.extrude.on || cast.outline.on)) {
+    shape = shape.filter(
+      (contour) =>
+        contourArea(contour) >= 0 ||
+        -contourArea(contour) >= stem * stem * 0.1 ||
+        !grooved(contour),
+    );
+  }
   const done = withoutSpecks(shape, stem, smallest);
-  // No outline left crossing itself: see the same step in `cutInk`.
-  return done.some((contour) => contoursIntersect([contour]))
-    ? unite(done, "winding", "whole")
-    : done;
+  // No outline left crossing itself, upright or leaned: see the same step in
+  // `cutInk`. And swept again after it, which can tie off a pinhole of its own.
+  const result = withoutSpecks(untangled(done, scale.slant ?? 0), stem, smallest);
+  // Handed on with the groove still known, for the effects that follow.
+  if (grooves.length > 0) groovesOf.set(result, grooves);
+  const figures = figuresOf.get(ink);
+  if (figures) figuresOf.set(result, figures);
+  if (grown.length > 0) addedOf.set(result, grown);
+  return result;
 }
 
 /**
@@ -312,8 +422,18 @@ function swept(
     const inner = counters.filter((counter) =>
       islands.some((island) => contourContainsPoint(island, counter.nodes[0].point)),
     );
+    /*
+     * One level down only while it is one level down. A counter pinched
+     * shut at a point by a slot touches the piece beside it there, and each
+     * takes the other's first point for inside: on a slotted heavy Display m
+     * the same piece and counter came back as island and counter for ever,
+     * and the letter threw.
+     */
+    const deeper = islands.length + inner.length < solids.length + counters.length;
     const again =
-      inner.length > 0 ? swept([...islands, ...inner], convolve, reachOf) : sweep(islands);
+      inner.length > 0 && deeper
+        ? swept([...islands, ...inner], convolve, reachOf)
+        : sweep(islands);
     result = unite([...result, ...again], "winding", "whole");
   }
   return tidied(result);
@@ -342,8 +462,102 @@ function groundOf(loop: Contour, solid: Contour): Contour[] {
   return [solid];
 }
 
+/**
+ * A letter with no outline crossing itself.
+ *
+ * One union resolves nearly every loop a cut or a cast ties -- but not all:
+ * where two edges meet at a point that agrees to fifteen digits and not to
+ * sixteen, the boolean library can hand back the same loop of a unit or so it
+ * was given, on the foot of a heavy Serif B under the saw or the join of a
+ * Formal Script h under a shadow. So a loop that survives the union is tried
+ * once more on a fine grid, which is nothing on the page and makes the
+ * meeting point one point. Given back as it came if that fails too.
+ */
+export function untangled(shape: Contour[], slant = 0): Contour[] {
+  /*
+   * And as it will stand once leaned. The lean is a shear and cannot cross
+   * an outline that did not cross, but where two edges all but touch it can
+   * tip the test that says so -- a Formal Script n under the breaks came out
+   * of the pressure clean and crossed once it leaned 22 degrees. Such a
+   * letter is untangled leaned, and stood back up.
+   */
+  if (slant) {
+    const tilt = (contours: Contour[], by: number) =>
+      contours.map((contour) => ({
+        ...contour,
+        nodes: contour.nodes.map((node) => {
+          const move = (point: Vec2 | null): Vec2 | null =>
+            point && { x: point.x + point.y * by, y: point.y };
+          return {
+            ...node,
+            point: move(node.point) as Vec2,
+            handleIn: move(node.handleIn),
+            handleOut: move(node.handleOut),
+          };
+        }),
+      }));
+    /*
+     * And a few degrees either way: a letter of an unsteady hand leans a
+     * little further over or back than the face, by its own amount, and the
+     * y of a Formal Script under the inline and fillets crossed at one of them.
+     */
+    for (const by of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+      const at = Math.tan(((slant + by) * Math.PI) / 180);
+      const leaned = tilt(shape, at);
+      if (leaned.some((contour) => contoursIntersect([contour]))) {
+        const fixed = untangled(leaned);
+        // Where the leaned letter will not come untangled, the upright one
+        // may: the hairline e of a Formal Script under the inline did.
+        if (fixed.every((contour) => !crossesItself(contour))) {
+          return tilt(withoutCrumbs(fixed), -at);
+        }
+        break;
+      }
+    }
+  }
+  /*
+   * Answered by the exact test. The quick one samples curves in six and is
+   * wrong either way: on a hairline Formal Script e under the inline and the
+   * pressure it saw no crossing in the outline that had one, and once the
+   * union had put that right it still saw one, and laid the letter on a grid
+   * that crossed it again.
+   */
+  const clean = (contours: Contour[]) => !contours.some((contour) => crossesItself(contour));
+  if (!shape.some((contour) => contoursIntersect([contour])) && clean(shape)) {
+    return withoutCrumbs(shape);
+  }
+  const quiet = (contours: Contour[]) => !contours.some((contour) => contoursIntersect([contour]));
+  const once = withoutCrumbs(unite(shape, "winding", "whole"));
+  if (clean(once) && quiet(once)) return once;
+  const tried = [once];
+  for (const per of [8, 2, 1]) {
+    const again = withoutCrumbs(
+      unite(
+        once.map((contour) => onGrid(contour, per)),
+        "winding",
+        "whole",
+      ),
+    );
+    if (clean(again) && quiet(again)) return again;
+    tried.push(again);
+  }
+  // Where no answer satisfies both, the exact test's word is the one taken.
+  return tried.find(clean) ?? once;
+}
+
+/**
+ * Less the crumbs a union tied off in resolving a loop: a sliver of a few
+ * units, solid or hole, under a thousandth of the letter's ink. The smallest
+ * thing a letter draws on purpose, the counter under a Serif t's flag, is
+ * eight times that.
+ */
+function withoutCrumbs(shape: Contour[]): Contour[] {
+  const ink = shape.reduce((total, contour) => total + Math.max(contourArea(contour), 0), 0);
+  return shape.filter((contour) => Math.abs(contourArea(contour)) >= ink * 0.001);
+}
+
 /** An outline with every point and handle set to the nearest step of `1 / per`. */
-function onGrid(contour: Contour, per: number): Contour {
+export function onGrid(contour: Contour, per: number): Contour {
   const snap = (point: Vec2 | null): Vec2 | null =>
     point && { x: Math.round(point.x * per) / per, y: Math.round(point.y * per) / per };
   return {
@@ -995,9 +1209,31 @@ function spurTool(
   spur: Cast["spur"],
   stem: number,
   chamfered: Vec2[] = [],
+  knives: Contour[] = [],
 ): Contour[] {
   const size = spur.size * stem;
   if (size <= 0) return [];
+  /*
+   * Not at a corner a cut made. A slot laid across a curve leaves each piece
+   * with sharp corners where the band's edge meets the curve, and a point
+   * grown at every one of them gave a slotted e and s a star of spikes at
+   * each band. The points are the letter's own corners, chamfered or not.
+   */
+  const cutEdges = knives.map((knife) => flattenContour(knife, 8));
+  const cut = (point: Vec2): boolean =>
+    cutEdges.some((line) =>
+      line.some((a, at) => {
+        const b = line[(at + 1) % line.length];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const run = dx * dx + dy * dy;
+        const t =
+          run > 0
+            ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / run))
+            : 0;
+        return Math.hypot(point.x - a.x - dx * t, point.y - a.y - dy * t) < 1;
+      }),
+    );
 
   /** Below this the outline is carrying on rather than turning. */
   const SHARP = (25 * Math.PI) / 180;
@@ -1033,6 +1269,7 @@ function spurTool(
       if (used.has(index)) continue;
       const first = corners[index];
       if (!first.arriving || !first.leaving || first.turn <= 0) continue;
+      if (cutEdges.length > 0 && cut(first.here.point)) continue;
 
       /*
        * A corner that has been cut off is still one corner.
@@ -1266,6 +1503,8 @@ function weldTool(
   stem: number,
   shape: Contour[] = [],
   breaks?: Breaks,
+  grooves: Contour[] = [],
+  knives: Contour[] = [],
 ): Contour[] {
   const size = weld.size * stem;
   if (size <= 0 || strokes.length < 2) return [];
@@ -1292,6 +1531,79 @@ function weldTool(
     strokes
       .map((stroke, index) => ({ line: samples[index], stroke, index }))
       .filter(({ index }) => index !== one && index !== other);
+
+  /*
+   * Nor one that ties two of the letter's pieces together. A fillet fills the
+   * corner of one piece. After slots, the corner a band leaves beside a join
+   * can be closer to the next piece than a fillet is long: on nearly every
+   * face the weld tied a stem back to the bar a slot had cut it from, and
+   * two fillets from either side of a band that only touched tied it too.
+   * Counted on the letter as it stands with the fillets kept so far.
+   */
+  let kept = shape;
+  let count = pieces(shape);
+  const ties = (fillet: Contour): boolean => {
+    if (count < 2) return false;
+    const next = unite([...kept, fillet], "winding", "whole");
+    const now = pieces(next);
+    if (now < count) return true;
+    kept = next;
+    count = now;
+    return false;
+  };
+  /*
+   * Nor into an inline's groove. At a join the letter's corner is now the
+   * groove's, and a fillet grown there stood in the groove as a stub on its
+   * outer wall, or tied the island to it.
+   */
+  const intoGroove = (fillet: Contour): boolean =>
+    grooves.length > 0 &&
+    intersect([fillet], grooves, "winding").reduce((total, one) => total + contourArea(one), 0) > 1;
+  /*
+   * Nor one that fills in a small counter the letter draws. The triangle
+   * under a Serif t's flag, drawn with Lora's head, is a few stems' corner
+   * across, and the fillet at the flag's join covered two thirds of it; what
+   * was left went as a speck. A fillet may take no counter below half the
+   * paper it had, counting what the fillets before it took. Only counters a
+   * few stems square are asked about: a fillet is a corner's worth of ink,
+   * and a bowl's counter is never in reach of losing half.
+   */
+  const small = shape
+    .filter((contour) => {
+      const area = -contourArea(contour);
+      return area > stem * stem * 0.02 && area < stem * stem * 4 && !inGroove(contour, grooves);
+    })
+    .map((contour) => {
+      const paper = reverseContour(contour);
+      const whole = contourArea(paper);
+      return { paper, box: contoursBounds([paper]), whole, left: whole };
+    });
+  const fillsCounter = (fillet: Contour): boolean => {
+    if (small.length === 0) return false;
+    const box = contoursBounds([fillet]);
+    const taken = small.map((counter) => {
+      const other = counter.box;
+      if (
+        other.xMin > box.xMax ||
+        other.xMax < box.xMin ||
+        other.yMin > box.yMax ||
+        other.yMax < box.yMin
+      ) {
+        return 0;
+      }
+      return intersect([fillet], [counter.paper], "winding").reduce(
+        (total, one) => total + Math.abs(contourArea(one)),
+        0,
+      );
+    });
+    if (small.some((counter, index) => counter.left - taken[index] < counter.whole * 0.5)) {
+      return true;
+    }
+    small.forEach((counter, index) => {
+      counter.left -= taken[index];
+    });
+    return false;
+  };
 
   const added: Contour[] = [];
   for (let one = 0; one < samples.length; one++) {
@@ -1346,12 +1658,36 @@ function weldTool(
         // Only the corners between the two strokes. A stroke that bends at the
         // join has a corner of its own there, and it is not a join.
         if (from.stroke === to.stroke) continue;
-        const fillet = filletBetween(where, from, to, size, ink, edge);
-        if (fillet && !(breaks && acrossBreak(fillet, breaks.knives))) added.push(fillet);
+        const grown = filletBetween(where, from, to, size, ink, edge);
+        if (!grown || (breaks && acrossBreak(grown, breaks.knives)) || intoGroove(grown)) continue;
+        // Kept out of whatever the cut took away, and never across it.
+        const kept = knives.length === 0 ? [grown] : clipped(grown, knives);
+        for (const fillet of kept) {
+          if (!fillsCounter(fillet) && !ties(fillet)) added.push(fillet);
+        }
       }
     }
   }
   return added;
+}
+
+/** A fillet less what lies in a cut, in the pieces that are worth keeping. */
+function clipped(fillet: Contour, knives: Contour[]): Contour[] {
+  const box = contoursBounds([fillet]);
+  const near = knives.filter((knife) => {
+    const other = contoursBounds([knife]);
+    return !(
+      other.xMin > box.xMax ||
+      other.xMax < box.xMin ||
+      other.yMin > box.yMax ||
+      other.yMax < box.yMin
+    );
+  });
+  if (near.length === 0) return [fillet];
+  const left = subtract([fillet], near, "winding");
+  const whole = Math.abs(contourArea(fillet));
+  // A sliver of a fillet left beside a cut is not a fillet.
+  return left.filter((one) => contourArea(one) > whole * 0.2);
 }
 
 /** Where the split cuts, and which pairs of strokes it parts (`pairKey`). */

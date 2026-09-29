@@ -27,7 +27,9 @@ import {
   contourArea,
   contourContainsPoint,
   contoursBounds,
+  crossesItself,
   flattenContour,
+  inkRunsAt,
   rayHitDistance,
   reverseContour,
   type Bounds,
@@ -35,7 +37,16 @@ import {
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
-import { eroded, outlined } from "./cast";
+import {
+  addedOf,
+  eroded,
+  figuresOf,
+  groovesOf,
+  knivesOf,
+  onGrid,
+  outlined,
+  untangled,
+} from "./cast";
 import { penReach, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Spine, SpineSegment, Stroke } from "./types";
@@ -108,6 +119,10 @@ export interface CutScale {
   ascender: number;
   descender: number;
   xHeight: number;
+  /** How far the face leans, in degrees, when it is one drawn here. */
+  slant?: number;
+  /** Whether the face is a running hand, whose letters join to the next. */
+  joins?: boolean;
 }
 
 /** The scale of a face that was drawn here, which knows its own pen. */
@@ -117,6 +132,8 @@ export function scaleOf(style: Style): CutScale {
     ascender: style.metrics.ascender,
     descender: style.metrics.descender,
     xHeight: style.metrics.xHeight,
+    slant: style.metrics.slant,
+    joins: style.parts.script.on,
   };
 }
 
@@ -186,7 +203,8 @@ export function cutInk(
     ...shape.map((contour) => contourArea(contour)).filter((area) => area > 0),
   );
 
-  if (cuts.motif.on) shape = motifCut(shape, cuts.motif, stem);
+  const figures: Contour[] = [];
+  if (cuts.motif.on) shape = motifCut(shape, cuts.motif, stem, figures);
 
   /*
    * Four of the six are one subtraction between them.
@@ -207,10 +225,15 @@ export function cutInk(
   // The straight knives, whose edges can shave a sliver off a stroke they
   // cross at a slant: see `withoutSlivers`.
   const straight: Contour[] = [];
-  if (cuts.slot.on) straight.push(...slotTool(bounds, cuts.slot, stem, scale));
-  if (cuts.tooth.on) straight.push(...toothTool(bounds, cuts.tooth, stem, scale));
-  if (cuts.split.on) straight.push(...splitTool(strokes, cuts.split, stem, scale.xHeight, cast));
-  if (cuts.inline.on) knife.push(...inlineTool(shape, strokes, cuts.inline, stem));
+  const slots = cuts.slot.on ? slotTool(bounds, cuts.slot, stem, scale) : [];
+  straight.push(...slots);
+  if (cuts.tooth.on) straight.push(...toothTool(bounds, cuts.tooth, stem, scale, shape));
+  const breaks = cuts.split.on
+    ? splitTool(strokes, cuts.split, stem, scale.xHeight, cast, scale.joins)
+    : { knives: [], lips: [] };
+  straight.push(...breaks.knives);
+  const groove = cuts.inline.on ? inlineTool(shape, strokes, cuts.inline, stem) : [];
+  knife.push(...groove);
   knife.push(...straight);
   /*
    * Fused here rather than left to the subtraction, when there is more than
@@ -226,20 +249,44 @@ export function cutInk(
   if (knife.length > 1) knife.splice(0, knife.length, ...unite(knife, "winding"));
   shape = take(shape, knife);
   /*
-   * Only on a letter drawn here. The sweep is told how thin the letter means
-   * to be by its strokes, and a letter out of a font has none to tell it: its
-   * hairline is anybody's guess, and the sweep could take the one it has for
-   * a sliver. And it is the dearest thing a cut does, three booleans round a
-   * figure of two dozen sides: asked of every glyph of a font somebody opened
-   * -- six thousand in the sample -- it made writing slots into it ten times
-   * slower, and the file never came back inside two minutes.
+   * The lips after, and only if they leave the letter in no more pieces: a
+   * lip is a sliver off the side of a stem, and one that breaks something
+   * off, leaves a speck or ties a loop has cut where it should not. Not on a
+   * leaning face either: the skeleton is drawn upright and leaned after, and
+   * on a script the start of each arch was left as a chip the pen's own
+   * pressure then broke off.
+   */
+  if (breaks.lips.length > 0 && Math.abs(scale.slant ?? 0) < 3) {
+    const trimmed = take(shape, breaks.lips);
+    const specks = (contours: Contour[]) =>
+      contours.filter((contour) => Math.abs(contourArea(contour)) < stem * stem * 0.1).length;
+    if (
+      pieces(trimmed) <= pieces(shape) &&
+      specks(trimmed) <= specks(shape) &&
+      !trimmed.some((contour) => contoursIntersect([contour]))
+    ) {
+      shape = trimmed;
+    }
+  }
+  /*
+   * The sliver sweep only on a letter drawn here. The sweep is told how thin
+   * the letter means to be by its strokes, and a letter out of a font has
+   * none to tell it: its hairline is anybody's guess, and the sweep could
+   * take the one it has for a sliver. And it is the dearest thing a cut
+   * does, three booleans round a figure of two dozen sides: asked of every
+   * glyph of a font somebody opened -- six thousand in the sample -- it made
+   * writing slots into it ten times slower, and the file never came back
+   * inside two minutes.
    */
   if (strokes.length > 0) {
     shape = withoutSlivers(shape, straight, Math.min(stem * 0.07, hairlineOf(strokes, stem) * 0.3));
   }
+  shape = withoutNotches(shape, slots, stem * 0.2);
+  shape = withoutWedges(shape, strokes, straight);
 
   const chamfered: Vec2[] = [];
-  if (cuts.chamfer.on) shape = take(shape, chamferTool(shape, cuts.chamfer, stem, chamfered));
+  if (cuts.chamfer.on)
+    shape = chamferedOff(shape, chamferTool(shape, cuts.chamfer, stem, chamfered), chamfered);
   /*
    * How thin the letter's own thinnest stroke is, where it was drawn here:
    * a splinter is thinner than anything the letter means to draw, and on a
@@ -253,9 +300,15 @@ export function cutInk(
    * leave a loop of a unit or two tied in it -- nothing on the page, and a
    * fault in the file; one more union resolves it.
    */
-  if (shape.some((contour) => contoursIntersect([contour])))
-    shape = unite(shape, "winding", "whole");
-  shape = shape.map(withoutHairs);
+  // After the hairs are taken off, since dropping one can fold what is left.
+  // Tested as it will stand once leaned, too: see `untangled`.
+  shape = untangled(shape.map(withoutHairs), scale.slant ?? 0);
+  if (groove.length > 0) groovesOf.set(shape, groove);
+  if (knife.length > 0) knivesOf.set(shape, knife);
+  if (figures.length > 0) figuresOf.set(shape, figures);
+  // And what a cast that went first grew, handed on past the cut.
+  const grown = addedOf.get(ink);
+  if (grown) addedOf.set(shape, grown);
 
   return {
     contours: shape,
@@ -280,7 +333,14 @@ export function breaksIn(
   if (!cuts?.split.on || strokes.length < 2 || !loaded()) {
     return { knives: [], parted: new Set() };
   }
-  return splitPlan(strokes, cuts.split, Math.max(scale.stem, 1), scale.xHeight);
+  const { knives, parted } = splitPlan(
+    strokes,
+    cuts.split,
+    Math.max(scale.stem, 1),
+    scale.xHeight,
+    scale.joins,
+  );
+  return { knives, parted };
 }
 
 /**
@@ -354,6 +414,190 @@ function hairlineOf(strokes: Stroke[], stem: number): number {
 }
 
 /**
+ * The letter less the wedges a knife left of a stroke.
+ *
+ * A band laid across a join at a slant can cut most of a stroke away and
+ * leave the corner of it standing on the next one: the crossbar of an A
+ * under slanted slots left a tongue of ink on the inner edge of its leg,
+ * tapering to a point. What a knife leaves of a stroke's own ink -- the part
+ * no other stroke covers -- is kept only if it is as thick as a good share of
+ * that stroke's pen. Measured stroke by stroke, so the hairlines of a contrast
+ * face, which are as thick as their own pen, are never taken for one.
+ */
+function withoutWedges(shape: Contour[], strokes: Stroke[], knife: Contour[]): Contour[] {
+  if (knife.length === 0 || strokes.length < 2) return shape;
+  const boxes = knife.map((one) => contoursBounds([one]));
+  const cutters = unite(knife, "winding");
+  const lines = cutters.map((one) => flattenContour(one, 8));
+  // Swept only when needed, and boxed from the spine and the pen till then.
+  const cache = new Map<number, Contour[]>();
+  const sweptOf = (at: number): Contour[] => {
+    let one = cache.get(at);
+    if (!one) {
+      one = unite(sweep(strokes[at]), "winding");
+      cache.set(at, one);
+    }
+    return one;
+  };
+  // Where each stroke meets another: the points on the two spines closest to
+  // each other, where they come within their pens' reach.
+  const spines = strokes.map((stroke) => alongSpine(stroke.spine, 16));
+  const joinsOf = (index: number): Array<{ at: Vec2; other: number }> => {
+    const found: Array<{ at: Vec2; other: number }> = [];
+    for (let other = 0; other < strokes.length; other++) {
+      if (other === index) continue;
+      const reach = (strokes[index].pen.weight + strokes[other].pen.weight) * 0.6;
+      let best = Infinity;
+      let where: Vec2 | null = null;
+      for (const a of spines[index]) {
+        for (const b of spines[other]) {
+          const apart = Math.hypot(a.x - b.x, a.y - b.y);
+          if (apart < best) {
+            best = apart;
+            where = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          }
+        }
+      }
+      if (where && best < reach) found.push({ at: where, other });
+    }
+    return found;
+  };
+  // Whether a knife's edge passes through a box: a wedge is only ever left
+  // where one crosses a join, and on most letters none comes near one.
+  const edgeIn = (box: Bounds): boolean =>
+    lines.some((line) =>
+      line.some((a, at) => {
+        const b = line[(at + 1) % line.length];
+        if (Math.max(a.x, b.x) < box.xMin || Math.min(a.x, b.x) > box.xMax) return false;
+        if (Math.max(a.y, b.y) < box.yMin || Math.min(a.y, b.y) > box.yMax) return false;
+        return true;
+      }),
+    );
+  const wedges: Contour[] = [];
+  for (let index = 0; index < strokes.length; index++) {
+    const pen = strokes[index].pen;
+    const thin = pen.weight * (1 - Math.min(Math.max(pen.contrast, 0), 0.95));
+    if (thin < 4) continue;
+    const around = pen.weight * 1.5;
+    const joins = joinsOf(index);
+    const crossed = joins.some(({ at: point }) =>
+      edgeIn({
+        xMin: point.x - around,
+        xMax: point.x + around,
+        yMin: point.y - around,
+        yMax: point.y + around,
+      }),
+    );
+    if (!crossed) continue;
+    // Only the strokes it meets can cover any of it.
+    const others = joins.flatMap(({ other }) => sweptOf(other));
+    const own = subtract(sweptOf(index), others, "winding");
+    // What the knife left of it: the letter as cut, where only this stroke is.
+    const left = subtract(own, cutters, "winding").filter((one) => contourArea(one) > 1);
+    for (const piece of left) {
+      if (contourArea(piece) > thin * thin * 1.5) continue;
+      const box = contoursBounds([piece]);
+      const near = boxes.some(
+        (other) =>
+          other.xMin - thin < box.xMax &&
+          other.xMax + thin > box.xMin &&
+          other.yMin - thin < box.yMax &&
+          other.yMax + thin > box.yMin,
+      );
+      if (!near) continue;
+      const core = eroded([piece], thin * 0.2);
+      if (core.reduce((total, one) => total + Math.abs(contourArea(one)), 0) >= 1) continue;
+      // Made thin by the knife, not drawn thin: the knife's edge runs along it.
+      // The crotch where a bowl leaves its stem tapers the same way uncut, and
+      // a band meets it only at its ends.
+      if (onKnife(piece, lines) > 0.3) wedges.push(piece);
+    }
+  }
+  if (wedges.length === 0) return shape;
+  const inkOf = (contours: Contour[]) =>
+    contours.reduce((total, contour) => total + contourArea(contour), 0);
+  const holesOf = (contours: Contour[]) => contours.filter((one) => contourArea(one) < 0).length;
+  /*
+   * Each taken only if the letter is no worse for it: no ink it needs, no
+   * piece broken off and no counter closed. Where a band crosses the top of
+   * a heavy m's middle stem, the corner the arch leaves on it is as thin as a
+   * tongue, but it is the stem's own edge: taken, it left a step in the edge
+   * and a counter pinched shut at its point.
+   */
+  let trimmed = shape;
+  for (const wedge of wedges) {
+    const next = subtract(trimmed, [wedge], "winding");
+    if (inkOf(next) < inkOf(shape) * 0.97) continue;
+    if (pieces(next) > pieces(trimmed) || holesOf(next) > holesOf(trimmed)) continue;
+    trimmed = next;
+  }
+  return trimmed;
+}
+
+/** How much of an outline, by length, runs along some closed polylines. */
+function onKnife(piece: Contour, lines: Vec2[][]): number {
+  const points = flattenContour(piece, 8);
+  const near = (point: Vec2): boolean => {
+    for (const line of lines) {
+      for (let index = 0; index < line.length; index++) {
+        const a = line[index];
+        const b = line[(index + 1) % line.length];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const run = dx * dx + dy * dy;
+        const t =
+          run > 0
+            ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / run))
+            : 0;
+        if (Math.hypot(point.x - a.x - dx * t, point.y - a.y - dy * t) < 1) return true;
+      }
+    }
+    return false;
+  };
+  let along = 0;
+  let total = 0;
+  for (let index = 0; index < points.length; index++) {
+    const a = points[index];
+    const b = points[(index + 1) % points.length];
+    const run = Math.hypot(b.x - a.x, b.y - a.y);
+    total += run;
+    if (near({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })) along += run;
+  }
+  return total > 0 ? along / total : 0;
+}
+
+/**
+ * The letter with the notches of paper a straight knife left filled back in.
+ *
+ * Where a band's edge passes just by the crotch of a join -- under the leg of
+ * a Black k, where it leaves the stem -- the paper of the crotch stands into
+ * the edge of the band as a small V, a spike of white a few units across. It
+ * is found as paper lying wholly within a thin strip along the knife: a
+ * counter or the paper round the letter runs on out of the strip, a notch
+ * closes inside it, and is no bigger than the strip is deep -- the paper of a
+ * counter beside a band can lie wholly in the strip too, but as a long run.
+ * Only the slots: the breaks' gaps are cut by more than their own knives, and
+ * the paper those leave is a gap, not a notch.
+ */
+function withoutNotches(shape: Contour[], knife: Contour[], depth: number): Contour[] {
+  if (knife.length === 0 || depth < 1) return shape;
+  const cutters = unite(knife, "winding");
+  // The paper in the strip: the strip less the knife and the letter, at once.
+  const paper = subtract(outlined(cutters, depth), [...cutters, ...shape], "winding").filter(
+    (one) => contourArea(one) > 0 && contourArea(one) < depth * depth,
+  );
+  if (paper.length === 0) return shape;
+  const inner = outlined(cutters, depth * 0.9);
+  const notches = paper.filter((one) =>
+    subtract([one], inner, "winding").every((rest) => Math.abs(contourArea(rest)) < 1),
+  );
+  if (notches.length === 0) return shape;
+  // Filling a notch never joins what the cut parted.
+  const filled = unite([...shape, ...notches], "winding", "whole");
+  return pieces(filled) < pieces(shape) ? shape : filled;
+}
+
+/**
  * The letter less the slivers a knife shaved off it: ink thinner than twice
  * `reach` standing where a knife passed.
  *
@@ -385,7 +629,7 @@ function withoutSlivers(shape: Contour[], knife: Contour[], reach: number): Cont
     );
   });
   if (near.length === 0) return shape;
-  const trimmed = subtract(shape, near, "winding");
+  const trimmed = take(shape, near);
   // Never more than slivers: a letter that lost a fifth of itself was opened
   // wrongly, and is handed back as the knife left it.
   const inkOf = (contours: Contour[]) =>
@@ -518,7 +762,50 @@ function convexHull(points: Vec2[]): Vec2[] {
 }
 
 function take(shape: Contour[], tool: Contour[]): Contour[] {
-  return tool.length === 0 ? shape : subtract(shape, tool, "winding");
+  const cut = taken(shape, tool);
+  /*
+   * And again, on a knife set to an eighth of a unit or finer, if the first
+   * came out folded over on itself where the letter went in clean. With a
+   * shadow cast first, a gap's edge ran all but along the curve of the
+   * shadow's edge, and the boolean library handed back an outline doubled
+   * back along it, and a shard of the shadow standing in the gap. Moved by
+   * less than anything on the page, the knife cuts true.
+   */
+  const folded = (contours: Contour[]) => contours.some((contour) => crossesItself(contour));
+  if (tool.length === 0 || !folded(cut) || folded(shape)) return cut;
+  for (const per of [8, 16, 32]) {
+    const again = taken(
+      shape,
+      tool.map((contour) => onGrid(contour, per)),
+    );
+    if (!folded(again)) return again;
+  }
+  return cut;
+}
+
+function taken(shape: Contour[], tool: Contour[]): Contour[] {
+  if (tool.length === 0) return shape;
+  const cut = subtract(shape, tool, "winding");
+  /*
+   * A subtraction can take no more than the knife covers. When the boolean
+   * library loses its way on a knife that grazes an edge it can hand back a
+   * letter missing a whole stroke -- the stem of a hairline Sans a went with
+   * a sliver cut beside its foot. Then the pieces are taken one at a time,
+   * and one that does the same on its own is left out.
+   */
+  const ink = (contours: Contour[]) =>
+    contours.reduce((total, contour) => total + contourArea(contour), 0);
+  // Counted piece by piece, overlaps twice: a bound, and no boolean.
+  const most = (knife: Contour[]) =>
+    knife.reduce((total, contour) => total + Math.abs(contourArea(contour)), 0) * 1.02 + 1;
+  const before = ink(shape);
+  if (before - ink(cut) <= most(tool)) return cut;
+  let left = shape;
+  for (const piece of tool) {
+    const next = subtract(left, [piece], "winding");
+    if (ink(left) - ink(next) <= most([piece])) left = next;
+  }
+  return left;
 }
 
 // ---------------------------------------------------------------------------
@@ -581,7 +868,13 @@ function slotTool(bounds: Bounds, slot: Cuts["slot"], stem: number, scale: CutSc
  * between them is a point. That is what makes the edge read as a saw rather
  * than as a row of holes.
  */
-function toothTool(bounds: Bounds, tooth: Cuts["tooth"], stem: number, scale: CutScale): Contour[] {
+function toothTool(
+  bounds: Bounds,
+  tooth: Cuts["tooth"],
+  stem: number,
+  scale: CutScale,
+  shape: Contour[] = [],
+): Contour[] {
   const pitch = Math.max(tooth.pitch * scale.xHeight, stem * 0.1);
   const depth = tooth.depth * stem;
   if (depth <= 0) return [];
@@ -614,20 +907,62 @@ function toothTool(bounds: Bounds, tooth: Cuts["tooth"], stem: number, scale: Cu
     const outside = edge - inward * depth;
     const apex = edge + inward * depth;
 
+    /*
+     * Where the letter's own edge is at a height, on this side. The comb
+     * used to be laid along the letter's bounds, and only what reached them
+     * was cut: round an o the teeth bit into the curve above and below its
+     * widest point and left a thin prong of ink between each two, and on a
+     * serif face they nicked the serifs' tips and never reached the stem.
+     * Each tooth is set against the edge where it falls instead.
+     */
+    // And how thick the ink is there, from that edge in: a tooth that bites
+    // half way through a hairline cuts it in two.
+    const edgeAt = (at: number): { edge: number; thick: number } | null => {
+      const runs = inkRunsAt(shape, at, upright ? "y" : "x");
+      if (runs.length === 0) return null;
+      const run = runs.reduce((best, one) =>
+        inward > 0 ? (one[0] < best[0] ? one : best) : one[1] > best[1] ? one : best,
+      );
+      return { edge: inward > 0 ? run[0] : run[1], thick: run[1] - run[0] };
+    };
     for (let index = 0; index < teeth; index++) {
       const start = from + step * index;
       const middle = start + step / 2;
+      let base = outside;
+      let tip = apex;
+      if (shape.length > 0) {
+        const measured = [start + step * 0.1, middle, start + step * 0.9]
+          .map(edgeAt)
+          .filter((one) => one !== null);
+        if (measured.length === 0) continue;
+        if (measured.some((one) => one.thick < depth * 2)) continue;
+        const found = measured.map((one) => one.edge);
+        // The outermost of them, so the tooth starts clear of the ink.
+        const outer = inward > 0 ? Math.min(...found) : Math.max(...found);
+        const inner = inward > 0 ? Math.max(...found) : Math.min(...found);
+        // Not where the edge runs across the comb rather than along it: the
+        // top and bottom of a round, where a tooth would cut into a cap.
+        if (Math.abs(inner - outer) > step * 0.3) continue;
+        // And only the outside of the letter: an edge a stem or so in from
+        // its bounds, as a serif face's stem is behind its serifs. Further in
+        // it is some inner stroke -- the ascender of a b, whose far side the
+        // other comb was already sawing -- and teeth from both sides pinched
+        // it to a thread.
+        if (Math.abs(outer - edge) > stem * 1.2) continue;
+        base = outer - inward * depth;
+        tip = outer + inward * depth;
+      }
       cut.push(
         upright
           ? poly([
-              { x: outside, y: start },
-              { x: apex, y: middle },
-              { x: outside, y: start + step },
+              { x: base, y: start },
+              { x: tip, y: middle },
+              { x: base, y: start + step },
             ])
           : poly([
-              { x: start, y: outside },
-              { x: middle, y: apex },
-              { x: start + step, y: outside },
+              { x: start, y: base },
+              { x: middle, y: tip },
+              { x: start + step, y: base },
             ]),
       );
     }
@@ -685,7 +1020,14 @@ function inlineTool(
    * off at a slant at the foot of the m.
    */
   const core = eroded(shape, wall);
-  if (core.length === 0 || strokes.length === 0) return core;
+  // A groove shorter than it is wide is not a groove: see below. A letter
+  // from a font file has no skeleton to hold its grooves back at the ends,
+  // but the serifs of a Lora E left flecks of groove just the same.
+  const least = width * width;
+  if (core.length === 0) return core;
+  if (strokes.length === 0) {
+    return core.filter((one) => contourArea(one) <= 0 || contourArea(one) >= least);
+  }
   const back = inline.inset * stem;
 
   const breakouts: Contour[] = [];
@@ -737,7 +1079,10 @@ function inlineTool(
       // Far enough either side of the end of the spine to hold a cut up to
       // fifty degrees off square, and no further: past that it found the
       // paper under the arch of an a, and the bowl below it.
-      const tip = subtract([box(-half * 1.2, half * 1.2, half * 0.9)], shape, "winding").filter(
+      // And only across the middle of the stroke, where the groove runs: on
+      // a curving terminal the box also held the paper beside the stroke,
+      // and grown by the inset it bit the groove's side where it ended.
+      const tip = subtract([box(-half * 1.2, half * 1.2, half * 0.5)], shape, "winding").filter(
         (one) => contourArea(one) > 0,
       );
       if (back > 0) {
@@ -783,7 +1128,6 @@ function inlineTool(
    * apart from the rest -- a white fleck beside the ends of a Serif e and
    * s. A groove shorter than it is wide is not a groove.
    */
-  const least = width * width;
   return [
     ...held.filter((one) => contourArea(one) <= 0 || contourArea(one) >= least),
     ...breakouts,
@@ -848,7 +1192,8 @@ function splitTool(
   stem: number,
   xHeight: number,
   cast?: CastFirst,
-): Contour[] {
+  joins = false,
+): { knives: Contour[]; lips: Contour[] } {
   /*
    * Cut through what the cast put on, when it went first.
    *
@@ -869,7 +1214,8 @@ function splitTool(
           pen: { ...stroke.pen, weight: stroke.pen.weight + grown * 2.4 },
         }))
       : strokes;
-  return splitPlan(fat, split, stem, xHeight).knives;
+  const { knives, lips } = splitPlan(fat, split, stem, xHeight, joins);
+  return { knives, lips };
 }
 
 /** The knife the breaks are cut with, and which pairs of strokes it parts. */
@@ -878,7 +1224,8 @@ function splitPlan(
   split: Cuts["split"],
   stem: number,
   xHeight: number,
-): { knives: Contour[]; parted: Set<string> } {
+  joins = false,
+): { knives: Contour[]; parted: Set<string>; lips: Contour[] } {
   const gap = split.size * stem;
   /*
    * The least a break may cut free. The exit stroke of a script H or A is a
@@ -892,7 +1239,7 @@ function splitPlan(
    * few units shorter than its stem and as thick as a block.
    */
   const least = xHeight * 0.3;
-  if (gap <= 0 || strokes.length < 2) return { knives: [], parted: new Set() };
+  if (gap <= 0 || strokes.length < 2) return { knives: [], parted: new Set(), lips: [] };
 
   const near = stem * 1.15;
   const samples = strokes.map((stroke) => alongSpine(stroke.spine, SAMPLES));
@@ -1026,22 +1373,43 @@ function splitPlan(
        * bowl is drawn round, and it is the bowl that leaves.
        */
       const bends = [arcsIn(strokes[one]), arcsIn(strokes[other])];
+      /*
+       * Neither at its own end is a crossing, and one of them turning a
+       * corner right there is the point of a chevron laid against a stem: the
+       * arm and leg of a Display k are one stroke with its point on the stem.
+       * Settled by ends it was the stem that gave way, and the break took the
+       * top off the stem instead of the arm off it.
+       */
+      const cornered = [
+        cornerNear(strokes[one], (where[0] / SAMPLES) * lengths[one], stem),
+        cornerNear(strokes[other], (where[1] / SAMPLES) * lengths[other], stem),
+      ];
+      const crossing =
+        ends[0] > 0.15 &&
+        ends[1] > 0.15 &&
+        cornered[0] !== cornered[1] &&
+        isStem(strokes[cornered[0] ? other : one], strokes[cornered[0] ? one : other], stem) &&
+        strokes[cornered[0] ? other : one].spine.segments.length === 1;
       const gives =
         rings[0] !== rings[1]
           ? rings[0]
             ? other
             : one
-          : ends[0] !== ends[1]
-            ? ends[0] < ends[1]
+          : crossing
+            ? cornered[0]
               ? one
               : other
-            : bends[0] !== bends[1]
-              ? bends[0] > bends[1]
+            : ends[0] !== ends[1]
+              ? ends[0] < ends[1]
                 ? one
                 : other
-              : lengths[one] <= lengths[other]
-                ? one
-                : other;
+              : bends[0] !== bends[1]
+                ? bends[0] > bends[1]
+                  ? one
+                  : other
+                : lengths[one] <= lengths[other]
+                  ? one
+                  : other;
       const keeps = gives === one ? other : one;
       /*
        * A hairline never gives way to a bowl.
@@ -1067,7 +1435,34 @@ function splitPlan(
         gap,
         stem,
         strokes.filter((_, at) => at !== gives && at !== keeps),
+        crossing,
       );
+      /*
+       * A chevron leaves the stem both ways from its point, and each limb
+       * gets a gap: with only the arm's, the foot of the Display k's leg
+       * stood out past the cut.
+       */
+      if (crossing) {
+        const limb = gapBeside(
+          strokes[gives],
+          strokes[keeps],
+          index / SAMPLES,
+          -way,
+          gap,
+          stem,
+          strokes.filter((_, at) => at !== gives && at !== keeps),
+          true,
+        );
+        if (limb) {
+          found.push({
+            limb: true,
+            ...limb,
+            stroke: gives,
+            keeps,
+            meet: samples[keeps][gives === one ? where[1] : where[0]],
+          });
+        }
+      }
       const freed = placed ? (way > 0 ? lengths[gives] - placed.at : placed.at) - gap / 2 : 0;
       // Only a loose end: a piece held at its far end too is not cut free.
       const loose = !nearAnother(samples[gives][way > 0 ? SAMPLES : 0], strokes, gives, stem * 0.5);
@@ -1080,8 +1475,61 @@ function splitPlan(
           x: -(tip.y - root.y) / reach,
           y: (tip.x - root.x) / reach,
         });
-      const flick = freed > stem || wide < stem * 0.4 || arcsIn(strokes[gives]) > 0;
-      if (placed && loose && freed < least && flick) continue;
+      // Nor a curl: the arm of a Display r bends over and ends in a slant,
+      // and cut off short of a stem it was a wedge.
+      const curl = arcsIn(strokes[gives]) > 0 && freed < stem * 0.75;
+      // And only off the end of the stroke it leaves, as an exit stroke
+      // leaves the foot of a stem: the bar of an f and the middle arm of an
+      // E leave theirs part way up, and come off however short they are.
+      const offTheEnd = ends[gives === one ? 1 : 0] < 0.2;
+      /*
+       * And turning back on it: the exit of a script H runs down the stem and
+       * flicks back up. An arm that turns off the end of a stem at a corner
+       * is the top of an E, and comes off -- with a rim thrown first the arms
+       * are fatter, the gap sits further out, and the E came back whole.
+       */
+      const line = samples[keeps];
+      const k = gives === one ? where[1] : where[0];
+      const inward = k < SAMPLES / 2 ? 1 : -1;
+      const into = { x: line[k].x - line[k + inward].x, y: line[k].y - line[k + inward].y };
+      const leaving = { x: tip.x - root.x, y: tip.y - root.y };
+      const turnsBack =
+        (into.x * leaving.x + into.y * leaving.y) /
+          (Math.hypot(into.x, into.y) * Math.hypot(leaving.x, leaving.y) || 1) <
+        -0.2;
+      /*
+       * Drawn round counts as a flick on its own: a script's lead-out stops
+       * half its weld past the seam, and the Formal Script H's broad-nib exit
+       * came out a few units shorter than its stem and as thick as a block.
+       */
+      const flick =
+        offTheEnd && turnsBack && (freed > stem || wide < stem * 0.4 || arcsIn(strokes[gives]) > 0);
+      /*
+       * Or, on a running hand, the stroke that carries on to the next letter
+       * or comes in from the last, wherever it leaves from: it ends furthest
+       * out of anything on that side, low down where the join is made. The
+       * exit of a Roundhand u leaves its last stem a third of the way up,
+       * which by its shape alone is the middle arm of an E.
+       */
+      const exits =
+        joins &&
+        tip.y < xHeight * 0.5 &&
+        (tip.x > root.x
+          ? samples.every((line) => line.every((point) => point.x <= tip.x + stem * 0.5))
+          : samples.every((line) => line.every((point) => point.x >= tip.x - stem * 0.5)));
+      // A flick that turns back up its stroke is a script's exit, and stays
+      // on up to about half the x-height: past three tenths the Roundhand's
+      // and the Formal Script's longer exits and entries came off as dashes.
+      // Six tenths rather than a bare half and a bit: the Roundhand a's
+      // lead-in, drawn to reach the seam of the letter before, is 0.551 of
+      // the x-height, and at 0.55 it came off by half a unit.
+      if (
+        placed &&
+        loose &&
+        (((flick || exits) && freed < xHeight * 0.6) || (curl && freed < least))
+      ) {
+        continue;
+      }
       if (placed) {
         const meet = samples[keeps][gives === one ? where[1] : where[0]];
         found.push({ ...placed, stroke: gives, keeps, meet });
@@ -1174,6 +1622,8 @@ function splitPlan(
       kept.some(
         (other) =>
           other.stroke === one.stroke &&
+          // The two limbs of a chevron leave from its one point.
+          !(one.limb || other.limb) &&
           Math.abs(other.at - one.at) < gap + Math.max(spare, stem * 1.2),
       )
     ) {
@@ -1209,20 +1659,34 @@ function splitPlan(
     const bands = cutting.get(stroke) ?? [];
     if (bands.length === 0) return [];
     const others = inkBut(stroke);
-    return facingOut(others.length === 0 ? bands : subtract(bands, others, "winding"));
+    if (others.length === 0) return facingOut(bands);
+    // A chevron's two bands meet at its point, and taken out of the stem
+    // together the boolean lost both: each is kept off it on its own.
+    if (kept.some((one) => one.stroke === stroke && one.limb)) {
+      return bands.flatMap((band) => facingOut(subtract([band], others, "winding")));
+    }
+    return facingOut(subtract(bands, others, "winding"));
   });
   /*
    * And the stroke's own ink between the join and the gap, past the edge of
-   * the stroke that stays. Cut on its own rather than with the bands: a
-   * boolean that fails on it hands back nothing, and must not take the band
-   * down with it.
+   * the stroke that stays. Kept apart from the bands and cut after them: a
+   * boolean that loses its way on it must not take a band down with it.
    */
+  const lips: Contour[] = [];
   for (const one of kept) {
     // Not a bowl's: the side it lays along its stem goes with the bridge.
     if (!one.root || one.root.length === 0 || strokes[one.stroke].spine.closed) continue;
     const others = inkBut(one.stroke);
-    const lip = facingOut(subtract(unite(one.root, "winding"), others, "winding"));
-    knives.push(...lip);
+    // Hugging the other stroke's edge only. A lip is a sliver standing a few
+    // units out of the side; further out is what the break leaves standing,
+    // and taken too the point of a Display k's chevron was cut through and a
+    // script bowl was hollowed along its stem.
+    const beside = sweep({
+      ...strokes[one.keeps],
+      pen: { ...strokes[one.keeps].pen, weight: strokes[one.keeps].pen.weight + gap * 2 },
+    });
+    const near = intersect(unite(one.root, "winding"), beside, "winding");
+    lips.push(...facingOut(subtract(near, others, "winding")));
   }
   for (const bridge of bridges) {
     const others = inkBut(bridge.stroke);
@@ -1250,7 +1714,7 @@ function splitPlan(
     ...joined.map((one) => pairKey(one.stroke, one.keeps)),
     ...bridges.map((one) => pairKey(one.stroke, one.keeps)),
   ]);
-  return { knives, parted };
+  return { knives, parted, lips };
 }
 
 /** The same name for a pair of strokes whichever way round they are given. */
@@ -1343,6 +1807,8 @@ function startingOpposite(ring: Stroke, share: number): Stroke {
 /** A gap in one stroke: where along it, and the band that cuts it. */
 interface Gap {
   stroke: number;
+  /** The second limb of a chevron, parted from the same point as the first. */
+  limb?: boolean;
   /** The stroke it gives way to, and the place on that stroke's spine it met it. */
   keeps: number;
   meet: Vec2;
@@ -1406,6 +1872,8 @@ function gapBeside(
   // The rest of the letter, for asking whether what is left past the gap is
   // held by another stroke.
   others: Stroke[] = [],
+  // Leaving from the point of a chevron, whose other limb lies behind.
+  chevron = false,
 ): {
   at: number;
   band: Contour;
@@ -1499,6 +1967,9 @@ function gapBeside(
       let inside = 0;
       for (let other = 0; other <= FINE; other++) {
         if (Math.abs(other * step - at) > crossing * 2) continue;
+        // Past where the search set out only: behind it is the stroke's
+        // other limb -- the leg of a chevron whose point is on the stem.
+        if (chevron && (other - start) * way < 0) continue;
         const there = nearestOnAny(walls, path[other]);
         // On this side of the other stroke only: a bar that starts past the
         // middle of the leg it leaves is also that far off it on the far side.
@@ -1548,14 +2019,21 @@ function gapBeside(
       // the foot of an arch starts down in its stem, below where it came
       // closest to the stem's spine.
       const tail = way > 0 ? 0 : FINE;
-      const from0 = buried(path[tail], [keeping], -1) ? tail : start;
+      // Only a foot a step or so long: the foot of a Sans a's arch runs all
+      // the way down the stem it is drawn over, and at a hairline weight the
+      // cut took the stem with it.
+      const from0 =
+        buried(path[tail], [keeping], -1) && Math.abs(tail * step - at) < stem * 3 ? tail : start;
       const joint = spineBetween(
         giving.spine,
         Math.min(from0 * step, at),
         Math.max(from0 * step, at),
       );
+      // Only where the stroke starts down inside the other: the foot of an
+      // arch in its stem. Elsewhere there is no lip, and a script's loops
+      // and descenders were carved up by one.
       const root =
-        joint.segments.length > 0
+        from0 === tail && joint.segments.length > 0
           ? sweep({
               spine: joint,
               pen: { ...giving.pen, weight: giving.pen.weight * 1.2 + 2 },
@@ -1564,6 +2042,34 @@ function gapBeside(
               join: "round",
             })
           : [];
+      /*
+       * No wider than the counter the stroke goes on to make. On a Black n
+       * the gap is wider than the counter under the arch, and laid flush on
+       * the stem it bit the top of the leg on the far side, which stepped in
+       * where the band stopped. Measured off the stroke itself further on,
+       * clear of the join, and kept flush on the stem.
+       */
+      let room = Infinity;
+      for (let other = 0; other <= FINE; other++) {
+        if (Math.abs(other * step - at) <= around) continue;
+        const there = nearestOn(wall, path[other]);
+        const out = away(there.point, path[other]);
+        if (!out || out.x * side.x + out.y * side.y <= 0.9) continue;
+        // Out beside it, not in it: an arch can start down inside its stem.
+        if (there.distance <= half) continue;
+        // Only where it runs alongside, as the leg does: the shoulder
+        // coming round to it is the join again.
+        const run = away(path[Math.max(0, other - 1)], path[Math.min(FINE, other + 1)]);
+        if (!run || Math.abs(run.x * there.along.x + run.y * there.along.y) < 0.97) continue;
+        const own = halfWidth(giving.pen, { x: -there.along.y, y: there.along.x });
+        const wide = halfWidth(keeping.pen, { x: -there.along.y, y: there.along.x });
+        room = Math.min(room, there.distance - own - wide);
+      }
+      const narrow = Math.max(gap * 0.6, Math.min(gap, room - clearance)) / 2;
+      if (narrow < g) {
+        centre = { x: centre.x - side.x * (g - narrow), y: centre.y - side.y * (g - narrow) };
+      }
+      const width = Math.min(g, narrow);
       return {
         at,
         local,
@@ -1571,20 +2077,20 @@ function gapBeside(
         ...(column ? { column } : {}),
         band: poly([
           {
-            x: centre.x - side.x * g - along.x * reach,
-            y: centre.y - side.y * g - along.y * reach,
+            x: centre.x - side.x * width - along.x * reach,
+            y: centre.y - side.y * width - along.y * reach,
           },
           {
-            x: centre.x + side.x * g - along.x * reach,
-            y: centre.y + side.y * g - along.y * reach,
+            x: centre.x + side.x * width - along.x * reach,
+            y: centre.y + side.y * width - along.y * reach,
           },
           {
-            x: centre.x + side.x * g + along.x * reach,
-            y: centre.y + side.y * g + along.y * reach,
+            x: centre.x + side.x * width + along.x * reach,
+            y: centre.y + side.y * width + along.y * reach,
           },
           {
-            x: centre.x - side.x * g + along.x * reach,
-            y: centre.y - side.y * g + along.y * reach,
+            x: centre.x - side.x * width + along.x * reach,
+            y: centre.y - side.y * width + along.y * reach,
           },
         ]),
       };
@@ -1718,8 +2224,67 @@ function atItsEnd(index: number): number {
 }
 
 /** How much of a stroke is drawn round rather than straight. */
+/**
+ * Whether a stroke's spine comes to a point, one straight segment turning back
+ * into the next, within half a stem of a place along it.
+ */
+function cornerNear(stroke: Stroke, along: number, stem: number): boolean {
+  let run = 0;
+  const segments = stroke.spine.segments;
+  for (let index = 0; index + 1 < segments.length; index++) {
+    run += spineLength({ segments: [segments[index]], closed: false });
+    if (Math.abs(run - along) > stem * 0.5) continue;
+    const a = segments[index];
+    const b = segments[index + 1];
+    if (a.kind !== "line" || b.kind !== "line") continue;
+    const u = { x: a.to.x - a.from.x, y: a.to.y - a.from.y };
+    const v = { x: b.to.x - b.from.x, y: b.to.y - b.from.y };
+    const cos = (u.x * v.x + u.y * v.y) / (Math.hypot(u.x, u.y) * Math.hypot(v.x, v.y) || 1);
+    // Turned back on itself by more than a right angle: a point, not a bend.
+    if (cos < 0) return true;
+  }
+  return false;
+}
+
 function arcsIn(stroke: Stroke): number {
   return stroke.spine.segments.filter((segment) => segment.kind === "arc").length;
+}
+
+/**
+ * The letter with its corners cut off -- none of them where cutting it off
+ * breaks a stroke away.
+ *
+ * On a contrast script the corner where a swash leaves the foot of a Black E
+ * stands on a neck thinner than the cut laid across it, and the tail came
+ * away as a piece of its own. A corner is only ever meant to lose its point,
+ * so a cut that touches two of the pieces the letter came apart into is left
+ * off, and its corner kept square.
+ */
+function chamferedOff(shape: Contour[], tool: Contour[], corners: Vec2[]): Contour[] {
+  const cut = take(shape, tool);
+  if (tool.length === 0 || piecesOf(cut) <= piecesOf(shape)) return cut;
+  const solids = cut.filter((one) => contourArea(one) > 0).map((one) => contoursBounds([one]));
+  const bridging = tool.map((one) => {
+    const box = contoursBounds([one]);
+    return (
+      solids.filter(
+        (other) =>
+          other.xMin - 1 < box.xMax &&
+          other.xMax + 1 > box.xMin &&
+          other.yMin - 1 < box.yMax &&
+          other.yMax + 1 > box.yMin,
+      ).length >= 2
+    );
+  });
+  if (!bridging.some(Boolean)) return cut;
+  const again = take(
+    shape,
+    tool.filter((_, at) => !bridging[at]),
+  );
+  if (piecesOf(again) >= piecesOf(cut)) return cut;
+  const kept = corners.filter((_, at) => !bridging[at]);
+  corners.splice(0, corners.length, ...kept);
+  return again;
 }
 
 /**
@@ -1889,7 +2454,13 @@ function alongEdge(from: GlyphNode, to: GlyphNode, by: number, way: "back" | "fo
  * dozen units across, and a diamond that size is a printing fault rather than
  * a decision.
  */
-function motifCut(shape: Contour[], motif: Cuts["motif"], stem: number): Contour[] {
+function motifCut(
+  shape: Contour[],
+  motif: Cuts["motif"],
+  stem: number,
+  // The figures set in, for anything after that has to know: see `figuresOf`.
+  figures: Contour[] = [],
+): Contour[] {
   const holes = shape.filter((contour) => contourArea(contour) < 0);
   if (holes.length === 0) return shape;
 
@@ -1993,6 +2564,7 @@ function motifCut(shape: Contour[], motif: Cuts["motif"], stem: number): Contour
     shapes.push(...(size > 1 ? intersect(drawn, solid, "winding") : drawn));
   }
   const filled = [...solid, ...kept];
+  figures.push(...shapes);
   return shapes.length === 0 ? filled : subtract(filled, shapes, "winding");
 }
 
