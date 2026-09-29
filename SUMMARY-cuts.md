@@ -101,9 +101,7 @@ Each leftover from the second round was fixed or checked and documented. Before 
   - It also tests a few degrees either side of the face's slant. A running hand leans each letter by its own amount after the effects, and the Formal Script y under the inline and fillets crossed at its own lean.
   - Crumbs under a thousandth of the letter's ink are dropped after untangling. The smallest counter a letter draws on purpose, under a Serif t's flag, is eight times that.
 
-  In the final grids, two cases are still flagged:
-  - the Formal Script s with fillets, which is the coarse detector's false alarm (the exact test finds no crossing);
-  - three folds with the shadow cast before the breaks (see the known leftovers).
+  At the end of this round, two cases were still flagged: the Formal Script s with fillets, which was the quick detector's false alarm, and three folds with the shadow cast before the breaks. Both are resolved in the fourth round.
 - **Serif g with fillets** (`src/forge/cast.ts`). A fillet grown into a corner too tight for it crossed itself, and its reversed lobe cut a slit into the link. A folded fillet is now left out, and that corner stays as drawn.
 - **Script exits** (`src/forge/cut.ts`). A script's exit or entry that leaves the end of its stroke and turns back on it now stays on up to about half the x-height. The Roundhand and Formal Script n, m and h no longer lose their exits as dashes.
 - **Slots at weight 260** (`src/forge/cut.ts`). A band passing just by the crotch under a Black k's leg left the crotch's paper standing into its edge as a small V. Paper that lies wholly in a thin strip along a slot, and is smaller than the strip is deep, is now filled back in. It is never filled where that would join two pieces the cut parted. Only the slots do this, because paper in a break's gap is the gap itself.
@@ -114,17 +112,48 @@ Each leftover from the second round was fixed or checked and documented. Before 
   - Fillets on letters without a cut are unchanged.
 - **Rim after the inline** (`src/forge/cast.ts`). Found in the final review. The groove counted as the letter's smallest counter, which held the pinhole floor so low that what the rim left of the groove's ends by a terminal stayed as ragged pockets. This showed on the s, e and g of several faces. The groove no longer counts as a counter.
 
+### Fourth round: every weight on every base
+
+The earlier rounds swept Sans and Serif at every weight but the other bases at the default only. This round swept all 21 Draw bases at weights 30, 200 and 260 as well, with every cut and cast alone and in pairs in both orders. It also added a key sheet per face for a visual check (default weight on all 21 faces, and 30, 200 and 260 on Sans and Serif). Before and after images are the fourth group in `docs/polish/cuts/`.
+
+**Cuts** (`src/forge/cut.ts`)
+- **Tongues on slotted joins.** A band laid across a join at a slant cut most of a stroke away and left its corner standing on the next stroke as a tapering tongue: the crossbar of a slotted A on its leg, the arch of a Slab n, the stem under a Serif t's bar. What a knife leaves of a stroke's own ink is now trimmed if it is thinner than a share of that stroke's pen and runs along the knife's edge. A trim that would close a counter or break off a piece is not made: on a heavy Display m it took the middle stem's own corner. Panel: `sans-slots-joins`.
+- **Script exits.** On a running hand, the stroke to or from the next letter now stays on under the breaks wherever it leaves from. The exit of a Roundhand u and the lead-in of its a came off as dashes. Panel: `roundhand-breaks-exits`.
+- **Folds with the shadow first.** A cut that comes out folded over on itself where the letter went in clean is now made again with the knife on a fine grid. This fixes the heavy Sans and Serif d and the Wavy g, listed as leftovers last round.
+- **Chamfer.** The chamfer now leaves a corner square where cutting it off would break a stroke away. The swash of a heavy Formal Script E came off as a piece of its own.
+- **Inline on opened fonts.** Flecks of groove smaller than the groove is wide are dropped.
+
+**Casts** (`src/forge/cast.ts`)
+- **A crash.** A heavy Display m, slotted and then given a shadow or a rim, threw a stack overflow. A counter pinched shut at a point took the piece beside it for an island, and each took the other for inside it, over and over. The rim and shadow now only recurse into islands while the set gets smaller.
+- **Fillets after slots.** Fillets now stay out of everything the cut took away. A fillet grown at a join a slot cut through stood in the band as a bump. Panel: `sans-black-fillets-after-slots`.
+- **Points after slots.** Points are no longer grown at corners a knife made. On a Serif e, o and s every band end grew a star. Panel: `serif-points-after-slots`.
+- **Opened fonts with the cast first.** Where the cast could not reach an opened font's letter (fillets need strokes), the letter was handed on with its winding unresolved. The chamfer then cut the Lora H's crossbar loose, and the counter motif lost the n. Panel: `lora-cast-first`.
+- **Untangling.** An outline is now accepted only when the exact crossing test passes, preferring one the quick test also passes. The quick test samples curves in six and can be wrong either way. Where a leaned letter will not come untangled, the upright one is tried. The cut and the cast also untangle the letter as it will stand leaned, so a chamfered Handwriting s no longer crosses itself.
+- **Groove scraps.** Scraps of the inline's groove smaller than a tenth of a stem square, left by a rim or a shadow, are filled.
+
+**Effects after the cuts** (`src/forge/effects.ts`)
+- **Press after a chamfer.** The press no longer lays a band along a face a cut made. On the chamfered stems of a heavy Formal Script it left a staircase of ticks. Panel: `formal-script-black-chamfer`.
+- **Press after the inline.** The press now measures a grooved stroke with the groove filled, and thins a share of the wall. On a hairline Formal Script it cut the wall through and folded the outline. Panel: `formal-script-hairline-inline`.
+- **Specks.** The effects now sweep for specks again after untangling. A speck stood by the leg of a Formal Script k with points after the chamfer. Panel: `formal-script-chamfer-then-points`.
+- **Motif on a roughened face.** The cut now hands on the motif's figures, and the filter for cracks leaves them alone. The roughened diamond in a Marker e was filled as a crack, and the e came back solid. Panel: `marker-motif`.
+
+**Checked and not faults**
+- **Serif g at 30 and Monoline Script e and t at 200 and 260.** The "lost" holes are pinholes of a few hundred square units or less in the plain drawing. The effects rightly fill them.
+- **Inline on an s at 260.** The groove in each terminal stroke is a short dash of its own, because the groove is laid stroke by stroke and ends square at a join.
+
 ## Tests
 
 The new tests are in `src/forge/cuts-cast-polish.test.ts`, `src/forge/cut.test.ts` and `src/font/cutting.test.ts`. Three older tests described the old behaviour and were updated:
 - The inline used to be kept out of opened fonts. Those tests now use the breaks, which are still skeleton-only.
 - A bowl's groove used to stay separate from the stem's. The test now checks instead that no wall pinches.
 
-`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1772 tests.
+`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1788 tests.
 
 ## Known leftovers
 
 - **Formal Script E foot.** The thin sliver under the foot is in the plain drawing, with or without pressure. It is not made by a cut or a cast.
-- **Roundhand u exit.** The u's exit leaves the last stem about a third of the way up, not at its foot. By its geometry it is the same as the middle arm of an E, which has to come off, so it still comes off as a short dash.
-- **Folds with the shadow first.** With the shadow cast before the breaks, the heavy Sans and Serif d (weight 260) and the Wavy g each fold the outline back over itself along a near-tangent run. The fold has no width and does not show, but it is a fault in the file. Union, grid snapping and a wider knife all fail to remove it. A coarser grid does, but only by moving thousands of units of ink, so it is not used.
+- **Casual Script at 200 and 260.** The plain letters are already drawn in broken fragments at these weights (the p's descender, the t). The cuts and casts work on the fragments, so piece counts change. This is in the base drawing, not the cuts.
+- **Plain letters that cross themselves.** On several bases a few plain letters cross themselves before any cut (for example the Typewriter g, k and s). This is in the base drawing.
+- **Small ticks on a heavy Formal Script chamfer.** At weight 260 the chamfered H is clean, but the end of the E's middle arm and the k's arm keep a small tick where the press meets the cut corner.
+- **Inline with a shadow or rim at weight 260.** The shadow or rim closes most of the groove. What is left open to the paper can show as slivers on a k, g or p.
 - **Shadow cast first.** With the cast first, a shadow followed by breaks shows the breaks as windows in the shadow. This is what "Cast, then cut" means: the block and its shadow are sliced as one.
