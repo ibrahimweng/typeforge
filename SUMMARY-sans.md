@@ -238,6 +238,16 @@ with its right side where Geist's is, and the notch is within a few units of
 Geist's. Its bar lightens as Geist's does (0.67 of the stem at the Black,
 130 deep, where ours was 149) and starts where Geist's does, within 1.
 
+**The l's foot (rebuilt).** Geist's l turns out of its stem on a tail
+lighter than the stem (0.88 of it at the Regular, 0.71 at the Black), round a
+corner smaller than the stem is wide at the Black (about 164 against 194),
+with a small round in the inside corner, the tail running 79 past the stem.
+One run on the stem's pen can't draw that: the Black's tail stood 57 too
+deep and its corner cut 30 further in. The Sans's l is now four strokes: the
+stem, the corner and tail on a round pen as heavy as Geist's tail, the stem's
+right side carried down into the tail, and the inside round. It is within 3
+of Geist's width and within about 5 of its outline at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

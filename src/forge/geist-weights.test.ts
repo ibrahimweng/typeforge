@@ -1324,3 +1324,17 @@ describe("the G's bar", () => {
     expect(Math.abs(filled(contours, 340)[1][0] - left - 350)).toBeLessThan(4);
   });
 });
+
+describe("the l's foot", () => {
+  it("turns out as Geist's does, its tail lighter than its stem", () => {
+    // Geist Black's l: a tail 137 deep on a stem of 194, its outside corner
+    // reaching 43 in from the stem's left 40 over the line, and the tail
+    // running 79 past the stem. Ours ran a stem-deep tail round a corner
+    // that cut 72 in at that height.
+    const { contours } = draw("l", 194);
+    const left = contoursBounds(contours).xMin;
+    expect(Math.abs(filled(contours, 40)[0][0] - left - 43)).toBeLessThan(7);
+    const tail = filled(contours, left + 250, "x");
+    expect(Math.abs(tail[0][1] - 137)).toBeLessThan(6);
+  });
+});

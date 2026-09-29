@@ -902,6 +902,7 @@ export function grotesqueT(style: Style): Recipe {
 export function grotesqueL(style: Style): Recipe {
   const f = frame(style);
   const u = small(f);
+  if (f.style.metrics.xGrows !== undefined) return finish(f, sansEll(f, u));
   const stem = f.edge;
   const foot = f.sits(0);
   const radius = held(f, 50 * u);
@@ -920,6 +921,73 @@ export function grotesqueL(style: Style): Recipe {
       f.end,
     ),
   ]);
+}
+
+/**
+ * The Sans's l, as Geist's: its tail lighter than its stem as the weight
+ * grows (0.88 of it at the Regular, 0.71 at the Black), reaching 79 units
+ * past the stem (88 at the Thin), and turning out of the stem's foot in a
+ * corner smaller than the stem is wide at the Black (164 against 194).
+ * Drawn as one run on the stem's pen, the Black's tail stood 57 units too
+ * deep and its corner cut 30 units further in.
+ *
+ * Three strokes: the stem down to where the corner starts; the corner and
+ * the tail on a round pen as heavy as the tail; and the stem's right side
+ * carried on down into the tail beside the corner.
+ */
+function sansEll(f: Frame, u: number): Stroke[] {
+  const wide = f.half * 2;
+  const left = f.edge - f.half;
+  const tail = wide * atWeights(f, 0.93, 0.88, 0.77, 0.72, 0.71);
+  const out = atWeights(f, 83, 104, 128, 152, 164) * u;
+  const up_ = Math.max(atWeights(f, 80, 100, 126, 153, 166) * u, tail * 1.1);
+  // A round turn, as near round as Geist's is (95 across and 97 up at the
+  // Black), in one piece at every weight.
+  const across = Math.max((out - tail / 2 + up_ - tail / 2) / 2, tail * 0.55);
+  const tall = across;
+  const foot = tail / 2;
+  const toe = left + wide + atWeights(f, 88, 79, 79, 79, 79);
+  const round = { ...f.style.pen, weight: tail, contrast: 0, angle: 0 };
+  // The corner's own frame: its curve is drawn for the tail's pen.
+  const g: Frame = {
+    ...f,
+    half: tail / 2,
+    least: (tail / 2) * 1.06,
+    style: { ...f.style, pen: round },
+  };
+  const turned = ink(
+    g,
+    chain(
+      straight(at(left + foot, Math.max(up_, foot + tall) + 1), at(left + foot, foot + tall)),
+      pinned(turn(at(left + foot + across, foot + tall), across, 180, 270), 1),
+      straight(at(left + foot + across, foot), at(toe, foot)),
+    ),
+    BUTT,
+    f.end,
+  );
+  const side = wide - tail + 2;
+  const beside = ink(
+    f,
+    straight(at(left + wide - side / 2, up_ + 1), at(left + wide - side / 2, foot)),
+    BUTT,
+    BUTT,
+  );
+  /*
+   * And the inside corner filled round, as Geist's is: 33 units at the
+   * Regular, 50 at the Black. The fill is a quarter turn lying between that
+   * round and the square corner it rounds off.
+   */
+  const fillet = atWeights(f, 52, 33, 40, 47, 50) * u;
+  const corner = at(left + wide + fillet, tail + fillet);
+  const reach = fillet * ((1 + Math.SQRT2) / 2);
+  const band = fillet * (Math.SQRT2 - 1) + 2;
+  const filled = ink(f, turn(corner, reach, 180, 270), BUTT, BUTT);
+  return [
+    ink(f, straight(at(f.edge, f.asc), at(f.edge, up_)), f.end, BUTT),
+    inherit(turned, { ...turned, pen: round }),
+    inherit(beside, { ...beside, pen: { ...round, weight: side } }),
+    inherit(filled, { ...filled, pen: { ...round, weight: band } }),
+  ];
 }
 
 /** The one: an upright with a flag that curves off its head. */
