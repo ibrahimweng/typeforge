@@ -121,46 +121,82 @@ All in `src/forge/script.ts`, `src/forge/letters.ts` and
     as the letters.
   - `letters.ts`: a written letter's drawn form keeps its own book page.
 
+## Second round: problems found by a full audit
+
+A sweep of every face, every weight from 20 to 260, every letter and every
+join position, and a read of pangrams set in each face, found more. Images of
+each as it was are in `docs/polish/script/problems/`.
+
+- **The joined `r` read as `v`** after a low join (`quartz` as `quavtz`). It
+  is now drawn as the reference scripts write it: a stem standing the full
+  x-height, a short drooping arm off its top, and a tight foot into the
+  lead-out. A written letter's lead-out now leaves from the end of its last
+  stroke, as `Recipe.leaves` already said.
+- **The loop pass read an overshoot as an ascender.** At the Thin the `r`'s
+  arm crested a few units over the x-height and was asked whether it had an
+  eye, which put the book of the drawn weight's decisions out of step: the
+  Monoline held its `r` back from the variable font. An end now has to clear
+  its line by a tenth of the x-height to count.
+- **Folds on a single weight.** The Monoline's word-end `r` at 217 (a stem bow
+  turning on the tightest radius the wave allows) and the Roundhand's `s` at
+  209 to 212 (a turn tighter than its nib). Bows now turn on a tenth more than
+  the pen, and the Black `s` never tighter than its nib's flattest curve.
+- **`The` set as `Lhe`.** The `T` and the `Y` handed on from the foot of a
+  stem standing on its own. The pen lifts after them now, as after an `I`.
+- **The high join a flat rule at 260.** It now climbs a little once the pen
+  is past a third of the x-height, up to twelve degrees; level at every
+  face's own weight.
+- **The heavy `s` a tenth of an x-height too tall.** A joined face's spine
+  may lie as flat as six degrees before the letter grows, with shorter
+  terminals so the top one stays off the spine. Now within a twentieth.
+- **The heavy `e` closed.** The written `e`'s bar goes lighter as the pen
+  gets heavy, and the eye is placed for that bar. The Roundhand takes the
+  written `e` too. At 260 every joined face's `e` keeps at least 2.5% of an
+  x-height squared of eye (Monoline 1.3% → 6.9%, Roundhand 1.0% → 2.8%).
+- **The Marker and Brush `k`** at 260 had a long thin blade of an arm. Both
+  take the grotesque `k` now.
+- **The tests** now draw every fifth weight and the weights where folds were
+  found, capitals included, and export all five joined faces as variable
+  fonts.
+
 ## Results
 
-- No lowercase letter of any joined face crosses itself in any drawing
-  (plain, high, word start and end) at 30, its own weight, 120, 160, 200 or
-  260. There were 53 before.
+- No letter of any joined face crosses itself in any drawing (plain, high,
+  word start and end) at any whole weight from 20 to 260. There were 53 at
+  the six weights first checked.
 - No join has a corner in it at any of the four weights. There were 217
   before.
-- Variable exports hold back nothing. Monoline 107 → 0, Roundhand 105 → 0;
-  Handwriting, Formal and Casual stay at 0.
+- Variable exports hold back nothing, on all seven hand faces. Monoline
+  107 → 0, Roundhand 105 → 0.
 - Default weights look as they did, apart from the fixed flags and nicks at
   loop joints.
 
 - No ink from one letter's join falls into the counter of the bowl after it
   (every pair of a joined letter into `a c e o d g q`, at every weight).
 - The joined faces' `s` keeps to the lines the `o` keeps to at 200. At 260 it
-  is within a tenth of an x-height of them, where it used to be up to 46
+  is within a twentieth of an x-height of them, where it used to be up to 46
   hundredths out.
 
-Tests: `src/forge/script-polish.test.ts`, twelve tests, each written to fail on
-the old code. `npx tsc -b --noEmit`, `npx biome check .` and
-`npx vitest run src/forge src/assemble src/library` (1213 tests) all pass.
+Tests: `src/forge/script-polish.test.ts`, fifteen tests, each written to fail
+on the old code. `npx tsc -b --noEmit`, `npx biome check .` and
+`npx vitest run src/forge src/assemble src/library` (1216 tests) all pass.
 
 ## What remains
 
+- **Capitals on the joined faces are print capitals.** They lean and join
+  onward, but they are the Sans's letters. Written capitals would be a new set
+  of 26 drawings, which is a design project rather than a fault, and the
+  capital recipes are shared with the other faces.
 - **Heavy scripts are squat.** A 260 pen on a 332 to 420 unit x-height is a
-  stem of two thirds of the x-height or more. The letters are legible and the
-  joins are clean, but they read as a heavy display script. Counters in `e`,
-  `a` and `g` are slits at 260.
-- **The high hand-over after `o v w b`** runs level near the top of the
-  letters at heavy weights. That is by design, but at 260 it reads a little
-  like a rule.
+  stem of two thirds of the x-height or more. Every counter is open and every
+  join is clean, but the faces read as a heavy display script there. The
+  Roundhand's bowls keep a fifth of an x-height squared of counter at 260,
+  about half what the other joined faces keep.
 - **Nib-pen loop tips.** On the Handwriting and the Casual Script the eye's
   round end stands 2 to 4 units past the corner of the stem's flat top, under
-  1% of the x-height and invisible at text size. The round end stays, because
-  it is what fills the nick at the foot of every loop on the Roundhand.
-- **The heaviest `s`** on a joined face still grows a little past the `o` at
-  260, as the Black `s` does on every face once the pen leaves no room.
-- **The heavy Marker and Brush `k` and `Z`** come from recipes shared with the
-  Sans and the other text faces. They are legible at 260 and were left to the
-  sessions that own those recipes.
+  1% of the x-height and invisible at text size. A square end was tried and
+  is worse on the Roundhand, whose round end fills the nick at the foot of
+  every loop.
 - **Node counts without the exporter's book.** Node counts are equal across
   weights through the export path, which is what a variable font uses. A
   letter drawn at an arbitrary slider weight without the book can still bow a
