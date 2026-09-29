@@ -698,6 +698,13 @@ The f's misfit falls from 0.099 to 0.014 at the Regular and from 0.079 to
 matched; there its left side is spaced 6–7 units wider than Geist's, which
 the sides table cannot close faster than the n's.
 
+**The dollar's S.** Geist's dollar draws its S a little shorter than its
+capital S. Ours used the S at its own height, so its top stood about 16 units
+over Geist's. The S in the $ is now drawn 16 units shorter from the Thin to
+the SemiBold, and 8 shorter from the UltraBlack on. The $'s misfit falls from
+0.33/0.20/0.13/0.12/0.10 to 0.20/0.15/0.10/0.11/0.10 at the Thin, Regular,
+SemiBold, UltraBlack and Black.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

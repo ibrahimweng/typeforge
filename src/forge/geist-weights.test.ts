@@ -1923,3 +1923,12 @@ describe("the f's stem", () => {
     expect(Math.abs(stem[1] - 216)).toBeLessThan(5);
   });
 });
+
+describe("the dollar's S", () => {
+  it("is as short as Geist's", () => {
+    // 400 in, the top of Geist Regular's dollar's S reaches 697; drawn at
+    // the S's own height it reached 713.
+    const runs = filled(draw("dollar", 87).contours, 400, "x");
+    expect(Math.abs(runs[runs.length - 1][1] - 697)).toBeLessThan(6);
+  });
+});

@@ -4317,7 +4317,15 @@ export function grotesqueDollar(style: Style): Recipe {
   const [X, lerp] = squaredNow(f);
   // Geist's dollar's S is 11 units narrower than its S at every weight: 17
   // wide at UltraBlack here, drawn as the S.
-  const strokes = capitalEss(f, atWeights(f, 0.013, -0.002, -0.021, -0.042, -0.027));
+  // And the Sans's S a little shorter than the S, as Geist's is: 16 units
+  // at the Thin to the SemiBold and 8 from the UltraBlack on, where at the
+  // S's own height it stood that much over Geist's at the top.
+  const shorter =
+    f.style.metrics.xGrows !== undefined ? Math.max(8, atWeights(f, 16, 16, 16, 8, 8)) : 0;
+  const strokes = capitalEss(
+    { ...f, cap: f.cap - shorter },
+    atWeights(f, 0.013, -0.002, -0.021, -0.042, -0.027),
+  );
   // Through the middle of the S as it is drawn: halfway across its spines.
   let lo = Infinity;
   let hi = -Infinity;
