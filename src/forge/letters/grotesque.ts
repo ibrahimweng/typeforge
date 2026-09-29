@@ -2677,7 +2677,15 @@ const nineFit = (f: Frame): number => figureFit(f, 0.015, -0.009, 0.016, -0.053)
  * The six's strokes, its hood cut level at `cut` on Geist's measures (552,
  * as the plain six's is), or the nine's tail, turned.
  */
-function sixStrokes(f: Frame, sans: boolean, cut = 552, fit = sixFit(f)): Stroke[] {
+function sixStrokes(
+  f: Frame,
+  sans: boolean,
+  cut = 552,
+  fit = sixFit(f),
+  shape: [number, number, number, number] = SIX_BOWL,
+  shorter = 0,
+  crown = figureCrown(f),
+): Stroke[] {
   const X = across(f, 60, 0.025, fit);
   const u = large(f, 1) * (1 + 0.025 * thinness(f)) * fit;
   const bottom = f.dip(0);
@@ -2704,7 +2712,7 @@ function sixStrokes(f: Frame, sans: boolean, cut = 552, fit = sixFit(f)): Stroke
   const hoodH = held(f, top - hoodY);
   // Held in at the heavy weights, where cut lower the hood's end reached
   // past the bowl's side; Geist keeps it inside.
-  const out = 25 * u - (sans ? now(0, 9, 0) + 4 : 0);
+  const out = 25 * u - (sans ? now(0, 9, 0) + 4 : 0) - shorter;
   const hood = at(centre.x + out, hoodY);
   const hoodW = wide + out;
   /*
@@ -2718,7 +2726,7 @@ function sixStrokes(f: Frame, sans: boolean, cut = 552, fit = sixFit(f)): Stroke
   const downLeft = sans ? { ...f, curve: atWeights(f, 0.15, 0.2, 0.25, 0.25, 0.2) } : f;
   const end = angleAt(overRight, hood, hoodW, hoodH, Math.max(up(f, cut), hoodY + f.half), false);
   return [
-    ...sixBowl(f, sans, centre, wide, radius, figureCrown(f)),
+    ...sixBowl(f, sans, centre, wide, radius, crown, shape),
     ink(
       f,
       chain(
@@ -2746,11 +2754,12 @@ function sixBowl(
   wide: number,
   radius: number,
   share: number,
+  shape: [number, number, number, number] = SIX_BOWL,
 ): Stroke[] {
   if (!sans) return [ink(f, ring(f, centre, wide, radius))];
   const { g, bowls } = sidedPair(f, centre, radius, share);
   return bowls.map(([middle, half]) => {
-    const one = ink(g, lopsidedRing(g, middle, wide, half, SIX_BOWL));
+    const one = ink(g, lopsidedRing(g, middle, wide, half, shape));
     return inherit(one, { ...one, pen: g.style.pen });
   });
 }
@@ -2832,6 +2841,19 @@ function nineOf(style: Style, sans: boolean): Recipe {
   const fit = sans ? nineFit(f) : sixFit(f);
   const X = across(f, 60, 0.025, fit);
   const about = at(X(313), (f.crest(f.cap) + f.dip(0)) / 2);
+  /*
+   * The Sans's nine is not its six turned in three more ways, as Geist's
+   * is not. Its bowl's lower left is rounder at the Thin and fuller from
+   * the SemiBold on, where it stood 15 units out at the Thin and 30 in at
+   * the Black 300 up; its tail 12 shorter at the Thin, where it reached 17
+   * past Geist Thin's; and its bowl's foot lighter at the heavy weights,
+   * where it stood 10 heavy under the counter. That took a quarter off the
+   * Thin's misfit and a seventh off the UltraBlack's and the Black's.
+   * Held at the Black's past it.
+   */
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    pastBlack ? knots[4] : atWeights(f, ...knots);
   return finish(
     f,
     /*
@@ -2839,9 +2861,15 @@ function nineOf(style: Style, sans: boolean): Recipe {
      * Thin and the Regular (124 and 140, where the six turned cuts it at
      * 158) and higher at the Black (180).
      */
-    sixStrokes(f, sans, sans ? now(570, 530, 586) : 552, fit).map((stroke) =>
-      turnedStroke(stroke, about),
-    ),
+    sixStrokes(
+      f,
+      sans,
+      sans ? now(570, 530, 586) : 552,
+      fit,
+      sans ? [knot([0.1, 0.25, 0.3, 0.45, 0.45]), SIX_BOWL[1], SIX_BOWL[2], SIX_BOWL[3]] : SIX_BOWL,
+      sans ? knot([12, 0, 0, 0, 0]) : 0,
+      figureCrown(f) * (sans ? knot([1, 1, 1, 0.9, 0.85]) : 1),
+    ).map((stroke) => turnedStroke(stroke, about)),
     true,
   );
 }
