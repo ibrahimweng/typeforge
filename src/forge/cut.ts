@@ -1523,10 +1523,18 @@ function splitPlan(
       // Six tenths rather than a bare half and a bit: the Roundhand a's
       // lead-in, drawn to reach the seam of the letter before, is 0.551 of
       // the x-height, and at 0.55 it came off by half a unit.
+      /*
+       * And a swash, however long: a written capital is entered by a hairline
+       * rising from the lower left into the top of its first stroke, and it
+       * is the letter's lead-in, not a piece of it. Parted, it lay beside the
+       * H as a loose curve.
+       */
       if (
         placed &&
         loose &&
-        (((flick || exits) && freed < xHeight * 0.6) || (curl && freed < least))
+        (((flick || exits) && freed < xHeight * 0.6) ||
+          (curl && freed < least) ||
+          strokes[gives].swash === true)
       ) {
         continue;
       }
@@ -2433,8 +2441,17 @@ function alongEdge(from: GlyphNode, to: GlyphNode, by: number, way: "back" | "fo
     const point = at(way === "back" ? 1 - step / STEPS : step / STEPS);
     const run = distance(last, point);
     if (walked + run >= by) {
+      /*
+       * On the curve itself, between the two samples, and not on the chord
+       * between them: a chord lies inside a convex curve, so the cut started
+       * in the ink, and the subtraction left the curve running out to where
+       * the triangle crossed it and straight back to the point -- a spike a
+       * tenth of a unit long at the top of the cut, which the swash of a
+       * written Formal Script H, standing on a curve at its tip, came back with.
+       */
       const share = run > 0 ? (by - walked) / run : 0;
-      return { x: last.x + (point.x - last.x) * share, y: last.y + (point.y - last.y) * share };
+      const t = (step - 1 + share) / STEPS;
+      return at(way === "back" ? 1 - t : t);
     }
     walked += run;
     last = point;

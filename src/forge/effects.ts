@@ -1066,6 +1066,8 @@ function flankAt(
   // the face's nominal stem: see `penHalfAcross`.
   const pen = penHalfAcross(stroke, normal);
   if (!Number.isFinite(hit) || hit > Math.max(pen, half * 0.25) * ESCAPED) return null;
+  // Where the band is laid: the ink's edge, unless a cut made it (below).
+  let flank = hit;
   /*
    * Nor where the edge is far nearer than the pen could have put it. That is
    * not a flank: it is the side of a cut. A slot or a groove taken out of the
@@ -1094,6 +1096,19 @@ function flankAt(
      */
     const itself = rayHitDistance(own, here, normal);
     if (Number.isFinite(itself) && hit < itself * 0.8) return null;
+    /*
+     * And where a cut took less than that, the sample is taken as it stood
+     * before the cut: laid along the stroke's own flank, and left out where
+     * that flank is further off than the pen could have put it, as the uncut
+     * letter's is. Measured to the cut's face instead, a sample the uncut
+     * letter leaves out came inside that reach, and the band ran on past where
+     * it stops on the uncut letter, notching the chamfered tip of a written
+     * Formal Script H's swash with two steps.
+     */
+    if (Number.isFinite(itself) && hit < itself) {
+      if (itself > Math.max(pen, half * 0.25) * ESCAPED) return null;
+      flank = itself;
+    }
   }
   const u = at / (walked.length - 1);
   /*
@@ -1113,12 +1128,15 @@ function flankAt(
   // Where a groove runs down the stroke, what there is to thin is the wall
   // between it and the flank.
   const groove = walls.length > 0 ? rayHitDistance(walls, here, normal) : Number.POSITIVE_INFINITY;
-  const body = groove < hit ? hit - groove : hit;
+  const body = groove < flank ? flank - groove : flank;
   const thin = Math.min(body, pen) * Math.min(press * lightness(when, u, opens), MOST_OF_A_STROKE);
   return {
-    inner: { x: here.x + normal.x * (hit - thin), y: here.y + normal.y * (hit - thin) },
+    inner: { x: here.x + normal.x * (flank - thin), y: here.y + normal.y * (flank - thin) },
     // Just past the edge that was measured, so the cut always starts in air.
-    outer: { x: here.x + normal.x * (hit + half * 0.3), y: here.y + normal.y * (hit + half * 0.3) },
+    outer: {
+      x: here.x + normal.x * (flank + half * 0.3),
+      y: here.y + normal.y * (flank + half * 0.3),
+    },
   };
 }
 

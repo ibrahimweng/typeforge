@@ -143,6 +143,7 @@ import {
   type Frame,
   frame,
   headingAt,
+  inherit,
   ink,
   junction,
   type LetterName,
@@ -1887,7 +1888,8 @@ for (const name of WRITTEN_CAPITALS) {
         top.point.x + ((top.next.x - top.point.x) / run) * f.half,
         top.point.y + ((top.next.y - top.point.y) / run) * f.half,
       );
-      const swash = lighter(ink(f, bowed(f, from, lands, 0.35), f.end, BUTT), joinWeight(style));
+      const light = lighter(ink(f, bowed(f, from, lands, 0.35), f.end, BUTT), joinWeight(style));
+      const swash = inherit(light, { ...light, swash: true });
       return { ...plain, strokes: [...plain.strokes, swash] };
     },
   });

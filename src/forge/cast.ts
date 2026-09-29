@@ -25,6 +25,7 @@ import {
   contourArea,
   contourContainsPoint,
   contoursBounds,
+  cubicAt,
   flattenContour,
   type Bounds,
   rayHitDistance,
@@ -1192,6 +1193,32 @@ function headingOf(edge: Edge, where: "start" | "end" | "middle"): Vec2 | null {
 }
 
 /**
+ * The point on one edge of an outline a distance from one of its ends,
+ * following the curve: back from the end of the edge, or forward from its
+ * start. Past the far end of the edge, the far end.
+ */
+function onEdge(from: GlyphNode, to: GlyphNode, by: number, way: "back" | "forward"): Vec2 {
+  const c1 = from.handleOut ?? from.point;
+  const c2 = to.handleIn ?? to.point;
+  const STEPS = 32;
+  let walked = 0;
+  let last = way === "back" ? to.point : from.point;
+  for (let step = 1; step <= STEPS; step++) {
+    const t = way === "back" ? 1 - step / STEPS : step / STEPS;
+    const point = cubicAt(from.point, c1, c2, to.point, t);
+    const run = distance(last, point);
+    if (walked + run >= by) {
+      const share = run > 0 ? (by - walked) / run : 0;
+      const along = (step - 1 + share) / STEPS;
+      return cubicAt(from.point, c1, c2, to.point, way === "back" ? 1 - along : along);
+    }
+    walked += run;
+    last = point;
+  }
+  return last;
+}
+
+/**
  * A point built out of every corner.
  *
  * The chamfer's opposite and found the same way -- a corner is a place where
@@ -1417,13 +1444,20 @@ function spurTool(
         if (Number.isFinite(hit)) reach = Math.min(reach, (hit + 1) * Math.cos(spread) - clear);
       }
       if (reach < size * 0.35) continue;
+      /*
+       * The base stands on the outline either side, along the edges and not
+       * along their tangents. Off a curve, a point a base back along the
+       * tangent stands out in the paper beside it, and the point's side ran
+       * from there across the curve: a notch where the point met the bowl of
+       * a chamfered Black a, once the chamfer left that terminal cut clean.
+       */
       added.push(
         poly([
-          { x: start.x - arriving.x * base, y: start.y - arriving.y * base },
+          onEdge(first.previous, first.here, base, "back"),
           ...(last === first ? [] : [start]),
           { x: apex.x + out.x * reach, y: apex.y + out.y * reach },
           ...(last === first ? [] : [finish]),
-          { x: finish.x + leaving.x * base, y: finish.y + leaving.y * base },
+          onEdge(last.here, last.next, base, "forward"),
         ]),
       );
     }

@@ -285,6 +285,12 @@ export interface Stroke {
   end: Terminal;
   /** How the outside of a corner is finished. Miter unless said otherwise. */
   join?: JoinKind;
+  /**
+   * A flourish the hand starts the letter with, in clear air: the swash a
+   * written capital is entered by. It belongs to the letter as a lead-in
+   * does, so a split leaves it on rather than cutting it loose.
+   */
+  swash?: boolean;
 }
 
 export const BUTT: Terminal = { kind: "butt" };
