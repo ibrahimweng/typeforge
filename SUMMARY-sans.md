@@ -387,6 +387,12 @@ where Draw's stood 81 and 117. Its bar also sits at 534 at the SemiBold and
 which took a fifth to two fifths off the f's misfit from the Regular to the
 Black.
 
+**The x's top.** Geist's x is a little narrower across its top than its
+foot up to its SemiBold (520 up at the Regular it runs from 65 to 522,
+where Draw's ran from 55 to 531), and its Thin's strokes are a tenth
+lighter than the pen. Both are now Geist's, which took two fifths off the
+Thin x's misfit and a quarter off the Regular's.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

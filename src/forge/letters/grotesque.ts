@@ -2149,9 +2149,20 @@ export function grotesqueSmallX(style: Style): Recipe {
   const f = frame(style);
   const width = f.arch * 1.7 + openVee(f) * 2 + atWeights(f, -8, -2, 0, 9, 11);
   const left = f.edge;
+  /*
+   * Geist's x is a little narrower across its top than its foot up to its
+   * SemiBold, and its Thin's strokes a tenth lighter than the pen: fitted
+   * to its ink, that took two fifths off the Thin's misfit and a quarter
+   * off the Regular's.
+   */
+  const sans = f.style.metrics.xGrows !== undefined;
+  const inset = sans ? Math.max(0, atWeights(f, 6, 6, 6, 0, 0)) : 0;
+  const k = sans ? atWeights(f, 0.9, 1, 1, 1, 1) : 1;
+  const light = (one: Stroke): Stroke =>
+    inherit(one, { ...one, pen: { ...one.pen, weight: one.pen.weight * k } });
   return finish(f, [
-    ink(f, straight(at(left, f.x), at(left + width, 0)), f.end, f.end),
-    ink(f, straight(at(left, 0), at(left + width, f.x)), f.end, f.end),
+    light(ink(f, straight(at(left + inset, f.x), at(left + width, 0)), f.end, f.end)),
+    light(ink(f, straight(at(left, 0), at(left + width - inset, f.x)), f.end, f.end)),
   ]);
 }
 

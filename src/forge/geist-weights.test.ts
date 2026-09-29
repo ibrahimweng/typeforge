@@ -1625,3 +1625,13 @@ describe("the f's bar", () => {
     }
   });
 });
+
+describe("the x's top", () => {
+  it("is as narrow as Geist's", () => {
+    // 520 up Geist Regular's x runs from 65 to 522; its top as wide as its
+    // foot ran from 55 to 531.
+    const run = filled(draw("x", 87).contours, 520);
+    expect(Math.abs(run[0][0] - 65)).toBeLessThan(6);
+    expect(Math.abs(run[run.length - 1][1] - 522)).toBeLessThan(6);
+  });
+});
