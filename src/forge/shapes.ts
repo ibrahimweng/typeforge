@@ -1391,7 +1391,13 @@ export function bowRuns(spine: Spine, bow: number, penHalf: number): Spine {
       whole,
       mine,
       Math.min(reach, mine * MOST_OF_A_RUN),
-      penHalf,
+      /*
+       * A little over the pen, for the turns alone. A bow squeezed short by
+       * its stubs turns on the tightest radius the wave allows, and three of
+       * those in a row a degree apiece left the inside of a Monoline `r`'s
+       * stem folded along a hairline at a weight of 217.
+       */
+      penHalf * 1.1,
       keeps(segment, before, penHalf, "start"),
       keeps(segment, after, penHalf, "end"),
       // Read off where the run points, not off which way the recipe drew it: a

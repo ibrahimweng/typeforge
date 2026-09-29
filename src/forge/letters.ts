@@ -191,12 +191,17 @@ export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
  * letter as `cmap` maps it, which is what a reader gets in any renderer that
  * applies no features at all.
  *
+ * The `T` and the `Y` for the `I`'s reason: each hands on from the foot of a
+ * stem standing on its own under the letter, and a foot going right off it is
+ * the foot of an `L` -- `The` set as `Lhe`. The reference scripts lift after
+ * both.
+ *
  * Nothing else in the alphabet does it. Drawn with and without their lead-outs
- * side by side, the other twenty carry a tail off a terminal that was already
+ * side by side, the other eighteen carry a tail off a terminal that was already
  * pointing that way -- the `E` and the `L` simply grow a longer bottom arm, and
  * the rest end in clear air.
  */
-const NEVER_HANDS_ON = new Set(["B", "D", "F", "I", "O", "P"]);
+const NEVER_HANDS_ON = new Set(["B", "D", "F", "I", "O", "P", "T", "Y"]);
 export const CAPITALS = new Set<string>("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
 
 /** Which halves of the join this letter has, if any. */

@@ -513,3 +513,14 @@ describe("the s at a heavy weight", () => {
     expect(out).toEqual([]);
   });
 });
+
+describe("a capital handing on", () => {
+  /*
+   * Not from the foot of a stem standing on its own under the letter: a foot
+   * going right off the `T` or the `Y` is the foot of an `L`, and `The` set
+   * as `Lhe`. The pen lifts after them, as it does after an `I`.
+   */
+  it("lifts after a T and a Y", () => {
+    expect(["T", "Y", "I"].filter((letter) => joinEnds(letter).exit)).toEqual([]);
+  });
+});
