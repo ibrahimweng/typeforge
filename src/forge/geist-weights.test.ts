@@ -1645,3 +1645,13 @@ describe("the k's arm", () => {
     expect(Math.abs(run[2][0] - 275)).toBeLessThan(6);
   });
 });
+
+describe("the K's leg", () => {
+  it("stands where Geist's does at the UltraBlack", () => {
+    // 200 up Geist UltraBlack's K's leg runs from 364 to 558; off an arm
+    // leaving the stem higher it ran from 343 to 543.
+    const run = filled(draw("K", 172).contours, 200);
+    expect(Math.abs(run[run.length - 1][0] - 364)).toBeLessThan(6);
+    expect(Math.abs(run[run.length - 1][1] - 558)).toBeLessThan(6);
+  });
+});

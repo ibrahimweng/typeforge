@@ -393,6 +393,12 @@ where Draw's ran from 55 to 531), and its Thin's strokes are a tenth
 lighter than the pen. Both are now Geist's, which took two fifths off the
 Thin x's misfit and a quarter off the Regular's.
 
+**The K's arm.** From the SemiBold on, Geist's K's arm leaves the stem
+lower, so its leg stands where Geist's does (364-558 200 up at the
+UltraBlack, where it stood at 343-543). That halved the heavy K's misfit.
+The arm's foot now shows a little beside the stem under the leg, where
+Geist's arm meets the stem higher on a steeper line.
+
 **The k's arm and leg.** Geist's arm leaves the stem higher than the first
 measures gave, and from the SemiBold on its leg leaves the arm a little
 higher too. Low on the stem, the Thin's arm stood 21 units right of Geist's

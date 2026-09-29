@@ -2499,7 +2499,22 @@ export function grotesqueCapitalK(style: Style): Recipe {
   const f = frame(style);
   return finish(f, [
     ink(f, straight(at(f.edge, 0), at(f.edge, f.cap)), f.end, f.end),
-    ...kay(f, large(f, 1) * refit(f, 0.015, 0.03), f.cap, 136, [234, 550, 710], [397, 572, 710]),
+    // The Sans's arm leaving the stem lower from the SemiBold on, as Geist's
+    // does: fitted to its ink, that halved the UltraBlack's misfit.
+    ...kay(
+      f,
+      large(f, 1) * refit(f, 0.015, 0.03),
+      f.cap,
+      136,
+      [
+        f.style.metrics.xGrows !== undefined
+          ? Math.max(atWeights(f, 234, 234, 210, 165, 150), 150)
+          : 234,
+        550,
+        710,
+      ],
+      [397, 572, 710],
+    ),
   ]);
 }
 
