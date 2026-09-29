@@ -583,6 +583,12 @@ figures 10. The Sans kept the Regular's spacing all the way down. It now
 opens by `metrics.lightHeld.open` as it thins, applied where `build.ts` fits
 a letter's sides. Only the Sans sets `lightHeld`, so no other face changes.
 
+**Light P and F.** The P's bowl now closes lower at the light weights, as
+Geist's does. It had closed 11 units high at the Thin and 14 at the Regular;
+the change takes the P's misfit from 0.27 to 0.12 at the Thin and from 0.07 to
+0.02 at the Regular. The Thin F's bar was 6 units low and now sits 6 higher,
+which takes its misfit from 0.27 to 0.18. Both changes are gated to the Sans.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

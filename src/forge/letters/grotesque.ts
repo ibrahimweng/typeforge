@@ -834,7 +834,15 @@ export function grotesqueCapitalP(style: Style): Recipe {
         f,
         stem,
         f.hangs(f.cap),
-        up(f, lerp(330, 305)),
+        // The Sans's bowl closing lower at the light weights, as Geist's does:
+        // 11 units high at the Thin, it cost half the Thin's misfit.
+        up(
+          f,
+          lerp(330, 305) +
+            (f.style.metrics.xGrows !== undefined
+              ? Math.min(6, atWeights(f, -10, -12, -8, 2, 6))
+              : 0),
+        ),
         stem + lerp(419, 401) * u + roundGain(f, 7, 20, 12),
         160 * u * sansRound(f, 1.3),
       ),
@@ -5299,7 +5307,9 @@ export function grotesqueCapitalF(style: Style): Recipe {
         [447, 504, 419],
         [429, 486, 401],
       ],
-      347,
+      // The Sans's a little higher at the light weights, as Geist's is: 6
+      // units low at the Thin, it cost a fifth of the Thin's ink.
+      347 + (f.style.metrics.xGrows !== undefined ? Math.max(0, atWeights(f, 6, 0, 0, 0, 0)) : 0),
     ),
   );
 }

@@ -1750,3 +1750,20 @@ describe("the heavy A's head and W's feet", () => {
     expect(Math.abs(w[0][1] - w[0][0] - 192)).toBeLessThan(15);
   });
 });
+
+describe("the light P's bowl and F's bar", () => {
+  it("close and stand where Geist's do", () => {
+    // 300 in Geist Thin's P's bowl closes at 305-335 and Regular's at
+    // 276-360; they closed at 316-345 and 290-371. 330 in Geist Thin's F's
+    // bar runs 339-369; it ran 333-362.
+    for (const [name, weight, from, to] of [
+      ["P", 30, 305, 335],
+      ["P", 87, 276, 360],
+      ["F", 30, 339, 369],
+    ] as const) {
+      const [bar] = filled(draw(name, weight).contours, name === "P" ? 300 : 330, "x");
+      expect(Math.abs(bar[0] - from), `${name} at ${weight}`).toBeLessThan(4);
+      expect(Math.abs(bar[1] - to), `${name} at ${weight}`).toBeLessThan(4);
+    }
+  });
+});
