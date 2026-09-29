@@ -55,14 +55,18 @@ test("offers handles for the parts the letter has, and no others", async ({ page
 test("double-clicking the arch of an n opens the shoulder", async ({ page }) => {
   await openForge(page);
 
-  // The outside of the curve, where the arch leaves the stem.
-  await pressSpot(page, 110, 447);
+  /*
+   * The inside of the curve, where the arch leaves the stem. The Sans's arch
+   * leaves its stem as Geist's does, thinned: its outside dives into the
+   * stem in a notch, so the outside up there is the stem's own side now, and
+   * pressed it answers with the weight. Inside, where the counter begins,
+   * is where it springs.
+   */
+  await pressSpot(page, 175, 360);
 
   /*
    * A handle on the edge that was pressed: one of the shoulder's two. Which
-   * one is the drawing's to say -- the Sans arch is Geist's superellipse now,
-   * and the outside of it this high is moved most by how high the arch rises
-   * rather than by where it springs, as the unit test of the probe allows.
+   * one is the drawing's to say, as the unit test of the probe allows.
    */
   const probed = page.locator(
     '[data-forge-probed="part:shoulder:spring"], [data-forge-probed="part:shoulder:crest"]',

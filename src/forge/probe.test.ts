@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import { contoursBounds, distance, flattenContour } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { canDraw, drawLetter, makeLetter } from "./build";
+import { formOf, startFrom, styleFor } from "./document";
 import { valueAfter } from "./handles";
 import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "./parts";
 import { driveId, whatGoverns, withValue } from "./probe";
@@ -84,6 +85,19 @@ describe("what governs a spot", () => {
     expect(["part:shoulder:spring", "part:shoulder:crest"]).toContain(driveId(found!.handle.drive));
     // And it knows which run it was: an n's arch is the shoulder's.
     expect(found!.parts).toContain("shoulder");
+  });
+
+  it("gives the springing where the Sans's own arch leaves its stem", () => {
+    // The Sans draws its n in Geist's form, its arch leaving the stem thinned
+    // and in two runs: both are the shoulder's, and the inside of the stem
+    // where the counter begins is where the arch springs.
+    const forge = startFrom(SANS);
+    const found = whatGoverns("n", styleFor("n", forge), { x: 175, y: 360 }, formOf(forge, "n"));
+    expect(found).not.toBeNull();
+    expect(driveId(found!.handle.drive)).toBe("part:shoulder:spring");
+    expect(found!.parts).toContain("shoulder");
+    const crest = whatGoverns("n", styleFor("n", forge), { x: 300, y: 540 }, formOf(forge, "n"));
+    expect(crest!.parts).toContain("shoulder");
   });
 
   it("gives the crossbar for the bar of an H", () => {

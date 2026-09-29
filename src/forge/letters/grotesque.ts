@@ -2536,9 +2536,11 @@ function sansArch(f: Frame, fromX: number, height: number): Stroke[] {
   // is held to what the pen goes round, a unit or two off the landing.
   const second = bend(f, middle, radius, 90, 0, landing - middle.x);
   const leg = spineEnd(second);
+  // The whole arch is the shoulder's, as one run of it was: probed where it
+  // leaves the stem, the second quarter answered with the pen's weight.
   return [
     inherit(first, { ...first, pen: joinPen }),
-    ink(f, chain(second, straight(leg, at(leg.x, 0))), BUTT, f.end),
+    inherit(first, ink(f, chain(second, straight(leg, at(leg.x, 0))), BUTT, f.end)),
   ];
 }
 
@@ -2572,17 +2574,26 @@ function sansStemBowl(
   const far = halfW;
   const near = halfW - (w - thin) / 2;
   const [a, b] = stemSide === 1 ? [90, 270] : [-90, 90];
+  /*
+   * A bowl, though drawn as two open halves: read off the run, which asks
+   * whether it closes, the b, p and g lost the bowl's controls from the
+   * panel and the stage.
+   */
+  uses("bowl");
   const nearSide = ink(
     f,
     chain(bend(f, centre, halfH, a, a + 90, near), bend(f, centre, halfH, a + 90, b, near)),
     BUTT,
     BUTT,
   );
-  const farSide = ink(
-    f,
-    chain(bend(f, centre, halfH, b, b + 90, far), bend(f, centre, halfH, b + 90, a + 360, far)),
-    BUTT,
-    BUTT,
+  const farSide = inherit(
+    nearSide,
+    ink(
+      f,
+      chain(bend(f, centre, halfH, b, b + 90, far), bend(f, centre, halfH, b + 90, a + 360, far)),
+      BUTT,
+      BUTT,
+    ),
   );
   return [inherit(nearSide, { ...nearSide, pen: joinPen }), farSide];
 }
