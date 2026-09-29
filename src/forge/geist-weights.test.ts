@@ -1635,3 +1635,13 @@ describe("the x's top", () => {
     expect(Math.abs(run[run.length - 1][1] - 522)).toBeLessThan(6);
   });
 });
+
+describe("the k's arm", () => {
+  it("leaves the stem where Geist's does", () => {
+    // 250 up Geist Thin's arm runs from 173 to 212 and its leg from 275 to
+    // 310; low on the stem, they ran 194-235 and 292-329.
+    const run = filled(draw("k", 30).contours, 250);
+    expect(Math.abs(run[1][0] - 173)).toBeLessThan(6);
+    expect(Math.abs(run[2][0] - 275)).toBeLessThan(6);
+  });
+});

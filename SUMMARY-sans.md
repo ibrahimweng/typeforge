@@ -393,6 +393,13 @@ where Draw's ran from 55 to 531), and its Thin's strokes are a tenth
 lighter than the pen. Both are now Geist's, which took two fifths off the
 Thin x's misfit and a quarter off the Regular's.
 
+**The k's arm and leg.** Geist's arm leaves the stem higher than the first
+measures gave, and from the SemiBold on its leg leaves the arm a little
+higher too. Low on the stem, the Thin's arm stood 21 units right of Geist's
+250 up, and a heavy arm's foot showed as a tooth beside the stem under the
+leg. Both are now fitted to Geist's ink at each weight. That took five
+sixths off the Thin k's misfit and a third off the heavy weights'.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

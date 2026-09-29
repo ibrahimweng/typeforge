@@ -2505,6 +2505,14 @@ export function grotesqueCapitalK(style: Style): Recipe {
 
 export function grotesqueK(style: Style): Recipe {
   const f = frame(style);
+  /*
+   * The Sans's arm leaves the stem higher and its leg the arm a little
+   * higher from the SemiBold on, as Geist's do: low on the stem, a Thin's
+   * arm stood 21 units off Geist's and a heavy one's foot showed as a tooth
+   * under the leg. Fitted to Geist's ink, that took five sixths off the
+   * Thin's misfit and a third off the heavy weights'.
+   */
+  const sans = f.style.metrics.xGrows !== undefined;
   return finish(f, [
     ink(f, straight(at(f.edge, 0), at(f.edge, f.asc)), f.end, f.end),
     // A little wider towards the Thin, as Geist Thin's k is, and at the
@@ -2515,8 +2523,8 @@ export function grotesqueK(style: Style): Recipe {
       small(f, 1) * thinned(f, -0.035) * refit(f, -0.005, 0.034, -0.002),
       f.x,
       123,
-      [133, 476, 530],
-      [305, 491, 530],
+      [sans ? atWeights(f, 165, 140, 155, 150, 150) : 133, 476, 530],
+      [sans ? atWeights(f, 305, 305, 320, 320, 320) : 305, 491, 530],
     ),
   ]);
 }
