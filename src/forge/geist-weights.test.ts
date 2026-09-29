@@ -1767,3 +1767,24 @@ describe("the light P's bowl and F's bar", () => {
     }
   });
 });
+
+describe("the heavy horizontals", () => {
+  it("thin as fast as Geist's from the Regular and level off", () => {
+    // Geist's o's crown is 104 on a stem of 128 and 144 on 194, its H's bar
+    // 113 and 157, and its e's crown 134 at the Black; they were 116 and 137,
+    // 118 and 150, and 140.
+    for (const [name, weight, at, crown] of [
+      ["o", 128, 290, 104],
+      ["o", 194, 290, 144],
+      ["H", 128, 330, 113],
+      ["H", 194, 330, 157],
+    ] as const) {
+      const runs = filled(draw(name, weight).contours, at, "x");
+      const [from, to] = name === "o" ? runs[runs.length - 1] : runs[0];
+      expect(Math.abs(to - from - crown), `${name} at ${weight}`).toBeLessThan(4);
+    }
+    const e = filled(draw("e", 194).contours, 300, "x");
+    const [from, to] = e[e.length - 1];
+    expect(Math.abs(to - from - 134), "e at 194").toBeLessThan(5);
+  });
+});

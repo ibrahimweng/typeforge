@@ -183,6 +183,16 @@ export interface Metrics {
    */
   heavyContrast?: number;
   /**
+   * How a heavy weight's contrast rises with its pen, where not in step with
+   * `blackness`: towards `to`, most of the way there `over` units of pen past
+   * `from`, and past `past` of the way to a Black climbing on as every other
+   * face's does. Geist's horizontals thin fast from its Regular and then
+   * level off -- its o's crown is 104 on a stem of 128 and 144 on 194 -- where
+   * in step with `blackness` they came to 116 and 137. Its bowls are still
+   * sized by the plain contrast: see `Pen.sized`.
+   */
+  contrastRise?: { from: number; to: number; over: number; past: number };
+  /**
    * How much of the contrast a heavy weight gains the capitals and figures
    * take, as a share. Left out, all of it. Geist Black's E, T and 2 carry
    * horizontals of 142 on a stem of 172, where its o's crown is 127: the
@@ -719,6 +729,7 @@ export const SANS: Style = {
     heavyCounter: 1.3,
     heavyContrast: 0.42,
     capitalContrast: 0.61,
+    contrastRise: { from: 87, to: 0.27, over: 56, past: 0.82 },
     // Geist Thin's o and n are both a little wider down the stroke than the
     // Regular's, and set 5 units further apart on either side (its figures 10).
     lightHeld: { from: 87, grow: 0.085, open: 5 },
@@ -3399,43 +3410,59 @@ export function heavierPen(style: Style): Pen {
       own: pen.own ?? pen.contrast,
     };
   }
-  const { heavyContrast, capitalContrast } = style.metrics;
+  const { heavyContrast, capitalContrast, contrastRise } = style.metrics;
   if (style.metrics.lighterAcross) return pen;
-  let wanted = Math.min(0.56, 0.37 * blackness(style));
   const own = pen.own ?? pen.contrast;
   const capital = style.metrics.capital && capitalContrast !== undefined;
-  /*
-   * Given back past the Black, towards the lowercase's own at an Ultra: the
-   * capitals' and figures' counters are as short as the lowercase's by then,
-   * and an 8 or a 4 with horizontals a third heavier closed up.
-   */
-  if (capital && wanted > own) {
-    const past = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.83));
-    const share = capitalContrast + (1 - capitalContrast) * past * past;
-    wanted = own + (wanted - own) * share;
-  }
-  /*
-   * Eased into the face's limit rather than stopped at it, and only past the
-   * Black: the same pen as ever up to there.
-   */
-  if (heavyContrast !== undefined) {
-    const ease = heavyContrast * 0.3;
-    const knee = heavyContrast - ease;
-    if (wanted > knee) wanted = knee + ease * (1 - Math.exp((knee - wanted) / ease));
-  }
+  const settled = (raw: number): number => {
+    let wanted = raw;
+    /*
+     * Given back past the Black, towards the lowercase's own at an Ultra: the
+     * capitals' and figures' counters are as short as the lowercase's by then,
+     * and an 8 or a 4 with horizontals a third heavier closed up.
+     */
+    if (capital && wanted > own) {
+      const past = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.83));
+      const share = capitalContrast + (1 - capitalContrast) * past * past;
+      wanted = own + (wanted - own) * share;
+    }
+    /*
+     * Eased into the face's limit rather than stopped at it, and only past the
+     * Black: the same pen as ever up to there.
+     */
+    if (heavyContrast !== undefined) {
+      const ease = heavyContrast * 0.3;
+      const knee = heavyContrast - ease;
+      if (wanted > knee) wanted = knee + ease * (1 - Math.exp((knee - wanted) / ease));
+    }
+    return wanted;
+  };
+  const plain = settled(Math.min(0.56, 0.37 * blackness(style)));
+  // Risen as the face's own measures have it, its bowls still sized by the plain one.
+  const wanted = contrastRise
+    ? settled(
+        Math.min(
+          0.56,
+          contrastRise.to *
+            Math.tanh(Math.max(0, pen.weight - contrastRise.from) / contrastRise.over) +
+            0.37 * Math.max(0, blackness(style) - contrastRise.past),
+        ),
+      )
+    : plain;
+  const sized = contrastRise ? { sized: Math.max(plain, own) } : {};
   /*
    * Never less than the pen already has -- but a capital's is worked out
    * afresh from the face's own, since the style it is drawn from was made
    * heavier for the lowercase first.
    */
   if (capital) {
-    if (wanted <= own) return pen.own === undefined ? pen : { ...pen, contrast: own };
-    return wanted === pen.contrast && pen.own !== undefined
+    if (wanted <= own) return pen.own === undefined ? pen : { ...pen, contrast: own, ...sized };
+    return wanted === pen.contrast && pen.own !== undefined && pen.sized === sized.sized
       ? pen
-      : { ...pen, contrast: wanted, own };
+      : { ...pen, contrast: wanted, own, ...sized };
   }
   if (wanted <= pen.contrast) return pen;
-  return { ...pen, contrast: wanted, own };
+  return { ...pen, contrast: wanted, own, ...sized };
 }
 
 const CAPITALLED = new WeakMap<Style, Map<string, Style>>();

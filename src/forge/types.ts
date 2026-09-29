@@ -252,6 +252,12 @@ export interface Pen {
    */
   own?: number;
   /**
+   * The contrast a heavy weight's bowls are sized by, where its horizontals
+   * thin faster than that (`metrics.contrastRise`): see `frame` in
+   * `letters/common.ts`. Left out otherwise.
+   */
+  sized?: number;
+  /**
    * How far past its text weight the letter this is drawn for stands, where
    * that is a different letter: a superior figure is drawn with a pen heavier
    * against its size than the full-size letters, so that it holds its colour,

@@ -700,7 +700,12 @@ export function frame(drawn: Style): Frame {
    */
   const heavierHeld = held && pen.weight > held.from;
   const heldUpright = held
-    ? Math.abs(reachAlong(at(0, 1), penReach({ ...pen, weight: held.from })).y)
+    ? Math.abs(
+        reachAlong(
+          at(0, 1),
+          penReach({ ...pen, weight: held.from, contrast: pen.sized ?? pen.contrast }),
+        ).y,
+      )
     : upright;
   const heavyKeep = heavierHeld ? 1 - HEAVY_GIVE * Math.min(1, blackness(style) / 0.67) : 1;
   const lowerKeep = heavierHeld

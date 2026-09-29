@@ -589,6 +589,28 @@ the change takes the P's misfit from 0.27 to 0.12 at the Thin and from 0.07 to
 0.02 at the Regular. The Thin F's bar was 6 units low and now sits 6 higher,
 which takes its misfit from 0.27 to 0.18. Both changes are gated to the Sans.
 
+**Heavy contrast (shared files, Sans only).** Geist's horizontals thin
+quickly from the Regular and then level off. Its o's crown is 92 on a stem of
+106, 104 on 128, 116 on 150, 129 on 172 and 144 on 194. Ours followed
+`blackness` in a straight line, so the crowns came to 100, 116, 125, 131 and
+137: too heavy through the middle weights and too light at the Black. A new
+Sans metric, `contrastRise` in `style.ts`, gives the heavy pen a contrast that
+rises with the pen and levels off. The crowns now come to 97, 107, 118, 131
+and 144. The H's bar comes to 112 and 155 at 128 and 194, where Geist's is 113
+and 157. The bowls are still sized by the old contrast (`Pen.sized` in
+`types.ts`, read by `frame` in `letters/common.ts`), so every letter keeps the
+widths it was fitted to. Letters that had made up for the old pen were
+refitted:
+- The e's ring is a little lighter than the o's at 172 and 194, as Geist's is
+  (122 against 129, and 134 against 144). It is let out by the same amount, so
+  its eye at a pen of 200 stays half a stem open.
+- The f's bar needs less extra contrast at 130.
+- The five's flag depth and the w's width are refitted to the new pen.
+
+The mean misfit falls from 0.075 to 0.070 at 130 and from 0.059 to 0.056 at
+194. Only the Sans carries the metric, so the other faces draw exactly as
+before.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

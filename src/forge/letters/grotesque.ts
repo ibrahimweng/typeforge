@@ -1582,7 +1582,7 @@ export function grotesqueSmallR(style: Style): Recipe {
 function fAcross(style: Style): Style {
   if (style.metrics.xGrows === undefined) return style;
   const f = frame(style);
-  const k = Math.min(1, atWeights(f, 1, 0.91, 0.85, 1, 1));
+  const k = Math.min(1, atWeights(f, 1, 0.91, 0.93, 1, 1));
   const contrast = Math.min(0.95, Math.max(0, 1 - k * (1 - style.pen.contrast)));
   return { ...style, pen: { ...style.pen, contrast } };
 }
@@ -2137,7 +2137,7 @@ function fiveOf(style: Style, sans: boolean): Recipe {
    * Regular, 113 at the SemiBold and 157 at the Black, where on the face's
    * horizontals it stood 28, 81, 118 and 149.
    */
-  const flagDeep = sans ? Math.min(atWeights(f, 1.07, 1.037, 0.958, 1, 1.054), 1.054) : 1;
+  const flagDeep = sans ? Math.min(atWeights(f, 1.07, 1.037, 1, 1, 1.015), 1.015) : 1;
   const flagAt = f.cap - (f.cap - flag) * flagDeep;
   const flagEnd = X(518) + 36 * Math.min(heavyT(f), nowBlack()) + roundGain(f, -1, 6, -26);
   return finish(
@@ -4584,7 +4584,7 @@ export function grotesqueSmallW(style: Style): Recipe {
   // held at the Black's past it, where its counters need the room.
   const fit =
     f.style.metrics.xGrows !== undefined
-      ? Math.max(atWeights(f, -0.004, 0.002, 0.024, 0.016, 0.007), -0.004)
+      ? Math.max(atWeights(f, -0.004, 0.002, 0.0115, 0.02, 0.0195), -0.004)
       : 0;
   const u = wide * thinned(f, 0.034) * (1 + fit);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
@@ -5154,10 +5154,30 @@ export function grotesqueE(style: Style): Recipe {
    * past it as a square step.
    */
   const top = bar + thick / 2 - 0.5;
-  const crown = centre.y + f.bowlH;
+  /*
+   * The Sans's ring lighter across than the o's from the SemiBold on, as
+   * Geist's is -- its e's crown 122 on the UltraBlack's o's 129, 134 on the
+   * Black's 144 -- and let out by as much, so its ink still reaches the
+   * x-height and the line: at the o's weight the eye of an e at a pen of 200
+   * closed under half a stem.
+   */
+  const ringLight =
+    f.style.metrics.xGrows !== undefined ? Math.max(0.9, atWeights(f, 1, 1, 1, 0.975, 0.96)) : 1;
+  const rf =
+    ringLight === 1
+      ? f
+      : {
+          ...f,
+          style: {
+            ...f.style,
+            pen: { ...f.style.pen, contrast: 1 - (1 - f.style.pen.contrast) * ringLight },
+          },
+        };
+  const outBy = (f.style.pen.weight * (1 - f.style.pen.contrast) * (1 - ringLight)) / 2;
+  const crown = centre.y + f.bowlH + outBy;
   const upper = at(centre.x, Math.min(top, crown - f.least));
   const lower = at(centre.x, Math.min(centre.y, upper.y));
-  const base = centre.y - f.bowlH;
+  const base = centre.y - f.bowlH - outBy;
   const side = reachAlong(at(1, 0), penReach(f.style.pen)).x;
   // The right half no wider than the bowl's one curve is at the bar's top,
   // which is as wide as Geist's e reaches there.
@@ -5176,7 +5196,7 @@ export function grotesqueE(style: Style): Recipe {
     f,
     [
       ink(
-        f,
+        rf,
         chain(
           bend(f, upper, crown - upper.y, 0, 90, rightW),
           bend(f, upper, crown - upper.y, 90, 180, halfW),
