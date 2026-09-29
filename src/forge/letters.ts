@@ -55,8 +55,6 @@ import {
 import { bowRuns, spineEnd, waveBookAt } from "./shapes";
 import { blackness, scriptUnit } from "./style";
 import type { Style } from "./style";
-import type { Spine } from "./types";
-import type { Vec2 } from "@/font/types";
 import { LOWERCASE_RECIPES } from "./letters/lowercase";
 import { CAPITAL_RECIPES } from "./letters/capitals";
 import { FIGURE_RECIPES } from "./letters/figures";
@@ -193,12 +191,17 @@ export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
  * letter as `cmap` maps it, which is what a reader gets in any renderer that
  * applies no features at all.
  *
+ * The `T` and the `Y` for the `I`'s reason: each hands on from the foot of a
+ * stem standing on its own under the letter, and a foot going right off it is
+ * the foot of an `L` -- `The` set as `Lhe`. The reference scripts lift after
+ * both.
+ *
  * Nothing else in the alphabet does it. Drawn with and without their lead-outs
- * side by side, the other twenty carry a tail off a terminal that was already
+ * side by side, the other eighteen carry a tail off a terminal that was already
  * pointing that way -- the `E` and the `L` simply grow a longer bottom arm, and
  * the rest end in clear air.
  */
-const NEVER_HANDS_ON = new Set(["B", "D", "F", "I", "O", "P"]);
+const NEVER_HANDS_ON = new Set(["B", "D", "F", "I", "O", "P", "T", "Y"]);
 export const CAPITALS = new Set<string>("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
 
 /** Which halves of the join this letter has, if any. */
@@ -309,11 +312,6 @@ export function joiningWithout<T>(which: Partial<Ends>, run: () => T): T {
   }
 }
 
-/** Whether the letter being drawn is drawn without its lead-in: see `joiningWithout`. */
-export function joiningWithoutEntry(): boolean {
-  return endsWithout?.entry === false;
-}
-
 export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: () => T): T {
   const was = takingHigh;
   takingHigh = which;
@@ -322,17 +320,6 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
   } finally {
     takingHigh = was;
   }
-}
-
-/** The end of whichever open stroke finishes furthest right. */
-function rightmostEnd(strokes: Array<{ spine: Spine }>): Vec2 | null {
-  let best: Vec2 | null = null;
-  for (const { spine } of strokes) {
-    if (spine.closed) continue;
-    const end = spineEnd(spine);
-    if (!best || end.x > best.x) best = end;
-  }
-  return best;
 }
 
 /**
@@ -398,7 +385,13 @@ export function writtenLead(
     high: false,
   };
   if (!high) return low;
-  return { y: seams.high - lift, way: seamHeading(script, true), weld, high, low };
+  return {
+    y: seams.high - lift,
+    way: seamHeading(script, true, f.x, f.half, unit),
+    weld,
+    high,
+    low,
+  };
 }
 
 /** Where a written lead-in crosses its seam and how; see `writtenLead`. */
@@ -629,7 +622,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     has.entry ? f.x + lift : null,
     recipe.air,
     recipe.entered === true,
-    recipe.leaves ? rightmostEnd(body.slice(0, recipe.strokes.length)) : null,
+    recipe.leaves ? spineEnd(body[recipe.strokes.length - 1].spine) : null,
   );
   if (!plan) return recipe;
   /*

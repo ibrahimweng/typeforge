@@ -28,6 +28,7 @@ const base = (name: string): Style => BASES.find((one) => one.name === name)!;
 const at = (style: Style, weight: number): Style => ({ ...style, pen: { ...style.pen, weight } });
 const weightsOf = (style: Style) => [30, style.pen.weight, 200, 260];
 const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
+const CAPITAL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 beforeAll(async () => {
   await ready();
@@ -135,15 +136,23 @@ describe("every drawing of a joined letter", () => {
    * -- at every weight the slider reaches. The written `r` set after a `b`
    * aimed its lead-out at the waist and hooked back across itself, and the
    * written `n` taken high folded its lead-in into its own apex on four faces.
+   *
+   * At every fifth weight the slider reaches, and at the ones where a fold was
+   * found between them: the Roundhand's `s` at 209 to 212 and the Monoline's
+   * word-end `r` at 217, each a hairline on one weight and on neither side of
+   * it, which a handful of weights stepped straight over. The capitals too,
+   * which hand on and so are drawn with and without a lead-out.
    */
   it("never crosses itself", () => {
     const crossed: string[] = [];
     const sides = [{}, { entry: false }, { exit: false }, { entry: false, exit: false }];
+    const steps = Array.from({ length: 49 }, (_, index) => 20 + index * 5);
     for (const name of JOINED) {
       const own = base(name);
-      for (const weight of [30, own.pen.weight, 120, 160, 200, 260]) {
+      const weights = [...new Set([30, own.pen.weight, ...steps, 209, 210, 211, 212, 217])];
+      for (const weight of weights) {
         const style = at(own, weight);
-        for (const letter of LOWER) {
+        for (const letter of [...LOWER, ...CAPITAL]) {
           const form = own.forms?.[letter];
           for (const high of [false, true]) {
             for (const without of sides) {
@@ -314,8 +323,9 @@ describe("a joined face as a variable font", () => {
     const { deliver } = await import("./deliver");
     const { setFamily, startFrom } = await import("./document");
     const held: string[] = [];
-    // The two whose masters came apart; the other three always rode the axis.
-    for (const name of ["Monoline Script", "Roundhand"]) {
+    // Every joined face: the two whose masters came apart, and the three that
+    // rode the axis and have to go on doing so.
+    for (const name of JOINED) {
       let forge = startFrom(base(name));
       const drawn = forge.family!.drawn;
       forge = setFamily(forge, {
@@ -378,12 +388,13 @@ describe("a join and the baseline", () => {
 
 describe("the written r", () => {
   /*
-   * Two strokes meeting in a notch: a short up-stroke into a nub, and the
-   * down-stroke from under it to the line. Drawn with a full stem standing on
-   * the line and an arm carried round and down beside it, it was two uprights
-   * and an arch -- a narrow `n` -- and `ro` read `no`.
+   * A stem standing the full x-height with an arm springing off it, as the
+   * reference scripts write it. Drawn as an up-stroke into a notch and a
+   * slanting down-stroke, the lead-in and the down-stroke made the two arms of
+   * a `v` after every low join -- `quartz` read `quavtz` -- and with the
+   * shoulder rounded over the top it read as a `c`.
    */
-  it("has no stem on the line, and its down-stroke reaches the line", () => {
+  it("stands on a full stem with an arm reaching off it", () => {
     const wrong: string[] = [];
     for (const name of JOINED) {
       const own = base(name);
@@ -392,11 +403,28 @@ describe("the written r", () => {
         const style = heavier(at(own, weight));
         const x = style.metrics.xHeight;
         const strokes = recipeOf("r", "written")!(style).strokes;
-        const lowest = (spine: Spine) => Math.min(...alongSpine(spine, 64).map((p) => p.y));
-        const up = lowest(strokes[0].spine);
-        const down = Math.min(...strokes.map((stroke) => lowest(stroke.spine)));
-        if (up < x * 0.15) wrong.push(`${name} @${weight}: up-stroke down to ${up.toFixed(0)}`);
-        if (down > x * 0.2) wrong.push(`${name} @${weight}: floats at ${down.toFixed(0)}`);
+        const points = (spine: Spine) => alongSpine(spine, 64);
+        // The stem: one stroke running from the x-height to the line.
+        const stem = strokes.find((stroke) => {
+          const ys = points(stroke.spine).map((p) => p.y);
+          // Its spine, which stands half a pen inside the ink at either end.
+          const half = style.pen.weight / 2;
+          return Math.max(...ys) >= x * 0.85 - half && Math.min(...ys) <= x * 0.15 + half;
+        });
+        if (!stem) {
+          wrong.push(`${name} @${weight}: no stem`);
+          continue;
+        }
+        const left = Math.min(...points(stem.spine).map((p) => p.x));
+        // The arm: ink in the top half reaching well right of the stem.
+        const reach = Math.max(
+          ...strokes
+            .filter((stroke) => stroke !== stem)
+            .flatMap((stroke) => points(stroke.spine))
+            .filter((p) => p.y > x * 0.5)
+            .map((p) => p.x - left),
+        );
+        if (!(reach >= x * 0.3)) wrong.push(`${name} @${weight}: arm reaches ${reach.toFixed(0)}`);
       }
     }
     expect(wrong).toEqual([]);
@@ -470,8 +498,8 @@ describe("the s at a heavy weight", () => {
    * x-height over the line and hung under it: a black `§` in the word. It is
    * the Black s now, as on every other face, which lays its spine flatter
    * instead and keeps to the lines the `o` beside it keeps to -- within a
-   * tenth of an x-height at 260, where even a flat spine has no room left and
-   * it grows a little, as the Black s does on every face.
+   * twentieth of an x-height at 260, where even a flat spine has no room left
+   * and it grows a little, as the Black s does on every face.
    */
   it("keeps to the lines the o keeps to", () => {
     const out: string[] = [];
@@ -489,9 +517,120 @@ describe("the s at a heavy weight", () => {
         };
         const s = past("s");
         const o = past("o");
-        if (s > o + x * 0.12) out.push(`${name} @${weight}: s ${s.toFixed(0)}, o ${o.toFixed(0)}`);
+        if (s > o + x * 0.05) out.push(`${name} @${weight}: s ${s.toFixed(0)}, o ${o.toFixed(0)}`);
       }
     }
     expect(out).toEqual([]);
+  });
+});
+
+describe("a capital handing on", () => {
+  /*
+   * Not from the foot of a stem standing on its own under the letter: a foot
+   * going right off the `T` or the `Y` is the foot of an `L`, and `The` set
+   * as `Lhe`. The pen lifts after them, as it does after an `I`.
+   */
+  it("lifts after a T and a Y", () => {
+    expect(["T", "Y", "I"].filter((letter) => joinEnds(letter).exit)).toEqual([]);
+  });
+});
+
+describe("the high hand-over at a heavy weight", () => {
+  /*
+   * Level at every face's own weight, and climbing a little once the pen is
+   * heavy against the letter. Held level at 260, it was a thin rule laid
+   * between two black shapes after every `o`, `v`, `w` and `b`.
+   */
+  it("climbs at 260 and runs level at the face's own weight", () => {
+    for (const name of JOINED) {
+      const own = base(name);
+      const x = own.metrics.xHeight;
+      const script = own.parts.script;
+      const unit = scriptUnit(own);
+      const atOwn = seamHeading(script, true, x, own.pen.weight / 2, unit);
+      const heavy = seamHeading(script, true, x, 130, unit);
+      expect([name, Math.abs(atOwn.y) < 1e-9]).toEqual([name, true]);
+      expect([name, heavy.y > 0.15]).toEqual([name, true]);
+    }
+  });
+});
+
+describe("the e set in a word at a heavy weight", () => {
+  /*
+   * Its eye open by a fortieth of an x-height squared at the least. The bar
+   * of the written `e` was drawn at join weight and the Roundhand's plain one
+   * at the full stem's, and at 260 each filled the eye to a slit: a hundredth
+   * of an x-height squared on the Roundhand, not much more on the Monoline.
+   */
+  it("keeps its eye open", () => {
+    const shut: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const weight of [200, 260]) {
+        const style = at(own, weight);
+        const drawn = drawLetter("e", style, own.forms?.e)!;
+        const eye = Math.max(
+          0,
+          ...unite(drawn.contours, "winding")
+            .map((contour) => -contourArea(contour))
+            .filter((area) => area > 0),
+        );
+        const x = style.metrics.xHeight;
+        if (eye < x * x * 0.025)
+          shut.push(`${name} @${weight}: ${((eye / (x * x)) * 100).toFixed(1)}%`);
+      }
+    }
+    expect(shut).toEqual([]);
+  });
+});
+
+describe("a looped ascender on a broad nib", () => {
+  /*
+   * Comes home inside its stem, so the top of the letter is the nib's own cut.
+   * The eye's round end, swept with a lighter nib than the stem, stood a few
+   * units past the stem's flat top: a small horn at the head of every looped
+   * `b`, `h`, `k` and `l` on the Handwriting, the Formal and the Casual Script.
+   */
+  it("stops under the top of its stem", () => {
+    const horned: string[] = [];
+    for (const name of ["Handwriting", "Formal Script", "Casual Script"]) {
+      const own = base(name);
+      for (const weight of [30, own.pen.weight]) {
+        const style = at(own, weight);
+        for (const letter of ["b", "h", "k", "l"]) {
+          const drawn = drawLetter(letter, style, own.forms?.[letter])!;
+          const boxes = drawn.contours.map((contour) => contoursBounds([contour]));
+          const top = boxes.reduce((most, box) => (box.yMax > most.yMax ? box : most));
+          // The stem is the one piece that reaches down to the line.
+          if (top.yMin > style.metrics.xHeight * 0.3) horned.push(`${name} @${weight} ${letter}`);
+        }
+      }
+    }
+    expect(horned).toEqual([]);
+  });
+});
+
+describe("a capital on a joined face", () => {
+  /*
+   * Written: entered with a hairline swash from the lower left into the top of
+   * its first stroke. The joined faces' capitals were the Sans's, leaning --
+   * `The Quick Brown Fox` set a printed capital at the head of every word of
+   * handwriting.
+   */
+  it("is entered with a swash", () => {
+    const printed: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const letter of "BDEFHIKLMNPRTUVWXYZ") {
+        const written = drawLetter(letter, own, own.forms?.[letter])!;
+        const plain = drawLetter(letter, own)!;
+        // The swash is a stroke of its own, standing out to the left, and the
+        // letter is spaced round it.
+        const more = written.contours.length - plain.contours.length;
+        const wider = written.advanceWidth - plain.advanceWidth;
+        if (more < 1 || wider <= 0) printed.push(`${name} ${letter}`);
+      }
+    }
+    expect(printed).toEqual([]);
   });
 });

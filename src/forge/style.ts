@@ -1614,7 +1614,12 @@ export const MARKER: Style = {
    * grows, and at the slider's heaviest it stood off the bowl as a hook and
    * the letter read as a 6. The spur keeps the bar on the bowl at every weight.
    */
-  forms: { g: "curled", t: "straight", y: "straight", l: "tailed", G: "spurred" },
+  /*
+   * And the grotesque `k`, its arm and leg meeting the stem on the diagonal.
+   * The plain one's arm runs out nearly flat, and as the pen grows it reaches
+   * further: at 260 it stood out past the letter as a long thin blade.
+   */
+  forms: { g: "curled", t: "straight", y: "straight", l: "tailed", G: "spurred", k: "grotesque" },
   /*
    * And the tool, which is where this face stops being a slanted sans.
    *
@@ -1774,7 +1779,12 @@ export const BRUSH: Style = {
    * grows, and at the slider's heaviest it stood off the bowl as a hook and
    * the letter read as a 6. The spur keeps the bar on the bowl at every weight.
    */
-  forms: { g: "curled", f: "descending", y: "straight", l: "tailed", G: "spurred" },
+  /*
+   * And the grotesque `k`, its arm and leg meeting the stem on the diagonal.
+   * The plain one's arm runs out nearly flat, and as the pen grows it reaches
+   * further: at 260 it stood out past the letter as a long thin blade.
+   */
+  forms: { g: "curled", f: "descending", y: "straight", l: "tailed", G: "spurred", k: "grotesque" },
   /*
    * The pressure, which is what separates a brush from a slanted pen.
    *
@@ -2096,6 +2106,15 @@ export const TYPEWRITER: Style = {
  * they are spaced by it like any other letter. Set to nothing, as this was at
  * first, every one of them sat flush against its neighbours.
  */
+/*
+ * The written capitals, on every joined face: each drawn capital entered with
+ * a hairline swash into the top of its first stroke. See the `written`
+ * capitals in `alternates.ts`.
+ */
+const WRITTEN_CAPITALS = Object.fromEntries(
+  "BDEFHIKLMNPRTUVWXYZ".split("").map((letter) => [letter, "written"]),
+);
+
 export const HANDWRITING: Style = {
   ...PLAIN,
   name: "Handwriting",
@@ -2213,6 +2232,7 @@ export const HANDWRITING: Style = {
   // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
   // against the reference's 1.06.
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
     l: "tailed",
     t: "straight",
@@ -2556,6 +2576,7 @@ export const FORMAL_SCRIPT: Style = {
    * bowl and the letter read as a `∂` with a hook floating over it.
    */
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
     a: "written",
     l: "tailed",
@@ -2757,6 +2778,7 @@ export const CASUAL_SCRIPT: Style = {
    * against the reference's 1.07; plain, it is 1.00.
    */
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
     t: "straight",
     y: "straight",
@@ -2952,6 +2974,7 @@ export const MONOLINE_SCRIPT: Style = {
   // face's eye is the join layer's, and a tail that curls as well draws it
   // twice -- 1.68 of its own `o` against the reference's 1.06.
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
     l: "tailed",
     y: "straight",
@@ -3164,6 +3187,7 @@ export const ROUNDHAND: Style = {
    */
   pen: { weight: 74, contrast: 0.24, angle: 28 },
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
     l: "tailed",
     // The plain `g`, whose descender the join layer loops as it does the
@@ -3173,6 +3197,12 @@ export const ROUNDHAND: Style = {
     f: "descending",
     // Hands on from its arm; see the written `r`.
     r: "written",
+    /*
+     * And the written `e`, whose rising bar goes lighter as the pen gets
+     * heavy. The plain one's bar is the stem's own weight, and from the Bold
+     * up it filled the eye: at 260 a hundredth of an x-height squared.
+     */
+    e: "written",
   },
   parts: {
     ...PLAIN.parts,

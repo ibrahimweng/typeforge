@@ -371,6 +371,18 @@ export function seamHeading(
   unit?: number,
 ): Vec2 {
   let degrees = high ? 0 : Math.max(-60, Math.min(70, script.tilt));
+  /*
+   * A join across the waist runs level -- until the pen is heavy against the
+   * letter. Then a level join is a thin rule laid between two black shapes,
+   * and after an `o`, a `v`, a `w` or a `b` at the heaviest weight the word
+   * read as ruled rather than written. So past a pen of a third of the
+   * x-height it climbs a little, up to twelve degrees at twice that: nothing
+   * moves at any face's own weight.
+   */
+  if (high && x !== undefined && half !== undefined && x > 0) {
+    const heavy = Math.max(0, Math.min(1, ((half * 2) / x - 1 / 3) / (1 / 3)));
+    degrees = 12 * heavy;
+  }
   if (!high && degrees > 0 && x !== undefined && half !== undefined && half > 0) {
     const low = seamsOf(script, x, half, unit).low;
     const most = (2 * Math.atan2(low - half, runOf(script, half, unit)) * 180) / Math.PI;
@@ -911,9 +923,16 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
       // the baseline. A run that stays entirely one side of the line it would
       // have crossed is a mark rather than a stroke -- which is what keeps the
       // dot of an `i` from being treated as an ascender.
-      if (end.y > room.x && lowest < room.x && (!top || end.y > top.end.y))
+      //
+      // And out by more than a curve overshoots it. A thin pen lets a curve's
+      // spine ride over the x-height it stops under at every other weight:
+      // the arm of the written `r` crossed it at the Thin and nowhere else,
+      // was asked whether it had an eye, and the letter came off the weight
+      // axis on a question the drawn weight had never been asked.
+      const past = room.x * 0.1;
+      if (end.y > room.x + past && lowest < room.x && (!top || end.y > top.end.y))
         top = { end, on: spine };
-      if (end.y < 0 && highest > 0 && (!foot || end.y < foot.end.y)) foot = { end, on: spine };
+      if (end.y < -past && highest > 0 && (!foot || end.y < foot.end.y)) foot = { end, on: spine };
     }
   }
 
@@ -995,7 +1014,23 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
     const pieces = endPieces(run);
     const atStart = Math.hypot(end.x - spineStart(run).x, end.y - spineStart(run).y) < 1e-6;
     const curls = pieces !== null && (atStart ? pieces.first : pieces.last).kind === "arc";
+    /*
+     * And on a broad nib, set down inside the stem by half a pen. The eye is
+     * swept with a lighter nib than the stem, and its round end is that nib's
+     * own shape, standing a little past the stem's flat-cut top: a small horn
+     * at the head of every looped `b`, `h`, `k` and `l` on the Handwriting and
+     * the Casual Script. Set down, the eye comes home inside the stem, and the
+     * top of the letter is the nib's own cut. A round pen's eye is its round
+     * end, and stays where it is -- as does a pen a heavy weight has only lent
+     * a little contrast to.
+     */
+    const nib = room.narrow < room.half * 0.4;
     const tip = curls ? end : at(end.x, rising ? end.y - room.upright : end.y + room.upright);
+    // Only where it is drawn: the eye is sized and tried from the tip above.
+    // By about the eye's own half-width, which is what stood out: its nib is
+    // six tenths of the stem's on these faces. Set down a whole half-pen, a
+    // heavy Formal `b` lost the top of its counter to it.
+    const drawnTip = rising && nib && !curls ? at(tip.x, tip.y - room.half * 0.6) : tip;
     /*
      * How far the eye reaches back is the pen's business until it stops
      * reaching the letter, and then it is the letter's.
@@ -1091,7 +1126,7 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
       // In two pieces however far it turns, so a narrow eye, a round one and
       // the one that is not there are the same points.
       spine: pinnedTo(
-        ok ? bowed(start, tip, rising ? shape : -shape) : hidden(run, tip, atStart, room),
+        ok ? bowed(start, drawnTip, rising ? shape : -shape) : hidden(run, drawnTip, atStart, room),
         2,
       ),
       on: run,
@@ -2161,8 +2196,9 @@ export function planJoin(
    */
   const climbing = seamHeading(script, false, room.x, room.half, room.unit);
   // A join across the waist runs level; see `seamHeading`.
-  const entryWay = entryAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
-  const exitWay = exitAt > seams.low + 1e-9 ? seamHeading(script, true) : climbing;
+  const across = seamHeading(script, true, room.x, room.half, room.unit);
+  const entryWay = entryAt > seams.low + 1e-9 ? across : climbing;
+  const exitWay = exitAt > seams.low + 1e-9 ? across : climbing;
   /*
    * The lead-in arrives along the letter's own stroke, pointing away from the
    * seam -- up the first stem of an `n`, so the two meet at the apex the way an

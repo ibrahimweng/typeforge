@@ -1,5 +1,5 @@
 import type { Vec2 } from "@/font/types";
-import { joiningWithoutEntry, joinWeight, LETTERS, writtenLead } from "../letters";
+import { joinWeight, LETTERS, writtenLead } from "../letters";
 import { seamsOf } from "../script";
 import { alongSpine, bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -543,7 +543,14 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
       build: (style) => {
         const f = frame(style);
         const centre = at(f.edge + f.bowl, f.x / 2);
-        const eye = eyeOf(f, centre);
+        /*
+         * The rising bar at join weight, and lighter again as the pen gets
+         * heavy: a hairline across a Black. At the weight of a join it filled
+         * the eye of the e at 260, leaving a slit. And the eye placed for the
+         * bar it has, not for a crossbar of the face's own weight.
+         */
+        const barShare = joinWeight(style) * (1 - 0.8 * Math.min(1, blackness(style)));
+        const eye = eyeOf({ ...f, bar: barShare }, centre);
         const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
         const opens = (Math.asin(rise) * 180) / Math.PI;
         /*
@@ -586,10 +593,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
                * the up-stroke, and a heavy hand's up-strokes stay light. At
                * the whole pen of 260 it filled the eye it rises under.
                */
-              lighter(
-                ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
-                joinWeight(style),
-              ),
+              lighter(ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT), barShare),
               ink(f, belt, BUTT, f.end),
             ],
             true,
@@ -730,104 +734,90 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const f = frame(style);
         const stem = f.edge;
         /*
-         * A joined hand's `r`: up the stem, over a small shoulder, down the far
-         * side on a slant and round a valley into the lead-out, which is the
-         * last part of this stroke rather than a stroke run out of the stem.
+         * A joined hand's `r`, as the reference scripts write it: a stem from
+         * the x-height straight down to the line, a short arm branching off
+         * its top and drooping, and the foot turned sharply into the
+         * lead-out, which is the last part of the stem's stroke.
          *
-         * The drawn `r` left from the foot of its stem like every other letter,
-         * and its lead-out then ran along the writing line under the arm to
-         * reach an advance past the end of it: `rn` read as `Lcn`. Left from
-         * the end of the arm instead, it had most of an x-height to fall and a
-         * turn from falling to climbing too tight for the pen, and it knotted.
-         * So the valley is drawn here, where it can be given the room.
+         * Every other shape tried read as some other letter set in a word.
+         * The printed `r`, with its lead-out left from the foot, ran along the
+         * writing line under the arm to reach an advance past it: `rn` read
+         * as `Lcn`. Its arm carried down to the line at 52 degrees read as
+         * `ʌ` (`bʌown`). An up-stroke into a notch and a slanting down-stroke
+         * read as `v` after every low join (`quavtz`, `wizavds`), the lead-in
+         * and the down-stroke making the two arms of it. A shoulder rounded
+         * over the top of the stem read as `c` (`cain`). The stem standing to
+         * its full height, with the arm springing out of it, is what an `r`
+         * is read by.
          */
-        const lead = writtenLead("r", style, "exit");
-        // A tighter shoulder than the `n`'s, so the letter reads as an `r`
-        // with its arm carried down rather than as a narrow `n`.
+        /*
+         * The lead-out's seam, which is the low one whatever this drawing is
+         * entered at: an `r` hands over low. Asked plainly, the drawing set
+         * after a `b`, an `o`, a `v` or a `w` got the high seam here, aimed its
+         * valley at the waist and then hooked back down across itself to the
+         * seam it actually leaves at -- `brown` had a knot in its `r`. Asked
+         * for the exit's end rather than the entry's, as `writtenLead` says,
+         * so an `r` arriving high keeps the advance of the `r` it stands in for.
+         */
+        const asked = writtenLead("r", style, "exit");
+        const lead = asked.low ?? asked;
+        // A tighter shoulder than the `n`'s, so the arm stands off the stem
+        // as an arm rather than turning over into a narrow `n`.
         const radius = Math.max(shoulderRadius(f, f.x) * 0.6, f.least);
         const crest = Math.max(f.crest(f.x), radius);
-        const landing = stem + Math.max(f.arch * 0.4, radius * 2);
-        const fall = 80;
-        const falls = (-fall * Math.PI) / 180;
+        // Reaching two fifths of the x-height, so it is read as an arm at
+        // text size rather than as a nick in the top of the stem.
+        const landing = stem + Math.max(f.x * 0.4, radius * 2);
         const climbs = Math.max(Math.atan2(lead.way.y, lead.way.x), 0.2);
-        /*
-         * The down-stroke starts under the nub, not at its end, so the two
-         * meet in a notch: see below.
-         */
-        const turned = at(stem + radius + (landing - stem - radius) * 0.35, crest);
-        // Where the stroke leaves: a weld under the seam, on its heading.
+        // Where the stroke hands on: a weld under the seam, on its heading.
         const leaves = lead.y - lead.weld * Math.sin(climbs);
-        // The valley as round as the room under that allows. It sits on the
-        // writing line, as the foot of every other letter does, and the join
-        // climbs the rest of the way to the seam: hung at the seam, with no
-        // stem left to reach down, the `r` floated above its neighbours.
+        /*
+         * The foot turned tight. Rounded any wider, the foot and the arm were
+         * the two ends of a `c` with the stem between them. It sits on the
+         * writing line, as the foot of every other letter does.
+         */
         const lift = 1 - Math.cos(climbs);
         const valley = Math.max(
-          Math.min(f.x * 0.22, (leaves - f.half) / Math.max(lift, 1e-6)),
+          Math.min(f.x * 0.1, (leaves - f.half) / Math.max(lift, 1e-6)),
           f.least,
         );
-        const bottom = f.dip(0);
-        const starts = bottom + valley * (1 - Math.cos(-falls));
-        const run = Math.max((turned.y - starts) / Math.sin(-falls), 1);
-        const into = at(turned.x + run * Math.cos(falls), turned.y + run * Math.sin(falls));
-        const centre = at(into.x - valley * Math.sin(falls), into.y + valley * Math.cos(falls));
+        const centre = at(stem + valley, f.dip(0) + valley);
         const toDegrees = (radians: number) => (radians * 180) / Math.PI;
-        // Where a sixty-degree flick off the line meets the shoulder square on.
-        const meets = at(
-          stem + radius + radius * Math.cos((5 * Math.PI) / 6),
-          crest - radius + radius * Math.sin((5 * Math.PI) / 6),
+        // Out of the foot on the join's heading, up to where the join takes
+        // it on.
+        const bottomOut = at(
+          centre.x + valley * Math.sin(climbs),
+          centre.y - valley * Math.cos(climbs),
         );
-        // The flick starts well up off the line, so it is a lead-in and
-        // not a second leg: from the line it read as a `ʌ` before the `o`.
-        const flick = Math.max(meets.y - f.x * 0.2, f.half);
+        const onward = Math.max((leaves - bottomOut.y) / Math.sin(climbs), 1);
+        const handsOn = at(
+          bottomOut.x + onward * Math.cos(climbs),
+          bottomOut.y + onward * Math.sin(climbs),
+        );
         return {
           ...finish(f, [
-            /*
-             * Two strokes that meet in a notch, as a written `r` is: a thin
-             * up-stroke running into a small nub at the waist, and the thick
-             * down-stroke started from under that nub, falling nearly upright
-             * and turning into the lead-out.
-             *
-             * Drawn as one stroke with a full stem it was two uprights and an
-             * arch -- a narrow `n`. With the far side laid down at fifty-two
-             * degrees to avoid that, it read as a `ʌ`: `brown` came out
-             * `bʌown`. And rounded over from the nub into the down-stroke it
-             * was an arch again. The notch is what an `r` is read by: it is
-             * the one place in the letter the pen changes direction sharply.
-             *
-             * The up-stroke is a stub the lead-in lands on, since the lead-in
-             * is the rest of it. At the start of a word there is no lead-in,
-             * and there it is the letter's own: a flick off the line at sixty
-             * degrees, straight into the nub, as a hand starts an `r`. Carried
-             * down to the line as a stem instead, `ro` read `no`.
-             */
+            // The arm, sprung from inside the stem and drooping at its end as
+            // the plain `r`'s does.
             ink(
               f,
               chain(
-                ...(joiningWithoutEntry()
-                  ? [
-                      straight(
-                        at(meets.x - (meets.y - flick) / Math.tan(Math.PI / 3), flick),
-                        meets,
-                      ),
-                      turn(at(stem + radius, crest - radius), radius, 150, 90),
-                    ]
-                  : [
-                      straight(at(stem, crest - radius - f.x * 0.3), at(stem, crest - radius)),
-                      turn(at(stem + radius, crest - radius), radius, 180, 90),
-                    ]),
-                straight(at(stem + radius, crest), at(landing, crest)),
+                turn(at(stem + radius, crest - radius), radius, 180, 90),
+                straight(at(stem + radius, crest), at(landing - radius, crest)),
+                turn(at(landing - radius, crest - radius), radius, 90, 60),
               ),
               BUTT,
               f.end,
             ),
+            // The stem, the foot and the lead-out, as one stroke and the last
+            // one: the join hands on from its end (see `leaves`).
             ink(
               f,
               chain(
-                straight(turned, into),
-                turn(centre, valley, toDegrees(falls) - 90, toDegrees(climbs) - 90),
+                straight(at(stem, f.x), at(stem, centre.y)),
+                turn(centre, valley, -180, toDegrees(climbs) - 90),
+                straight(bottomOut, handsOn),
               ),
-              BUTT,
+              f.end,
               BUTT,
             ),
           ]),
@@ -1846,3 +1836,59 @@ const GEOMETRIC_S_BLACK = 1;
 
 /** How much further a typewriter's narrow letters run their serifs out: see `COLUMN`. */
 const COLUMN_SERIF = 4;
+
+/*
+ * A written capital: the drawn one, entered with a hairline swash that rises
+ * from the lower left into the top of its first stroke.
+ *
+ * A joined face's capitals were the Sans's, leaning. What makes a capital read
+ * as written rather than printed is mostly that it is started with a flourish
+ * where a printed one simply begins: a copperplate `H` comes in from the left
+ * on a thin curve and lands on the top of its first stem. So the capital
+ * keeps its own construction and gains that one stroke, at join weight.
+ *
+ * Only on the capitals whose first stroke starts at the top left at every
+ * weight: the stems, the diagonals and the bars. On the round ones there is no
+ * such start to land on, and on the `G` and the `J` there is one at some
+ * weights and not at others -- a letter with a stroke at one weight and not at
+ * the next cannot follow a weight axis.
+ */
+const WRITTEN_CAPITALS = "BDEFHIKLMNPRTUVWXYZ".split("") as LetterName[];
+for (const name of WRITTEN_CAPITALS) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  ALTERNATES[name].push({
+    id: "written",
+    label: "Written",
+    hint: "Entered with a hairline swash rising into the top of its first stroke, as a hand starts a capital.",
+    build: (style) => {
+      const plain = LETTERS[name](style);
+      const f = frame(style);
+      // The leftmost end standing at the cap height, and which way its stroke
+      // runs from there.
+      const high = plain.strokes
+        .filter((stroke) => !stroke.spine.closed)
+        .flatMap((stroke) => {
+          const along = alongSpine(stroke.spine, 24);
+          return [
+            { point: along[0], next: along[1] },
+            { point: along[along.length - 1], next: along[along.length - 2] },
+          ];
+        })
+        .filter(({ point }) => point.y >= f.cap * 0.85);
+      if (high.length === 0) return plain;
+      const top = high.reduce((one, other) => (other.point.x < one.point.x ? other : one));
+      const run = Math.hypot(top.next.x - top.point.x, top.next.y - top.point.y) || 1;
+      // From a little over half-way up, a third of the cap height to the left,
+      // bowed up and over, and landing half a pen into the stroke: down into a
+      // stem, along into a bar. Aimed half a pen under the end of a bar, it
+      // missed the `T` and the `Z` altogether.
+      const from = at(top.point.x - f.cap * 0.3, f.cap * 0.55);
+      const lands = at(
+        top.point.x + ((top.next.x - top.point.x) / run) * f.half,
+        top.point.y + ((top.next.y - top.point.y) / run) * f.half,
+      );
+      const swash = lighter(ink(f, bowed(f, from, lands, 0.35), f.end, BUTT), joinWeight(style));
+      return { ...plain, strokes: [...plain.strokes, swash] };
+    },
+  });
+}
