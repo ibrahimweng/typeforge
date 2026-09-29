@@ -35,7 +35,7 @@ import {
   type PoolWhere,
   type RoughReach,
 } from "@/font/effects";
-import { figuresOf, groovesOf, inGroove, untangled } from "./cast";
+import { addedOf, figuresOf, groovesOf, inGroove, untangled } from "./cast";
 import type { CutScale } from "./cut";
 import { alongSpine, spineLength } from "./shapes";
 import { penReach, reachAlong, sweep } from "./sweep";
@@ -209,7 +209,7 @@ export function effectInk(
    * once.
    */
   let shape = canCarve ? unite(ink, roles, "whole") : ink;
-  const given = shape.filter((contour) => contourArea(contour) > 0).length;
+  const given = shape.filter((contour) => contourArea(contour) > 0);
   if (canCarve && effects.press.on && strokes.length > 0) {
     const wedges = pressWedges(shape, strokes, effects.press, stem, groovesOf.get(ink) ?? []);
     if (wedges.length > 0) shape = takenAway(shape, wedges);
@@ -267,19 +267,42 @@ export function effectInk(
     figures,
   ).map(unpinched);
   /*
-   * Nor more pieces than they were given, where what is new is a crumb. The
-   * pressure thinned the neck of a saw tooth on a light Brush e until its
-   * tip, point and all, stood beside the letter: just over the speck sweep's
-   * floor, and nothing the letter drew. The smallest pieces go first, and
-   * only while there are more than there were and they are under half a stem
-   * square, so the dot of an i -- given, not made -- is never one of them.
+   * Nor a crumb of what the cast grew. A point on the thin terminal of a
+   * light Brush e stood on a neck the pressure thinned and the roughening
+   * then parted, and it came back as a crumb beside the letter. A piece
+   * that broke off one the effects were given, is under half a stem square,
+   * and is mostly a point or a fillet goes. Only those: at its heaviest the
+   * Casual Script's roughening parts the tail of a p from its bowl, and the
+   * tail is the letter's own stroke.
    */
-  const solids = done
-    .filter((contour) => contourArea(contour) > 0)
-    .sort((one, other) => contourArea(one) - contourArea(other));
-  const crumbs = solids
-    .slice(0, Math.max(0, solids.length - given))
-    .filter((contour) => contourArea(contour) < stem * stem * 0.5);
+  const grown = addedOf.get(ink) ?? [];
+  const solids = done.filter((contour) => contourArea(contour) > 0);
+  const crumbs: Contour[] = [];
+  if (grown.length > 0 && solids.length > given.length) {
+    const inkOf = (contours: Contour[]) =>
+      contours.reduce((total, contour) => total + contourArea(contour), 0);
+    const from = new Map<number, Contour[]>();
+    for (const solid of solids) {
+      let parent = -1;
+      let most = 0;
+      given.forEach((one, at) => {
+        const shared = inkOf(intersect([solid], [one], "winding"));
+        if (shared > most) {
+          most = shared;
+          parent = at;
+        }
+      });
+      if (parent >= 0) from.set(parent, [...(from.get(parent) ?? []), solid]);
+    }
+    for (const family of from.values()) {
+      const largest = Math.max(...family.map((one) => contourArea(one)));
+      for (const one of family) {
+        const area = contourArea(one);
+        if (area >= largest || area >= stem * stem * 0.5) continue;
+        if (inkOf(intersect([one], grown, "winding")) > area * 0.5) crumbs.push(one);
+      }
+    }
+  }
   const kept = crumbs.length > 0 ? done.filter((contour) => !crumbs.includes(contour)) : done;
   /*
    * Nor scraps of an inline's groove. A rim grown into the groove narrows it,

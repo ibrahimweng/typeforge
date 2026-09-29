@@ -110,6 +110,12 @@ export const knivesOf = new WeakMap<Contour[], Contour[]>();
  */
 export const figuresOf = new WeakMap<Contour[], Contour[]>();
 
+/**
+ * The points and fillets the cast grew on the letter, for the same list: see
+ * the crumbs in the effects, which a point on a thin terminal can become.
+ */
+export const addedOf = new WeakMap<Contour[], Contour[]>();
+
 /** Whether a hole lies mostly in an inline's groove (`groovesOf`). */
 export function inGroove(hole: Contour, grooves: Contour[]): boolean {
   if (grooves.length === 0) return false;
@@ -172,6 +178,7 @@ export function castInk(
   );
 
   const local: Contour[] = [];
+  const grown: Contour[] = [];
   if (cast.spur.on) {
     local.push(...spurTool(shape, cast.spur, stem, chamfered, knivesOf.get(ink) ?? []));
   }
@@ -203,6 +210,7 @@ export function castInk(
     const added = local
       .filter((one) => !contoursIntersect([one]))
       .map((one) => (contourArea(one) < 0 ? reverseContour(one) : one));
+    grown.push(...added);
     shape = unite([...shape, ...added], "winding", "whole").filter(
       (contour) => contourArea(contour) <= 0 || contourArea(contour) >= least,
     );
@@ -232,6 +240,7 @@ export function castInk(
   if (grooves.length > 0) groovesOf.set(result, grooves);
   const figures = figuresOf.get(ink);
   if (figures) figuresOf.set(result, figures);
+  if (grown.length > 0) addedOf.set(result, grown);
   return result;
 }
 

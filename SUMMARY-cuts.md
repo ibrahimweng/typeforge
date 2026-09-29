@@ -137,7 +137,10 @@ The earlier rounds swept Sans and Serif at every weight but the other bases at t
 - **Specks.** The effects now sweep for specks again after untangling. A speck stood by the leg of a Formal Script k with points after the chamfer. Panel: `formal-script-chamfer-then-points`.
 - **Motif on a roughened face.** The cut now hands on the motif's figures, and the filter for cracks leaves them alone. The roughened diamond in a Marker e was filled as a crack, and the e came back solid. Panel: `marker-motif`.
 
-- **Hairs and crumbs on the Brush.** Found by the final sweep. Where the roughened outline comes back to exactly a point it passed through, and the loop between encloses nothing, the loop is dropped: a point grown on a saw tooth of a Brush e came back as a hair of no width. And the effects now leave no more pieces than they were given where the new one is a crumb under half a stem square: the pressure thinned a tooth's neck on a light Brush e until its tip stood apart.
+- **Hairs and crumbs on the Brush.** Found by the final sweep.
+  - Where the roughened outline comes back to exactly a point it passed through, and the loop between encloses nothing, the loop is dropped. A point grown on a saw tooth of a Brush e came back as a hair of no width.
+  - A point on the thin terminal of a light Brush e stood on a neck that the pressure thinned and the roughening parted. It came back as a crumb beside the letter. The cast now hands on what it grew. After the effects, a piece that broke off one they were given is dropped if it is under half a stem square and is mostly a point or a fillet.
+  - A first version dropped any small piece that broke off, and took the tail of a heavy Casual Script p and the exit of its a with it. Those are the letter's own strokes, which that face's roughening parts at weight 260. They are kept again, and a test holds them.
 
 **Checked and not faults**
 - **Serif g at 30 and Monoline Script e and t at 200 and 260.** The "lost" holes are pinholes of a few hundred square units or less in the plain drawing. The effects rightly fill them.
@@ -149,7 +152,7 @@ The new tests are in `src/forge/cuts-cast-polish.test.ts`, `src/forge/cut.test.t
 - The inline used to be kept out of opened fonts. Those tests now use the breaks, which are still skeleton-only.
 - A bowl's groove used to stay separate from the stem's. The test now checks instead that no wall pinches.
 
-`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1790 tests.
+`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1791 tests. One older test, the exchange test that cuts slots through a whole opened font, runs close to its 30-second limit on this machine: about 28.4 seconds alone, against 27.6 seconds before this pass. Under full-suite load it once went over.
 
 ## Known leftovers
 

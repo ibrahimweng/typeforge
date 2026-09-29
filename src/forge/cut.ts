@@ -37,7 +37,16 @@ import {
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
-import { eroded, figuresOf, groovesOf, knivesOf, onGrid, outlined, untangled } from "./cast";
+import {
+  addedOf,
+  eroded,
+  figuresOf,
+  groovesOf,
+  knivesOf,
+  onGrid,
+  outlined,
+  untangled,
+} from "./cast";
 import { penReach, sweep } from "./sweep";
 import type { Style } from "./style";
 import type { Spine, SpineSegment, Stroke } from "./types";
@@ -285,6 +294,9 @@ export function cutInk(
   if (groove.length > 0) groovesOf.set(shape, groove);
   if (knife.length > 0) knivesOf.set(shape, knife);
   if (figures.length > 0) figuresOf.set(shape, figures);
+  // And what a cast that went first grew, handed on past the cut.
+  const grown = addedOf.get(ink);
+  if (grown) addedOf.set(shape, grown);
 
   return {
     contours: shape,

@@ -891,6 +891,19 @@ describe("points on a saw on the Brush", () => {
   });
 });
 
+describe("the effects on a heavy Casual Script", () => {
+  it("keep the strokes the roughening parts from the letter", () => {
+    // The tail of a heavy p and the exit of an a come away from the bowl
+    // under the roughening, and they are the letter's own: taken for crumbs,
+    // the p came back an o.
+    const plain = drawn("p", forgeOf("Casual Script", 260, {}));
+    const bottom = Math.min(
+      ...plain.flatMap((contour) => contour.nodes.map((node) => node.point.y)),
+    );
+    expect(bottom).toBeLessThan(-100);
+  });
+});
+
 describe("points after the chamfer on a Formal Script", () => {
   it("leave no speck standing by the leg of the k", () => {
     // Untangled after the pressure, the k tied off a speck beside its leg,
