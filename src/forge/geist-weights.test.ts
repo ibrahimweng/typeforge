@@ -1208,3 +1208,45 @@ describe("the at sign's hook", () => {
     expect(column[0][0]).toBeLessThan(100);
   });
 });
+
+describe("the sides of the S, the question, the ampersand, the g and the y", () => {
+  it("stand as far off as Geist's at the Regular and the Black", () => {
+    // Fitted, the S and the g closed to 40 and 17 at the Black (Geist 50
+    // and 32), and the y to 14 (20); the question and ampersand, listed,
+    // closed only half as fast as Geist's and stood 8 loose.
+    const geist: Record<string, [[number, number], [number, number]]> = {
+      S: [
+        [55, 55],
+        [50, 50],
+      ],
+      question: [
+        [44, 44],
+        [32, 32],
+      ],
+      ampersand: [
+        [40, 20],
+        [30, 10],
+      ],
+      g: [
+        [44, 80],
+        [32, 56],
+      ],
+      y: [
+        [22, 22],
+        [20, 20],
+      ],
+    };
+    for (const [name, sides] of Object.entries(geist)) {
+      for (const [index, weight] of [87, 194].entries()) {
+        const glyph = draw(name, weight);
+        const ink = contoursBounds(glyph.contours);
+        const [left, right] = sides[index];
+        expect(Math.abs(ink.xMin - left), `${name} left at ${weight}`).toBeLessThan(7);
+        expect(
+          Math.abs(glyph.advanceWidth - ink.xMax - right),
+          `${name} right at ${weight}`,
+        ).toBeLessThan(7);
+      }
+    }
+  });
+});

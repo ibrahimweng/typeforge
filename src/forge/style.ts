@@ -705,6 +705,7 @@ export const SANS: Style = {
       o: [0.52, 0.52],
       p: [1, 0.52, "stem-left"],
       q: [0.52, 1, "stem-right"],
+      g: [0.52, 1, "stem-right"],
       f: [0.75, 0.53, "closes"],
       // Its foot reaches back to the letter before (Geist -5); held inside.
       j: [0.1, 1, "closes"],
@@ -715,6 +716,7 @@ export const SANS: Style = {
       l: [1, 0.3, "closes"],
       v: [0.28, 0.28],
       w: [0.28, 0.28],
+      y: [0.28, 0.28],
       t: [0.69, 0.46, "closes"],
       x: [0.59, 0.59],
       z: [0.71, 0.71],
@@ -739,6 +741,9 @@ export const SANS: Style = {
       O: [0.41, 0.41],
       Q: [0.41, 0.41],
       U: [0.77, 0.77, "closes"],
+      // Geist's S stands 55 off either side at the Regular and 50 at the
+      // Black, closing as its figures do; fitted, it closed to 40.
+      S: [0.54, 0.54],
       V: [0.11, 0.11],
       W: [0.33, 0.33],
       X: [0.04, 0.04],
@@ -760,7 +765,7 @@ export const SANS: Style = {
       seven: [0.25, 0.02, "unopened"],
       eight: [0.5, 0.5],
       nine: [0.5, 0.63],
-      question: [0.59, 0.59],
+      question: [0.55, 0.55, "closes"],
       period: [0.59, 0.59, "closes"],
       comma: [0.59, 0.59, "closes"],
       colon: [1.15, 1.15, "closes"],
@@ -796,7 +801,7 @@ export const SANS: Style = {
       // Geist stands its ! 50 off either side and its bar 92.
       exclam: [0.63, 0.63],
       // Geist's ampersand stands 40 off its left and 20 off its right.
-      ampersand: [0.5, 0.25],
+      ampersand: [0.5, 0.25, "closes"],
       bar: [1.15, 1.15, "closes"],
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
