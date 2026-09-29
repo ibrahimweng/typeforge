@@ -189,7 +189,16 @@ suite("a joined face carries its joins into the file", () => {
       const ended = Object.keys(widths).filter((n) => n.endsWith(".end"));
       for (const name of ended) {
         const letter = standsFor(name);
-        expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
+        /*
+         * Not the written `r` either, whose word-final drawing is the drawn
+         * `r`: see the lead-outs below. Mid-word its lead-out is the tight
+         * foot of its own stem and its arm hangs out over the letter after,
+         * so the `r` that ends a word, with its arm inside its own advance,
+         * is the wider of the two.
+         */
+        if (!WRITTEN_OUT.has(letter.split(".")[0])) {
+          expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
+        }
         expect([name, left[name]]).toEqual([name, left[letter]]);
       }
 
@@ -219,16 +228,17 @@ suite("a joined face carries its joins into the file", () => {
       const lone = Object.keys(widths).filter((n) => n.endsWith(".alone"));
       for (const name of lone) {
         const letter = name.split(".")[0];
-        expect([name, widths[name] < widths[`${letter}.begin`]]).toEqual([name, true]);
         /*
          * Not a letter whose lead-out is its own stroke (see the lead-outs
          * below): its word-final drawing is a different letter, the drawn one,
-         * and alone it is that letter without its entry.
+         * and alone it is that letter without its entry -- wider than the
+         * written one that begins a word, whose arm hangs over the next letter.
          */
         if (WRITTEN_OUT.has(letter)) {
           expect([name, widths[name] < widths[`${letter}.end`]]).toEqual([name, true]);
           continue;
         }
+        expect([name, widths[name] < widths[`${letter}.begin`]]).toEqual([name, true]);
         const want = widths[`${letter}.begin`] + widths[`${letter}.end`] - widths[letter];
         expect([name, Math.abs(widths[name] - want) <= 1]).toEqual([name, true]);
       }
@@ -236,14 +246,14 @@ suite("a joined face carries its joins into the file", () => {
       /*
        * Every lowercase letter has all three; only lowercase begins a word or
        * stands as one, because nothing ever joins *into* a capital. The
-       * twenty capitals that hand on are in the last drawing only, and by
+       * eighteen capitals that hand on are in the last drawing only, and by
        * the same rule as the lowercase -- there is no second spacing path for
        * them any more. And the hand-overs at the waist again at a word's
        * edge: every lowercase letter arriving high and ending a word, and the
        * four that leave high beginning one.
        */
       expect(begun).toHaveLength(26 + 4);
-      expect(ended).toHaveLength(26 + 20 + 26);
+      expect(ended).toHaveLength(26 + 18 + 26);
       expect(lone).toHaveLength(26);
     },
     FONT_SUITE_TIMEOUT,
@@ -268,13 +278,14 @@ suite("a joined face carries its joins into the file", () => {
       const report = inspectFont(bytes);
       const widths = report.advanceWidths ?? {};
       const left = report.sidebearings ?? {};
+      const right = report.rightEdges ?? {};
 
       /*
        * Every letter that hands on through a join of its own. A written `r`
-       * hands on from the end of its arm, through a valley that is the last
-       * of its own stroke rather than a join run out of it, so what it gives
-       * up at a word's end is that stroke: it ends as the drawn `r` does, on
-       * its own terminal, and is narrower by the whole of the valley.
+       * hands on from the foot of its stem, turned tight into the lead-out as
+       * the last of its own stroke rather than a join run out of it, so what
+       * it gives up at a word's end is that stroke: it ends as the drawn `r`
+       * does, on its own terminal.
        */
       const ended = Object.keys(widths).filter(
         (n) => n.endsWith(".end") && !WRITTEN_OUT.has(n.split(".")[0]),
@@ -287,13 +298,22 @@ suite("a joined face carries its joins into the file", () => {
       expect(Math.min(...lost)).toBeGreaterThan(0);
 
       // Capitals and lowercase alike, and the side that kept its stroke did
-      // not move at all.
-      expect(ended.filter((n) => /^[A-Z]\./.test(n))).toHaveLength(20);
+      // not move at all. Eighteen capitals: the B D F I O P, and the T and
+      // the Y, whose foot going right off a lone stem read `The` as `Lhe`,
+      // never hand on.
+      expect(ended.filter((n) => /^[A-Z]\./.test(n))).toHaveLength(18);
       for (const name of ended) {
         expect([name, left[name]]).toEqual([name, left[standsFor(name)]]);
       }
+      /*
+       * The written `r` at a word's end keeps the side it enters by, and ends
+       * on its own terminal: mid-word its arm hangs past its advance over the
+       * letter after, and at the end of a word nothing comes after, so the
+       * arm is held inside the advance there.
+       */
       for (const letter of WRITTEN_OUT) {
-        expect(widths[`${letter}.end`]).toBeLessThan(widths[letter] - Math.max(...lost));
+        expect(right[letter]).toBeGreaterThan(widths[letter]);
+        expect(right[`${letter}.end`]).toBeLessThanOrEqual(widths[`${letter}.end`]);
         expect(left[`${letter}.end`]).toBe(left[letter]);
       }
     },
