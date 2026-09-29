@@ -341,6 +341,12 @@ Geist's weight and keeps its right side at every weight, and the Thin's
 stands where Geist's does. Past the Black its lightness is held at the
 Black's.
 
+**The B's, P's and R's bowls.** The same fit against Geist's ink found
+their rounds too short as well. The B's two rounds are now a quarter longer
+and the P's 1.3 times. The R's is a fifth longer from the Regular on, and
+the R's Thin keeps its old round, which fitted better. That took a quarter
+off the B's misfit at the Regular and halved the P's at the UltraBlack.
+
 **The D's bowl.** Geist's D runs flat along its lines further than Draw's
 did before it turns: 690 up it reaches 429 at the Thin, where Draw's turned
 at 385. Its round is now 0.9 of half its height rather than 1.05. That took

@@ -738,7 +738,15 @@ function lobeRun(
   );
 }
 
-/** The B: two such bowls, the lower the wider, meeting at a waist below the middle. */
+/** How much longer the Sans draws a capital's round than first measured: see the B, P and R. */
+const sansRound = (f: Frame, by: number): number => (f.style.metrics.xGrows !== undefined ? by : 1);
+
+/**
+ * The B: two such bowls, the lower the wider, meeting at a waist below the
+ * middle; the Sans's rounds a quarter longer than first measured: fitted to
+ * Geist's ink from the Thin to the Black, that took a quarter off the
+ * Regular's misfit.
+ */
 export function grotesqueCapitalB(style: Style): Recipe {
   const f = frame(style);
   const [u, t] = spread(f);
@@ -750,7 +758,14 @@ export function grotesqueCapitalB(style: Style): Recipe {
     ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
     ink(
       f,
-      lobeRun(f, stem, f.hangs(f.cap), waist, X(lerp(409, 392)) + roundGain(f, 7, 21), 150 * u),
+      lobeRun(
+        f,
+        stem,
+        f.hangs(f.cap),
+        waist,
+        X(lerp(409, 392)) + roundGain(f, 7, 21),
+        150 * u * sansRound(f, 1.25),
+      ),
     ),
     /*
      * Its top half a unit under the upper's foot: drawn on exactly the same
@@ -760,12 +775,23 @@ export function grotesqueCapitalB(style: Style): Recipe {
      */
     ink(
       f,
-      lobeRun(f, stem, waist - 0.5, f.sits(0), X(lerp(439, 423)) + roundGain(f, 8, 23), 160 * u),
+      lobeRun(
+        f,
+        stem,
+        waist - 0.5,
+        f.sits(0),
+        X(lerp(439, 423)) + roundGain(f, 8, 23),
+        160 * u * sansRound(f, 1.25),
+      ),
     ),
   ]);
 }
 
-/** The P: the R's bowl, a little deeper, on its stem. */
+/**
+ * The P: the R's bowl, a little deeper, on its stem; the Sans's round 1.3
+ * times as long as first measured: fitted to Geist's ink, that halved the
+ * UltraBlack's misfit.
+ */
 export function grotesqueCapitalP(style: Style): Recipe {
   const f = frame(style);
   const [u, t] = spread(f);
@@ -781,7 +807,7 @@ export function grotesqueCapitalP(style: Style): Recipe {
         f.hangs(f.cap),
         up(f, lerp(330, 305)),
         stem + lerp(419, 401) * u + roundGain(f, 7, 20, 12),
-        160 * u,
+        160 * u * sansRound(f, 1.3),
       ),
     ),
   ]);
@@ -803,7 +829,12 @@ export function grotesqueR(style: Style): Recipe {
   const lobeHalf = held(f, (top - waist) / 2);
   const gain = roundGain(f, 8, 22, 2);
   const right = X(lerp(423, 411)) + gain;
-  const lobeWide = held(f, Math.min(160 * u, right - stem - f.half));
+  // The Sans's round a fifth longer than first measured from the Regular on,
+  // as Geist's is; its Thin's as it was.
+  const lobeWide = held(
+    f,
+    Math.min(160 * u * sansRound(f, 1.2 - 0.2 * thinness(f)), right - stem - f.half),
+  );
   const lobe = at(right - lobeWide, waist + lobeHalf);
   // The leg: out of the waist, round a turn, and down to its foot.
   const foot = at(X(lerp(430.5, 415)) + gain, 0);

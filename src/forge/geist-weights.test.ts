@@ -1540,3 +1540,17 @@ describe("the D's crowns", () => {
     }
   });
 });
+
+describe("the P's bowl", () => {
+  it("rounds over from its top as early as Geist's", () => {
+    // 660 up Geist's P runs to 523 at the Regular and 550 at the
+    // UltraBlack; on a shorter round it ran on to 539 and 563.
+    for (const [weight, reach] of [
+      [87, 523],
+      [172, 550],
+    ]) {
+      const run = filled(draw("P", weight).contours, 660)[0];
+      expect(Math.abs(run[1] - reach), `P at ${weight}`).toBeLessThan(6);
+    }
+  });
+});
