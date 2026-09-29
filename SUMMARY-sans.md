@@ -286,6 +286,22 @@ white over the dot is Geist's at each weight (88 at the Regular, 65 at the
 UltraBlack, 60 at the Black), measured from the dot's own top, which is less
 tall than wide at a heavy weight: the neck stopped 13 to 17 units high there.
 
+**The 5's stem, flag and bowl.** Geist's stem stands 5 to 13 units further
+left than Draw's did, and from the SemiBold on it is lighter than the pen
+(162 across at the UltraBlack on a stem of 172, where Draw's was 173). The
+Sans's stem now has Geist's left side and weight at every weight. Its flag is
+as deep as Geist's (30, 84, 113 and 157 at the Thin, Regular, SemiBold and
+Black, where it was 28, 81, 118 and 149). Geist Thin cuts the stem's foot at
+327 and the bowl's terminal 176 up, where Draw's stood 17 low and 12 high.
+The bowl dips 16 under the line, as Geist's does, and its crown stays up at
+the heavy weights: 300 in from the ink's left it tops out at 468 at the
+Black, where Geist's is at 469 (the older test held it to 452, which the
+current Geist Black does not have). Geist's crown also falls away to the
+stem faster than a superellipse, leaving a notch between them at the heavy
+weights that Draw's bowl does not. The flag's depth and the stem's weight
+are held at the Black's past it, where a deeper flag folded on the Wavy
+face.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

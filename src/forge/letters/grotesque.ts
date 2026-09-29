@@ -1908,14 +1908,29 @@ function fiveOf(style: Style, sans: boolean): Recipe {
   const X = across(f, 60, 0.009, fit);
   const u = large(f, 1) * (1 + 0.009 * thinness(f)) * fit;
   const flag = f.hangs(f.cap);
-  const stemTop = at(X(168), f.cap);
+  /*
+   * The Sans's stem as light as Geist's, which is lighter than its pen from
+   * the SemiBold on (162 across at the UltraBlack on a stem of 172), and its
+   * left side where Geist's is: it stood 5 to 13 units right of it.
+   */
+  const stemPen = sans ? Math.max(atWeights(f, 1, 1, 0.97, 0.94, 0.93), 0.93) : 1;
+  const stemShift = sans ? atWeights(f, -13, -5, -7, -8, -7) - f.half * (1 - stemPen) : 0;
+  const stemTop = at(X(168) + stemShift, f.cap);
   const [, lerp] = squared(f);
   // Geist Black cuts its stem's foot a little lower (289 against 310).
-  const stemFoot = at(X(120), up(f, lerp(310, 289)));
-  const bottom = f.dip(0);
-  // Geist's bowl tops out at 472 at the Regular and 452 at the Black.
+  // And Geist Thin's higher, at 327, where the Sans's stood 17 low.
+  const stemFoot = at(
+    X(120) + stemShift,
+    up(f, lerp(310, 289)) + (sans ? atWeights(f, 17, 0, 0, 0, 0) : 0),
+  );
+  // The Sans's bowl as deep under the line as Geist's, 16.
+  const bottom = f.dip(0) - (sans ? 4 : 0);
+  // Geist's bowl tops out at 472 at the Regular and 452 at the Black; the
+  // current Geist's stays up at 469 to 473 at every weight, though falling
+  // away to the stem faster than a superellipse's: raised all the way, the
+  // bowl's upper left stood 26 units over Geist's at the UltraBlack.
   const [, now] = squaredNow(f);
-  const crown = up(f, sans ? now(472, 452, 471) : 473) - f.upright;
+  const crown = up(f, sans ? now(472, 452, 471) + atWeights(f, 1, 2, 4, 11, 16) : 473) - f.upright;
   const halfH = held(f, (crown - bottom) / 2);
   const centre = at(X(311), bottom + halfH);
   const halfW = held(f, 211 * u);
@@ -1983,12 +1998,25 @@ function fiveOf(style: Style, sans: boolean): Recipe {
    * 546 at the Black, where on the figure's own measures it stood 26 long
    * at the Thin and 52 short at the Black.
    */
+  /*
+   * And the Sans's flag as deep as Geist's: 30 at the Thin, 84 at the
+   * Regular, 113 at the SemiBold and 157 at the Black, where on the face's
+   * horizontals it stood 28, 81, 118 and 149.
+   */
+  const flagDeep = sans ? Math.min(atWeights(f, 1.07, 1.037, 0.958, 1, 1.054), 1.054) : 1;
+  const flagAt = f.cap - (f.cap - flag) * flagDeep;
   const flagEnd = X(518) + 36 * Math.min(heavyT(f), nowBlack()) + roundGain(f, -1, 6, -26);
   return finish(
     f,
     [
-      ink(f, straight(at(stemTop.x - f.half * 0.2, flag), at(flagEnd, flag)), BUTT, f.end),
-      ink(f, straight(stemTop, stemFoot), BUTT, f.end),
+      ((bar: Stroke) =>
+        inherit(bar, { ...bar, pen: { ...bar.pen, weight: bar.pen.weight * flagDeep } }))(
+        ink(f, straight(at(stemTop.x - f.half * 0.2, flagAt), at(flagEnd, flagAt)), BUTT, f.end),
+      ),
+      ((stem: Stroke) =>
+        inherit(stem, { ...stem, pen: { ...stem.pen, weight: stem.pen.weight * stemPen } }))(
+        ink(f, straight(stemTop, stemFoot), BUTT, f.end),
+      ),
       ...fiveBowl(f, sans, centre, halfW, halfH, Math.min(leaves, 175)),
     ],
     true,
@@ -2005,7 +2033,10 @@ function fiveBowl(
   leaves: number,
 ): Stroke[] {
   // Cut higher as the weight grows: 205 at Geist's Black.
-  const cut = up(f, 187 + (18 * Math.min(heavyT(f), nowBlack())) / nowBlack());
+  // And Geist Thin's lower, where the Sans's terminal stood 12 high.
+  const cut =
+    up(f, 187 + (18 * Math.min(heavyT(f), nowBlack())) / nowBlack()) -
+    (sans ? atWeights(f, 12, 0, 0, 0, 0) : 0);
   if (!sans)
     return [
       ink(

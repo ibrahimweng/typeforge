@@ -1072,12 +1072,12 @@ describe("the six's bowl", () => {
 
 describe("the five's bowl", () => {
   it("comes down and lightens at its crown as Geist's does", () => {
-    // 300 in from its ink's left Geist's five's bowl tops out at 452 at the
-    // Black, its crown 118 deep; on the stem's pen it stood at 471 and 153.
+    // 300 in from its ink's left Geist's five's bowl tops out at 469 at the
+    // Black, its crown 127 deep; on the stem's pen it stood at 471 and 153.
     const { contours } = draw("five", 194);
     const column = filled(contours, contoursBounds(contours).xMin + 300, "x");
-    expect(Math.abs(column[1][1] - 452)).toBeLessThan(6);
-    expect(Math.abs(column[1][1] - column[1][0] - 118)).toBeLessThan(10);
+    expect(Math.abs(column[1][1] - 469)).toBeLessThan(6);
+    expect(Math.abs(column[1][1] - column[1][0] - 127)).toBeLessThan(10);
   });
 });
 
@@ -1397,5 +1397,30 @@ describe("the question mark's neck", () => {
       const up = filled(draw("question", weight).contours, 300, "x");
       expect(Math.abs(up[1][0] - foot)).toBeLessThan(6);
     }
+  });
+});
+
+describe("the five's stem and flag", () => {
+  it("stand where Geist's do, as deep and as light", () => {
+    // Geist's stem 600 up starts 112 in at the Thin, 107 at the Regular and
+    // 96 at the Black, where the Sans's stood at 125, 112 and 103.
+    for (const [weight, left] of [
+      [30, 112],
+      [87, 107],
+      [194, 96],
+    ]) {
+      expect(Math.abs(filled(draw("five", weight).contours, 600)[0][0] - left)).toBeLessThan(4);
+    }
+    // Its flag comes down to 597 at the SemiBold and 553 at the Black (592
+    // and 561), and the Thin's stem stops 327 up (310).
+    for (const [weight, under] of [
+      [130, 597],
+      [194, 553],
+    ]) {
+      const up = filled(draw("five", weight).contours, 450, "x");
+      expect(Math.abs(up[up.length - 1][0] - under)).toBeLessThan(4);
+    }
+    const thin = filled(draw("five", 30).contours, 100, "x");
+    expect(Math.abs(thin[1][0] - 327)).toBeLessThan(4);
   });
 });
