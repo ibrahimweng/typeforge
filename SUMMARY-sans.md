@@ -372,6 +372,14 @@ weights: 550 up at the Black it is 186 across, where Draw's is 221.
 with its bar running 81 past it where Geist's runs 86. Both are now Geist's,
 which took a third to three fifths off its misfit.
 
+**The t's foot.** Geist's t turns out along its foot more tightly than the
+first measures gave: 150 in, its Regular's stem comes down to 57 before it
+turns, where Draw's turned at 78. The Sans's turn is now 0.85 of the first
+measure at the Thin, 0.75 at the Regular and 0.6 from the SemiBold on. That
+took a third off the t's misfit from the Regular to the Black and four
+fifths off the Thin's. Geist also sets its heavy t and f 6 to 8 units closer
+on the left than its n's rate gives.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

@@ -916,7 +916,11 @@ export function grotesqueT(style: Style): Recipe {
   // Geist Thin's: 108, a turn of 88, and 252 to both ends.
   const stem = X(lerp(120, 175, 108));
   const foot = f.sits(0);
-  const radius = held(f, lerp(106, 150, 88) * (X(1) - X(0)));
+  // The Sans's foot turns tighter than first measured, as Geist's does:
+  // fitted to its ink, that took a third off the misfit from the Regular on.
+  const tighter =
+    f.style.metrics.xGrows !== undefined ? atWeights(f, 0.85, 0.75, 0.6, 0.6, 0.6) : 1;
+  const radius = held(f, lerp(106, 150, 88) * (X(1) - X(0)) * tighter);
   const toe = Math.max(X(lerp(303, 402, 252)), stem + radius + f.half * 0.2);
   // Its top edge a little over the x-height at a Black, as Geist's is.
   const bar = f.hangs(H(Math.min(lerp(530, 538), 538)), f.bar);

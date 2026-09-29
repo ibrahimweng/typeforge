@@ -1601,3 +1601,12 @@ describe("the four's stem", () => {
     }
   });
 });
+
+describe("the t's foot", () => {
+  it("turns as tight as Geist's", () => {
+    // 150 in, Geist Regular's t's stem comes down to 57 before it turns out
+    // along its foot; on a rounder turn it stopped at 78.
+    const t = filled(draw("t", 87).contours, 150, "x");
+    expect(Math.abs(t[0][0] - 57)).toBeLessThan(6);
+  });
+});
