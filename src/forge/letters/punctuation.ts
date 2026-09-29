@@ -302,7 +302,7 @@ function squareComma(f: Frame, radius: number): Stroke[] {
    * Out of the middle of the foot it stood 12 to 35 units left of Geist's.
    */
   const sans = f.style.metrics.xGrows !== undefined;
-  const top = at(f.edge + side * (sans ? 0.37 : 0.12), radius);
+  const weight = radius * (sans ? 0.85 + 0.1 * light + 0.1 * heavy : 0.95);
   /*
    * Its tail as deep as Geist's: 125 under the line at the Thin, 155 at the
    * Regular, 159 at the Black and no deeper past it. Drawn as deep as the
@@ -316,16 +316,25 @@ function squareComma(f: Frame, radius: number): Stroke[] {
     f.edge - side * (sans ? 0.33 - 0.08 * light - 0.08 * heavy : 0.25),
     -(depth / 530) * f.x,
   );
+  /*
+   * The Sans's cut level along the dot's foot, its right side running out of
+   * the dot's corner as Geist's does: cut square across itself at the dot's
+   * middle, its corner stood out past the dot's side as a spur.
+   */
+  let top = at(f.edge + side * 0.12, radius);
+  if (sans) {
+    top = at(f.edge + radius * 0.5, 1);
+    for (let pass = 0; pass < 8; pass++) {
+      const lean = Math.atan2(top.x - foot.x, top.y - foot.y);
+      top = at(f.edge + radius * 0.93 - weight / 2 / Math.cos(lean), 1);
+    }
+  }
   return [
     dot(f, at(f.edge, radius), radius),
     {
       spine: straight(top, foot),
-      pen: {
-        ...f.style.pen,
-        contrast: 0,
-        weight: radius * (sans ? 0.85 + 0.1 * light + 0.1 * heavy : 0.95),
-      },
-      start: BUTT,
+      pen: { ...f.style.pen, contrast: 0, weight },
+      start: sans ? LEVEL : BUTT,
       end: { ...f.end, open: true },
     },
   ];

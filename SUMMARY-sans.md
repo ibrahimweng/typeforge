@@ -357,7 +357,10 @@ Thin, and to half or less at every other weight.
 dot's foot near its right corner and gets heavier and more upright with the
 weight. Draw's left from the middle of the foot, so 40 under the line it
 stood 12 units left of Geist's at the Regular and 21 to 35 at the
-UltraBlack. It is now within 3 units of Geist's at every weight.
+UltraBlack. It is now within 3 units of Geist's at every weight, and it
+is cut level along the dot's foot, with its right side running out of the
+dot's corner. Cut square across itself at the dot's middle, its corner
+stood out past the dot's side as a spur from the SemiBold on.
 
 **The 7's stroke.** It lands upright on one arc from under the arm. It
 landed at one place for every weight, so it stood 14 units right of Geist's
