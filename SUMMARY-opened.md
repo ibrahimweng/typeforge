@@ -149,7 +149,24 @@ A fifth review found that the fuller check now rejected the corner folds the wid
 - The check is faster: it skips curves that can't loop and only compares pieces near each other.
 - The tests' own crossing check now evaluates curves itself.
 
-A sixth review found the checks against a letter as drawn were each separate, and each let something through. They are now one helper, `crossesMoreThan`. It records a letter's crossings by the pair of curves that make them, and a reshaping may keep those but add none: counted alone, a change that removed one crossing and made a new one elsewhere came out even. Every reshaping step uses it. The counters' check also compares how often each pair of contours crosses.
+A sixth review found the checks against a letter as drawn were each separate, and each let something through. They are now one helper, `crossesMoreThan`. It records a letter's crossings by the pair of curves that make them, and a reshaping may keep those but add none: counted alone, a change that removed one crossing and made a new one elsewhere came out even. The counters' check also compares how often each pair of contours crosses.
+
+A seventh review found that this still let things through:
+- Crossings were keyed by each curve's place in the outline. Where a corner radius merges and adds points, those places shift, and where the number of points changed, the check fell back to a count.
+- The checks between contours only counted. So a wall pulled off one side of a stem and driven through the other came out even.
+- The counters' follow step judged against the counters as scaled, which can already stand through a wall.
+- The weight engine's choice between a filleted and a plain outline still used the old all-or-nothing rule. My sixth summary wrongly said every step used the new helper.
+
+Fixes:
+- **Crossings compared by where they are.** `crossesMoreThan` records each drawn crossing's position, the two curves it is on, and how far along each. A reshaped outline's crossing is accepted only if it is one of those carried along: on the same two curves, or the next ones past a point, and near where the new curves put it. "Near" means within 1% of the letter's size, plus three times how far the two curves moved apart there. Three crossings where two nearly touching curves made one count as that one.
+- **Corner radius.** Where a radius adds or merges points, a crossing is looked for only by position, within the radius.
+- **Between contours.** `overlapsMoreThan` asks the same of each pair of contours. The counter scale uses it, and the follow step now judges against the letter as drawn. When the follow step falls back to one counter at a time, a counter it refuses stays as drawn and moves with the ink around it.
+- **Fillet choice.** The weight engine's choice between filleted and plain now uses `crossesMoreThan`.
+- **Rim.** The rim's last retry must be at least the shape's own area, not the first answer's. The first answer is the one known to be wrong, and a loop left in it can make it larger than the right answer.
+- **Spike cleanup.** The review took that code's comment at its word and asked that it touch only pieces the repair itself moved. Narrowed that way, loops came back on Lora's A, Á and n and on Geist's ª, heavy and widened. The spikes there are on pieces drawn a fraction of a unit long, which the weight pulls apart and the repair puts back on one spot. The rule is now: a piece brought to one spot loses its handles, unless it was drawn that short and its handles reach no further than they did in the drawing. The comment now says so.
+- **Cleanup.** The old counting helpers (`contoursCross`, `contoursCrossings`, `pairCrossings`) are removed. A private box type that duplicated `Bounds` is gone, the box test is one `misses` helper, and a stale comment in the height code is corrected.
+
+An independent sweep of every glyph of all three fonts under 39 settings found the same as before this round: no crossings and no point-count changes. Every outline of Lora and Geist under those settings comes out within half a unit of the previous commit, so this round adds no images: the fixes matter for fonts that are drawn crossing or overlapping, and for shapes these three fonts don't have.
 
 ## Tests
 
@@ -167,7 +184,7 @@ Three tests use real letters as fixtures, because their faults depend on the let
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,894 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,900 tests.
 
 ## What is left
 
@@ -176,8 +193,11 @@ These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vite
   - the edge-only clamp;
   - the rules for moving an upright run (the largest shift on the one-counter-at-a-time path; most-one-way-less-most-the-other when pushed both ways);
   - `crossesItself` skipping pieces of no length;
-  - the counters' check comparing contour pairs;
-  - the rim's later grid retries and their size check.
-  An independent check of every weighted glyph confirms none of the outlines cross.
+  - the counter scale and follow step using `overlapsMoreThan`, and the follow step judging against the drawing (the helper itself is tested in `geometry.test.ts`; no letter of Lora or Geist comes out differently);
+  - the fillet choice using `crossesMoreThan`;
+  - the corner radius passing its radius to the check;
+  - the spike cleanup keeping the handles of a piece drawn that short (the loops the narrower rule brought back are covered by the Lora d and n test, which failed on it);
+  - the rim's later grid retries and their size floor.
+  An independent check of every glyph under every setting confirms none of the outlines cross.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.
