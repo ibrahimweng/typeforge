@@ -548,7 +548,10 @@ export function grotesqueCapitalG(style: Style): Recipe {
   );
   return finish(f, [
     ink(f, bowl, f.end, BUTT),
-    ink(f, straight(at(X(lerp(322, 344)), bar), at(spurX, bar)), BUTT, BUTT),
+    notched
+      ? // Its bar starts 4 to 17 units further in than its measures give, as Geist's.
+        gBar(f, X(lerp(322, 344)) + atWeights(f, 0, 4, 17, 16, 13), spurX)
+      : ink(f, straight(at(X(lerp(322, 344)), bar), at(spurX, bar)), BUTT, BUTT),
     /*
      * On a slab face the upright stands on the line bare: a slab on its foot
      * stepped out past the upright as the upright stepped out past the bar,
@@ -558,9 +561,36 @@ export function grotesqueCapitalG(style: Style): Recipe {
      */
     ((spur: Stroke) =>
       notched ? inherit(spur, { ...spur, pen: { ...spur.pen, weight: spurW } }) : spur)(
-      ink(f, straight(at(spurX, bar + f.upright), at(spurX, 0)), BUTT, heavySlab(f) ? BUTT : f.end),
+      ink(
+        f,
+        straight(
+          at(spurX, notched ? gBarAt(f).y + gBarAt(f).deep / 2 : bar + f.upright),
+          at(spurX, 0),
+        ),
+        BUTT,
+        heavySlab(f) ? BUTT : f.end,
+      ),
     ),
   ]);
+}
+
+/**
+ * The Sans's G's bar, as Geist's: lighter than the stem as the weight grows
+ * (0.94 of it at the Regular, 0.67 at the Black: 130 on 194) and a little
+ * lower. On the stem's pen it stood 149 deep at the Black.
+ */
+function gBarAt(f: Frame): { y: number; deep: number } {
+  return {
+    deep: 2 * f.half * atWeights(f, 0.93, 0.94, 0.78, 0.7, 0.67),
+    y: up(f, atWeights(f, 316, 318, 315.5, 312.5, 311)),
+  };
+}
+
+function gBar(f: Frame, from: number, to: number): Stroke {
+  const { y, deep } = gBarAt(f);
+  const g = sidedFrame(f, 2 * f.half, deep);
+  const one = ink(g, straight(at(from, y), at(to, y)), BUTT, BUTT);
+  return inherit(one, { ...one, pen: g.style.pen });
 }
 
 /** Whether this face's serifs are slabs as heavy as a stem's end, as an Egyptian's are. */

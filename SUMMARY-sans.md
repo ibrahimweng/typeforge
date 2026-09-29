@@ -235,7 +235,8 @@ right runs flush with the spur's right side and falls away from its left
 side into a notch just over the line. Ours ran the bowl up into a spur of the
 stem's weight, with no notch. The Sans's spur is now drawn on Geist's pen,
 with its right side where Geist's is, and the notch is within a few units of
-Geist's.
+Geist's. Its bar lightens as Geist's does (0.67 of the stem at the Black,
+130 deep, where ours was 149) and starts where Geist's does, within 1.
 
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's

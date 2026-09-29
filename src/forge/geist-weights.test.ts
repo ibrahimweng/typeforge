@@ -1311,3 +1311,16 @@ describe("the G's spur", () => {
     }
   });
 });
+
+describe("the G's bar", () => {
+  it("is as deep and starts where Geist's does", () => {
+    // Geist Black's bar runs from 246 to 376 and starts 350 in from its ink's
+    // left; ours ran 244 to 393 and started at 337.
+    const { contours } = draw("G", 194);
+    const left = contoursBounds(contours).xMin;
+    const column = filled(contours, left + 450, "x");
+    expect(Math.abs(column[1][0] - 246)).toBeLessThan(4);
+    expect(Math.abs(column[1][1] - 376)).toBeLessThan(4);
+    expect(Math.abs(filled(contours, 340)[1][0] - left - 350)).toBeLessThan(4);
+  });
+});
