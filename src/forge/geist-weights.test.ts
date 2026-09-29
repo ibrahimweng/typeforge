@@ -2012,3 +2012,13 @@ describe("the Thin s's foot", () => {
     expect(filled(draw("s", 30).contours, 160)).toHaveLength(1);
   });
 });
+
+describe("the g's bowl", () => {
+  it("meets the stem in a notch, as Geist's does", () => {
+    // 480 up Geist Regular's g has white between its bowl and its stem
+    // (414 to 434); as one ring on the pen the bowl ran solid into it.
+    const runs = filled(draw("g", 87).contours, 480);
+    expect(runs.length).toBe(2);
+    expect(Math.abs(runs[0][1] - 414)).toBeLessThan(8);
+  });
+});

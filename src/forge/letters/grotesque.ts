@@ -410,7 +410,10 @@ export function grotesqueG(style: Style): Recipe {
   const end = angleAt(f, leftC, hookW, leftY - floor, cut, true) - 360;
   return {
     ...finish(f, [
-      ink(f, ring(f, at((left + stem) / 2, bottom + bowlHalf), (stem - left) / 2, bowlHalf)),
+      // The Sans's meeting the stem in notches: see `sansStemBowl`.
+      ...(f.style.metrics.xGrows !== undefined
+        ? sansStemBowl(f, at((left + stem) / 2, bottom + bowlHalf), -1, (stem - left) / 2, bowlHalf)
+        : [ink(f, ring(f, at((left + stem) / 2, bottom + bowlHalf), (stem - left) / 2, bowlHalf))]),
       ink(
         f,
         chain(
@@ -2421,7 +2424,13 @@ function sansArch(f: Frame, fromX: number, height: number): Stroke[] {
  * (see `sansArch`), flush with the stem inside and diving into it outside,
  * so the bowl meets the stem in Geist's notches at its top and foot.
  */
-function sansStemBowl(f: Frame, centre: Vec2, stemSide: 1 | -1): Stroke[] {
+function sansStemBowl(
+  f: Frame,
+  centre: Vec2,
+  stemSide: 1 | -1,
+  halfW = f.bowl,
+  halfH = f.bowlH,
+): Stroke[] {
   const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
   const knot = (knots: [number, number, number, number, number]) =>
     pastBlack ? knots[4] : atWeights(f, ...knots);
@@ -2436,18 +2445,18 @@ function sansStemBowl(f: Frame, centre: Vec2, stemSide: 1 | -1): Stroke[] {
     thin < along
       ? { ...pen, weight: along, contrast: 1 - thin / along, angle: 90 }
       : { ...pen, weight: thin, contrast: 1 - along / thin, angle: 0 };
-  const far = f.bowl;
-  const near = f.bowl - (w - thin) / 2;
+  const far = halfW;
+  const near = halfW - (w - thin) / 2;
   const [a, b] = stemSide === 1 ? [90, 270] : [-90, 90];
   const nearSide = ink(
     f,
-    chain(bend(f, centre, f.bowlH, a, a + 90, near), bend(f, centre, f.bowlH, a + 90, b, near)),
+    chain(bend(f, centre, halfH, a, a + 90, near), bend(f, centre, halfH, a + 90, b, near)),
     BUTT,
     BUTT,
   );
   const farSide = ink(
     f,
-    chain(bend(f, centre, f.bowlH, b, b + 90, far), bend(f, centre, f.bowlH, b + 90, a + 360, far)),
+    chain(bend(f, centre, halfH, b, b + 90, far), bend(f, centre, halfH, b + 90, a + 360, far)),
     BUTT,
     BUTT,
   );

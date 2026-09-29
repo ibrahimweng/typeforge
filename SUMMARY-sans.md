@@ -777,6 +777,12 @@ spine's quarters are taller, as Geist Thin's are. Its misfit falls from 0.33
 to 0.28. The rest is in the spine's shape (see "The heavy s" below, which is
 the same difference at the other end).
 
+**The g's bowl** now meets its stem in Geist's notches too, on the same
+construction as the d's (`sansStemBowl`, which now takes the bowl's own width
+and height). The g's misfit falls from 0.17/0.09/0.08/0.07/0.08 to
+0.16/0.08/0.06/0.06/0.08 at the Thin, Regular, SemiBold, UltraBlack and
+Black.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
