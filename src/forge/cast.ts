@@ -31,6 +31,7 @@ import {
   reverseContour,
   splitCubic,
 } from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import type { CutScale } from "./cut";
 import { alongSpine } from "./shapes";
@@ -314,12 +315,22 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
  */
 function groundOf(loop: Contour, solid: Contour): Contour[] {
   const least = contourArea(solid) * 0.999;
+  /*
+   * And that does not cross itself. The same lost crossing can leave a loop
+   * tied in the answer instead of taking area out of it: the rim round
+   * Lora's a and the sample font's n and h each came back with one, a tiny
+   * figure-eight in the outline. The next grid resolves it; failing all of
+   * them, the first answer of the right size is kept.
+   */
+  let sized: Contour[] | null = null;
   for (const grid of [0, 1000, 100, 10]) {
     const ground = filled([grid === 0 ? loop : onGrid(loop, grid)]);
     const area = ground.reduce((total, one) => total + contourArea(one), 0);
-    if (area >= least) return ground;
+    if (area < least) continue;
+    if (!ground.some((one) => contoursIntersect([one]))) return ground;
+    sized ??= ground;
   }
-  return [solid];
+  return sized ?? [solid];
 }
 
 /** An outline with every point and handle set to the nearest step of `1 / per`. */

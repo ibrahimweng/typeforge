@@ -20,6 +20,7 @@ import { readFileSync } from "node:fs";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
+import { contoursIntersect } from "@/font/outline";
 import { importFont } from "@/font/parse";
 import { cutScaleOf } from "@/font/transform";
 
@@ -794,6 +795,28 @@ describe("a rim after a cut that cannot reach an imported letter", () => {
       const after = shapedInk(raw, [], scale, cuts, { ...rim, order: "after" }, "nesting");
       expect(ink(after.contours), char).toBeCloseTo(ink(alone), 0);
       expect(ink(alone), char).toBeGreaterThan(ink(raw) * 1.05);
+    }
+  });
+});
+
+describe("a rim that ties no loops", () => {
+  /*
+   * Regression: the boolean that resolves the rim's loop can lose a crossing
+   * between two nearly tangent curves and leave a tiny figure-eight tied in
+   * the answer, of the right size, so the area check passed it. The sample
+   * font's n and h each came back with one.
+   */
+  it("gives an outline that does not cross itself", async () => {
+    const bytes = new Uint8Array(readFileSync("src/assets/typeforge-sample.ttf"));
+    const { typeface } = await importFont(bytes, "sample.ttf");
+    const rim = cast((one) => {
+      one.outline.on = true;
+    });
+    const scale = cutScaleOf(typeface);
+    for (const char of "nh") {
+      const glyph = typeface.glyphs.find((one) => one.unicodes.includes(char.codePointAt(0) ?? 0));
+      const rimmed = shapedInk(glyph!.contours, [], scale, undefined, rim, "nesting").contours;
+      for (const contour of rimmed) expect(contoursIntersect([contour]), char).toBe(false);
     }
   });
 });
