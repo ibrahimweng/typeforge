@@ -571,10 +571,7 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
                * the up-stroke, and a heavy hand's up-strokes stay light. At
                * the whole pen of 260 it filled the eye it rises under.
                */
-              lighter(
-                ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT),
-                barShare,
-              ),
+              lighter(ink(f, bowed(f, start, spineStart(belt), 0.06), f.end, BUTT), barShare),
               ink(f, belt, BUTT, f.end),
             ],
             true,
