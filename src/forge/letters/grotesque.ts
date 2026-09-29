@@ -5763,7 +5763,8 @@ export function grotesqueCapitalH(style: Style): Recipe {
   const [X, lerp] = squared(f);
   const left = f.edge;
   const right = Math.max(X(lerp(529, 588, 484)) - f.half, left + f.half * 2 + f.least);
-  const bar = barAt(f, 357);
+  // The Sans's Thin's a little higher, as Geist Thin's is: 7 units low.
+  const bar = barAt(f, 357 + (f.style.metrics.xGrows !== undefined ? 7 * thinness(f) : 0));
   return finish(f, [
     ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
     ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),

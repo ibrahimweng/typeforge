@@ -770,6 +770,8 @@ and figures up to 6.7% heavier at the Thin. The gain runs in from nothing at
 the Regular. Across the capitals and figures, the Thin's mean misfit falls
 from 0.179 to 0.153.
 
+**The Thin H's bar** now sits 7 units higher, where Geist Thin's does.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
@@ -847,6 +849,13 @@ strokes as white; they now use a filled (nonzero) ruler.
   right and leaner at its upper left. It still stands 26 units inside Geist's
   shoulder at the Black. Drawing that quarter separately follows it, but at
   twice the nodes.
+- **Round capitals' overshoot.** Geist's round capitals and figures (C G O S
+  0 3 6 8 9 &) overshoot 16 units past each line, where its o overshoots 12.
+  Draw uses 12 for both, so they stand 8 units short overall. Giving
+  capitals their own overshoot put the heights right, but it moved the
+  apexes and curves those letters were fitted with, and most of them fitted
+  worse (the Regular's mean for capitals and figures went from 0.059 to
+  0.077).
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o

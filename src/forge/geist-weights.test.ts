@@ -1996,3 +1996,11 @@ describe("the Thin's capitals and figures", () => {
     }
   });
 });
+
+describe("the Thin H's bar", () => {
+  it("stands where Geist Thin's does", () => {
+    // 330 in Geist Thin's H's bar runs 349-379; it ran 342-373.
+    const [bar] = filled(draw("H", 30).contours, 330, "x");
+    expect(Math.abs(bar[0] - 349)).toBeLessThan(3);
+  });
+});
