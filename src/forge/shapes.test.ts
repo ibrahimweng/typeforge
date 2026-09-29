@@ -122,6 +122,30 @@ describe("a bowl", () => {
 });
 
 describe("part of a bowl", () => {
+  it("is found on a bowl whose loop starts a rounding error below its centre", () => {
+    // The wall of a Sans oe condensed to 0.6 at a pen of 147: the loop's
+    // first point read as a hair under 360 degrees, the walk began a turn
+    // late, and every run on this bowl came back empty.
+    const middle = { x: 433.7255655565034, y: 267.8549858966721 };
+    for (const [from, to] of [
+      [177.2341127314262, 178.2341127314262],
+      [170, 190],
+      [10, 350],
+    ]) {
+      const run = bowlBetween(
+        middle,
+        112.57048392734943,
+        222.0325126772178,
+        1,
+        73.5,
+        from,
+        to,
+        0.15,
+      );
+      expect(run.segments.length, `${from} to ${to}`).toBeGreaterThan(0);
+    }
+  });
+
   it("starts and ends in the directions it was given", () => {
     for (const roundness of [0, 0.5, 1]) {
       const run = bowlBetween(centre, 200, 200, roundness, 40, 55, 305);

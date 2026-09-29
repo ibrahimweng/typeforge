@@ -2258,7 +2258,15 @@ function segmentEnd(segment: SpineSegment): Vec2 {
 /** Degrees from the centre, in [0, 360). */
 function angleOf(centre: Vec2, point: Vec2): number {
   const degrees = (Math.atan2(point.y - centre.y, point.x - centre.x) * 180) / Math.PI;
-  return (degrees + 360) % 360;
+  const angle = (degrees + 360) % 360;
+  /*
+   * A hair under a whole turn is no turn at all. The loop of a bowl starts on
+   * its right edge, and a start a rounding error below the centre read as
+   * 359.99999999999997 degrees: the walk then began a whole turn late, and a
+   * run asked for anywhere short of it -- the wall of a Sans oe condensed at
+   * a pen of 147 -- came back as nothing at all.
+   */
+  return angle > 360 - 1e-9 ? 0 : angle;
 }
 
 /**
