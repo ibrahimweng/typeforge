@@ -141,8 +141,11 @@ test("a widened letter stays inside its cell in the font grid", async ({ page })
   });
   await expect(width).toHaveAttribute("aria-valuenow", "1.5");
 
-  // Nothing painted in the outermost columns of the canvas: the letter was
-  // drawn smaller to fit rather than cut off at the edge.
+  // Nothing painted in the outermost columns of the canvas, so nothing was cut
+  // off at the edge. A check on the whole path rather than a test of the cap
+  // that shrinks a letter wider than its cell (`maxWidth` in glyph-render.ts):
+  // at the widest settings this font's W still fills only four fifths of the
+  // cell, so the cap never acts here. glyph-render.test.ts tests it directly.
   for (const name of ["m", "w", "W", "M"]) {
     const cell = page.locator(`[data-glyph-cell="${name}"] canvas`);
     await cell.scrollIntoViewIfNeeded();
@@ -167,4 +170,28 @@ test("a widened letter stays inside its cell in the font grid", async ({ page })
       )
       .toBe(0);
   }
+});
+
+test("a warning about an earlier font is not shown as current", async ({ page }) => {
+  await drawFrom(page, "Serif");
+  const breaks = page.locator('[data-cut-switch="split"]');
+  await breaks.scrollIntoViewIfNeeded();
+  await breaks.click();
+  const closing = page.locator("[data-forge-warnings]", { hasText: "Counters closing up" });
+  await expect(closing).toBeVisible({ timeout: 30_000 });
+  await expect(closing).not.toHaveAttribute("data-forge-warnings-stale", "yes");
+
+  // Switched off again: the warning was about the breaks, so the moment they
+  // are gone it is either gone too or marked as being rechecked.
+  await breaks.click();
+  const current = await page.evaluate(
+    () =>
+      [...document.querySelectorAll("[data-forge-warnings]")].filter(
+        (bar) =>
+          bar.textContent?.includes("Counters closing up") &&
+          bar.getAttribute("data-forge-warnings-stale") !== "yes",
+      ).length,
+  );
+  expect(current, "a warning about the breaks shown as current after they went").toBe(0);
+  await expect(closing).toHaveCount(0, { timeout: 30_000 });
 });

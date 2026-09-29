@@ -1127,7 +1127,20 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
    * a moment after the letter is still a warning about the letter in front of
    * you -- whereas a slider that cannot be moved is not a slider.
    */
-  const [found, setFound] = React.useState<Trouble[]>([]);
+  /*
+   * Kept with the font it was worked out for. A walk is dropped whenever the
+   * font moves, so the last answer stays up until a new one arrives -- and
+   * with a cut or a cast on, that can be several changes later. Shown as if
+   * it were current, it named letters as closing up after the cut that closed
+   * them had been switched off again. So an answer about an earlier font is
+   * dimmed and said to be rechecking until the walk catches up.
+   */
+  const [checked, setFound] = React.useState<{ of: Forge | null; troubles: Trouble[] }>({
+    of: null,
+    troubles: [],
+  });
+  const found = checked.troubles;
+  const stale = checked.of !== state.settled;
   React.useEffect(() => {
     // Not while a hand is on a control. The walk below is polite about frames,
     // but a pass that is thrown away and restarted on every one of them is
@@ -1145,7 +1158,7 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
         let step = walking.next();
         while (!step.done && performance.now() < until) step = walking.next();
         if (!live) return;
-        if (step.done) setFound(step.value);
+        if (step.done) setFound({ of: state.settled, troubles: step.value });
         else asked = window.requestAnimationFrame(slice);
       };
       asked = window.requestAnimationFrame(slice);
@@ -1159,7 +1172,20 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
 
   if (found.length === 0) return null;
   return (
-    <div className="shrink-0 border-b border-border px-4 py-2" data-forge-warnings>
+    <div
+      className={cn(
+        "shrink-0 border-b border-border px-4 py-2 transition-opacity",
+        stale && "opacity-50",
+      )}
+      data-forge-warnings
+      data-forge-warnings-stale={stale ? "yes" : undefined}
+      aria-busy={stale}
+    >
+      {stale && (
+        <span className="float-right text-2xs text-muted-foreground" data-forge-rechecking>
+          Rechecking…
+        </span>
+      )}
       {found.map((trouble) => (
         <div key={trouble.what} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 py-0.5">
           <span className="text-2xs font-medium text-[color:var(--accent)]">{trouble.what}</span>

@@ -13,7 +13,7 @@ Before and after screenshots are in `docs/polish/ui/`. "Before" is commit
 | 2 | The specimen line cropped accents (Å, É) and descenders | Fixed (from the WIP). The viewBox grows to take in all ink, with a little air around it. | `*-2-specimen.png` |
 | 3 | At weight 30 the warnings said "Reaching past the line … or less weight" | Fixed. The slack past a line is now at least 6% of the em (from the WIP). The advice no longer mentions weight. It names the line that is crossed: "A taller ascender", "A deeper descender", or both. | `*-4-sans-weight30.png` |
 | 4 | The title read "My Serif Serif" after picking a base | Fixed (from the WIP). The base is left off when the name already says it. A name the tool gave now follows the base, and a name the user typed stays. | `*-3-title-status.png` |
-| 5 | Wide glyphs overflowed their Edit grid cells at width 1.25 | Already fixed before this work (`maxWidth` in `glyph-render.ts`). Checked at 1.25 and 1.5, and an e2e test now guards it. | `*-9-edit-width125.png` |
+| 5 | Wide glyphs overflowed their Edit grid cells at width 1.25 | Already fixed before this work (`maxWidth` in `glyph-render.ts`). Checked at 1.25 and 1.5, on the sample font and on a Serif drawing taken into Edit. No letter was cut off, and no canvas was squashed at any window width from 640 to 2560 px. | `*-9-edit-width125.png` |
 
 Why "less weight" was wrong advice: the slack allows the pen its own width, so
 a lighter pen takes away as much room as it gives back. The letters that were
@@ -52,12 +52,23 @@ the line at every weight. I measured this. Sans `(` tops out at 750 at weights
 6. **The warning chips showed glyph names.** They read "ccedilla
    scommaaccent" next to "δ". They now show the character, with the glyph name
    in the tooltip. (`letter-label.ts`)
+7. **Warnings about an earlier font were shown as current.** The warnings are
+   worked out in the background and the work restarts on every change, so the
+   last answer stayed on screen until a new one finished. After Breaks was
+   switched on and off on the Serif, "Counters closing up: t ţ ť ð & ¼ $" stayed
+   up through five more cut toggles, about 12 seconds, although no letter was
+   closing up any more. An answer about an earlier font is now dimmed and
+   marked "Rechecking…" until the new one arrives. (`ForgeView.tsx`)
 
 ## Checked and fine
 
-- Weight 30, 87, 172 and 260, plus Contrast, Width, Slant, x-height, Tension,
-  every Terminal finish, the g and y alternates, and all 14 cut and cast
-  switches, on Sans and Serif. Updates took 0.2 to 0.8 s, well under 2 s.
+- On Sans and Serif, one change at a time, with a screenshot after each (113
+  screenshots, every one looked at): Weight 30, 87, 172 and 260; Contrast,
+  Width, Slant, x-height and Tension; the Serif part's Reach, Depth and Bracket
+  at their minimum and maximum, and every Shape and Head; every Terminal
+  finish, and Cut at 25° under Angled; every g, y and j alternate; and all 14
+  cut and cast switches. Updates took 0.2 to 0.7 s, well under 2 s. Every
+  alternate keeps at least 44 units of room on the stage.
 - Edit mode Weight, Width, Slant and Corner radius took 0.07 to 0.3 s.
 - Layout at 768, 1024, 1440 and 2560 px wide: no horizontal page scroll and
   nothing broken. At 768 px the "Letter A" tab truncates to "Lette…" and the
@@ -81,11 +92,14 @@ the line at every weight. I measured this. Sans `(` tops out at 750 at weights
 - New unit tests: `ink-frame.test.ts`, `part-idle.test.ts`,
   `letter-label.test.ts`, `StatusBar.test.ts`, plus new cases in
   `health.test.ts`, `drawn.test.ts` and `forge-store.test.ts`.
-- New e2e spec: `e2e/polish-ui.spec.ts` (6 tests). On the old code, 5 of the 6
-  fail. The Edit-grid width test passes there because that bug was fixed
-  earlier, so it is a guard.
+- New e2e spec: `e2e/polish-ui.spec.ts` (7 tests). On the old code, 6 of the 7
+  fail. The seventh, the Edit-grid width test, cannot fail on this font: with
+  the width cap removed, W at Width 1.5, Middle space 1.4 and full Weight still
+  fills only 78% of its cell, under the 86% where the cap starts. It stays as
+  a check that widened letters are whole. The cap itself is unit-tested in
+  `glyph-render.test.ts`.
 - Every commit passed `npx tsc -b --noEmit`, `npx biome check .` and
   `npx vitest run src/components src/state src/views src/forge/health.test.ts`
   (571 tests at the end). `e2e/polish-ui.spec.ts` and `e2e/workspace.spec.ts`
-  pass in Chromium. `e2e/forge.spec.ts` passes except for the one failure
+  pass in Chromium. WebKit and Firefox were not run. `e2e/forge.spec.ts` passes except for the one failure
   noted above.
