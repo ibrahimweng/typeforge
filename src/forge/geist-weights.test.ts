@@ -1819,3 +1819,13 @@ describe("the five's bowl", () => {
     }
   });
 });
+
+describe("the Thin e's tail", () => {
+  it("sweeps as low and as full as Geist's", () => {
+    // 480 in Geist Thin's e's tail runs 118-144; it ran 150-158, cut high
+    // off a leaner round.
+    const [tail] = filled(draw("e", 30).contours, 480, "x");
+    expect(Math.abs(tail[0] - 118)).toBeLessThan(10);
+    expect(Math.abs(tail[1] - 144)).toBeLessThan(6);
+  });
+});

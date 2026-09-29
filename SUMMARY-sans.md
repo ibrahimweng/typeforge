@@ -629,6 +629,13 @@ bowl is also fuller at the upper right and leaner at the upper left. Drawing
 that quarter separately would follow it, but at twice the nodes, so I left
 it.
 
+**The e's tail.** The e's terminal is now cut lower: 8 units lower at the
+Thin, and 4 lower from the Regular to the UltraBlack. At the Thin its tail
+also rounds fuller, as Geist Thin's does; there it had stood 15 units over
+Geist's. The e's misfit falls from 0.178/0.060/0.056/0.031 to
+0.123/0.057/0.053/0.029 at the Thin, Regular, SemiBold and UltraBlack. The
+Black is unchanged.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular

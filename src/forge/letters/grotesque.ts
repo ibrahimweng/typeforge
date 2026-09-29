@@ -5136,7 +5136,14 @@ export function grotesqueE(style: Style): Recipe {
   const bar = H(272 - 15 * past) + (f.style.parts.crossbar.height - SANS_CROSSBAR) * f.x;
   // And past the Black the foot is cut lower too, or the aperture between
   // it and the bar closed to a crack across the letter.
-  const foot = angleAt(f, centre, halfW, f.bowlH, H(lerp(158, 168) - 28 * past), false);
+  // The Sans's a little lower, 8 at the Thin and 4 at the Regular to the
+  // UltraBlack, as Geist's is: its Thin's terminal stood 15 over Geist's.
+  const footDown =
+    f.style.metrics.xGrows !== undefined ? Math.max(0, atWeights(f, 8, 4, 4, 4, 0)) : 0;
+  const foot = angleAt(f, centre, halfW, f.bowlH, H(lerp(158, 168) - 28 * past) - footDown, false);
+  // And its tail fuller at the Thin, as Geist Thin's is.
+  const tailCurve =
+    f.style.metrics.xGrows !== undefined ? f.curve + (0.25 - f.curve) * thinness(f) : f.curve;
   uses("crossbar");
   /*
    * And lighter than the bowl's crown, as Geist's is: 76 on the Regular's 82,
@@ -5221,7 +5228,7 @@ export function grotesqueE(style: Style): Recipe {
                 straight(at(centre.x - halfW, upper.y), at(centre.x - halfW, lower.y)),
               ]),
           bend(f, lower, lower.y - base, 180, 270, halfW),
-          bend(f, lower, lower.y - base, 270, 360 + foot, halfW),
+          bend({ ...f, curve: tailCurve }, lower, lower.y - base, 270, 360 + foot, halfW),
         ),
         BUTT,
         f.end,
