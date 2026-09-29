@@ -970,7 +970,10 @@ export function grotesqueSeven(style: Style): Recipe {
  */
 export function grotesqueAmpersand(style: Style): Recipe {
   const f = frame(lighterAcross(style));
-  const [u, t] = spread(f);
+  const [wide, t] = spread(f);
+  // At Geist's widths: it stood 14 wide at the Thin, 15 narrow at the
+  // SemiBold and 11 wide at the Black.
+  const u = wide * (1 + atWeights(f, -0.03, 0.0085, 0.03, 0.002, -0.021));
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge - f.half + x * u;
   const H = (y: number) => up(f, y);
@@ -1341,7 +1344,9 @@ export function grotesqueF(style: Style): Recipe {
  */
 export function grotesqueQuestion(style: Style): Recipe {
   const f = frame(style);
-  const u = large(f);
+  // At Geist's widths: it stood 11 wide at the Thin and 16 narrow at the
+  // SemiBold.
+  const u = large(f) * (1 + atWeights(f, -0.028, 0.021, 0.043, 0.036, 0.023));
   const side = stopRadius(f);
   const dotTop = side * 2;
   /*
@@ -3661,15 +3666,19 @@ export function grotesqueS(style: Style): Recipe {
 /** The S: see `ess`. */
 export function grotesqueCapitalS(style: Style): Recipe {
   const f = frame(stackedPen(style, CAPITAL_ESS_GAIN));
-  return finish(f, capitalEss(f), true);
+  // At Geist's widths: it stood 16 narrow at the Thin and 10 at the Regular.
+  return finish(f, capitalEss(f, atWeights(f, 0.034, 0.023, 0.007, -0.012, 0.002)), true);
 }
 
-/** The S's strokes, for the S and for the dollar. */
-function capitalEss(f: Frame): Stroke[] {
+/**
+ * The S's strokes, for the S and for the dollar, `fit` wider (a share) than
+ * their measures give.
+ */
+function capitalEss(f: Frame, fit: number): Stroke[] {
   return ess(f, {
     height: f.cap,
     geist: 710,
-    unit: large(f, 1),
+    unit: large(f, 1) * (1 + fit),
     left: 118,
     upper: { x: 322, y: [540, 510], w: 204 },
     lower: { x: 326, y: [180, 200], w: 220 },
@@ -3690,7 +3699,9 @@ function capitalEss(f: Frame): Stroke[] {
 export function grotesqueDollar(style: Style): Recipe {
   const f = frame(stackedPen(style, CAPITAL_ESS_GAIN));
   const [X, lerp] = squaredNow(f);
-  const strokes = capitalEss(f);
+  // Geist's dollar's S is 11 units narrower than its S at every weight: 17
+  // wide at UltraBlack here, drawn as the S.
+  const strokes = capitalEss(f, atWeights(f, 0.013, -0.002, -0.021, -0.042, -0.027));
   // Through the middle of the S as it is drawn: halfway across its spines.
   let lo = Infinity;
   let hi = -Infinity;
@@ -4106,7 +4117,9 @@ function paren(f: Frame, facing: 1 | -1): Stroke {
   const top = up(f, 750);
   const bottom = up(f, -110);
   const half = (top - bottom) / 2;
-  const reach = Math.max(116.5 * u, f.half);
+  // At Geist's widths (139, 214 and 305 at the Thin, Regular and Black),
+  // where the Thin's stood 14 wide.
+  const reach = Math.max(116.5 * u + atWeights(f, -14, 6, 4, 2, 0), f.half);
   const radius = (half * half + reach * reach) / (2 * reach);
   const sweep = (Math.asin(Math.min(1, half / radius)) * 180) / Math.PI;
   const middle = (top + bottom) / 2;
@@ -4177,7 +4190,9 @@ export function grotesqueNumberSign(style: Style): Recipe {
   const lean = (x: number, y: number) => X(x) + slope * y;
   const left = along(72.5, 134.5, 72);
   const right = along(278.5, 387.5, 269);
-  const over = held(88, 70, 110) * u + uprightW / 2;
+  // Each bar's end at Geist's width: the sign stood 13 narrow at the Thin,
+  // 14 wide at the Regular and 10 narrow at UltraBlack.
+  const over = held(88, 70, 110) * u + uprightW / 2 + atWeights(f, 6.5, -7, 0.5, 5, -0.5);
   const upright = (x: number): Stroke => {
     const drawn = ink(f, straight(at(X(x), 0), at(X(x) + slope * f.cap, f.cap)), LEVEL, LEVEL);
     return inherit(drawn, { ...drawn, pen: pen(uprightW) });
@@ -4255,8 +4270,11 @@ export function grotesqueAsterisk(style: Style): Recipe {
 /** The percent: two narrow ovals and a long diagonal cut level at both ends. */
 export function grotesquePercent(style: Style): Recipe {
   const f = frame(style);
-  // Geist Thin's is narrower against its o than the Regular's.
-  const u = large(f, 1) * (1 - 0.06 * thinness(f));
+  // Geist Thin's is narrower against its o than the Regular's; and at
+  // Geist's widths, where it stood 13 narrow at the Thin, 10 at the Regular
+  // and 8 wide at the Black.
+  const u =
+    large(f, 1) * (1 - 0.06 * thinness(f)) * (1 + atWeights(f, 0.024, 0.016, 0.008, 0.003, -0.014));
   const X = (x: number) => f.edge - f.half + x * u;
   /*
    * Measured off Geist Thin, Regular and Black, from the left of the ink.

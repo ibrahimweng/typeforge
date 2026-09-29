@@ -702,6 +702,18 @@ describe("the widths of the letters redrawn to the current Geist", () => {
       k: [436, 463, 512, 560, 584],
       slash: [327, 375, 422, 468, 491],
       backslash: [327, 375, 421, 468, 491],
+      // And the marks whose widths swung about Geist's: the parentheses 14
+      // wide at the Thin, the question 16 narrow at the SemiBold, the
+      // ampersand 15 narrow there and 11 wide at the Black, the S 16 narrow
+      // at the Thin, the dollar 17 wide at UltraBlack, the number sign 14
+      // wide at the Regular.
+      parenleft: [139, 214, 250, 287, 305],
+      question: [416, 471, 502, 534, 549],
+      ampersand: [504, 560, 625, 690, 723],
+      percent: [577, 714, 739, 765, 777],
+      S: [503, 530, 562, 593, 609],
+      dollar: [493, 519, 550, 581, 597],
+      numbersign: [493, 493, 551, 609, 638],
     };
     for (const [name, widths] of Object.entries(geist)) {
       for (const [index, weight] of [30, 87, 130, 172, 194].entries()) {

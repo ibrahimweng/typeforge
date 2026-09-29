@@ -178,6 +178,15 @@ slashes widen with the pen as Geist's do (12 wide at the Thin, 25 narrow at
 the Black), and their sides close as fast as the n's. All are within 2 of
 Geist's width at every weight.
 
+**Widths that swung about Geist's.** The parentheses (14 wide at the Thin),
+the question mark (11 wide at the Thin, 16 narrow at the SemiBold), the
+ampersand (14 wide at the Thin, 15 narrow at the SemiBold, 11 wide at the
+Black), the percent (13 narrow at the Thin, 8 wide at the Black), the S (16
+narrow at the Thin), the dollar (17 wide at UltraBlack; Geist's dollar's S is
+11 units narrower than its S) and the number sign (14 wide at the Regular)
+are fitted to Geist's widths at its five weights with `atWeights`. All are
+within 2.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
