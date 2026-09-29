@@ -472,8 +472,10 @@ strokes as white; they now use a filled (nonzero) ruler.
   level cut 500 up.
 - **The 6's hood and the 9's bowl.** Geist's hood is a little lighter than
   Draw's at the heavy weights (165 across 500 up at the UltraBlack against
-  175). The 9's upper right still stands about 10 units past Geist's at the
-  UltraBlack.
+  175). At the Black the 6's lower left still stands 10 to 14 units out
+  past Geist's, and the 9's upper right 17 to 23: rounder quarters, down to
+  a circle's, and a bowl tilted up to 12 degrees either way took less than
+  a twentieth more off.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o
