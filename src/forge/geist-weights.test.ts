@@ -1700,3 +1700,12 @@ describe("the three's notch", () => {
     expect(run[run.length - 1][1]).toBeLessThan(466);
   });
 });
+
+describe("the B's waist", () => {
+  it("is notched further in where the bowls meet", () => {
+    // 365 up Geist Regular's B's bowls meet 474 in; on the face's fullness
+    // Draw's met at 532.
+    const run = filled(draw("B", 87).contours, 365);
+    expect(run[run.length - 1][1]).toBeLessThan(528);
+  });
+});
