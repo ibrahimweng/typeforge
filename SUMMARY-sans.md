@@ -320,6 +320,13 @@ curve, so the terminal still ends 520 up at the Black, and its reach is held
 4 units in so the figure keeps Geist's width. The nine's tail, the hood
 turned, fits Geist's nine up to a fifth better.
 
+**The s's width at the Thin and the Black.** Draw's s stood 10 units
+narrow at the Thin and 14 wide at the Black. The Thin's s is now a fortieth
+wider, with its upper bowl's left side 5 units further in, which is where
+Geist Thin's is. That took a fifth off its misfit. The width a heavy s gains
+is held back from the UltraBlack on. Both now sit within 1 unit of Geist's
+width.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
@@ -507,6 +514,10 @@ strokes as white; they now use a filled (nonzero) ruler.
   over a rounder inner one, and an open bowl ending inside the stem each
   measured no closer: the letters already cover Geist's to within 5 to 7 per
   cent of its area.
+- **The heavy s.** From the SemiBold on, Geist's s has a thin diagonal
+  spine and teardrop counters. Draw's has a level spine and counters flat
+  where they meet it. It covers Geist's to within 13 to 19 per cent of its
+  area.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o

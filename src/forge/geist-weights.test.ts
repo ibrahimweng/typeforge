@@ -1485,3 +1485,17 @@ describe("the sides Geist holds, and the ones it closes faster", () => {
     }
   });
 });
+
+describe("the s at the Thin and the Black", () => {
+  it("is as wide as Geist's", () => {
+    // Geist's s is 408 wide at the Thin and 539 at the Black; it stood 398
+    // and 554.
+    for (const [weight, wide] of [
+      [30, 408],
+      [194, 539],
+    ]) {
+      const ink = box("s", weight);
+      expect(Math.abs(ink.xMax - ink.xMin - wide), `s at ${weight}`).toBeLessThan(5);
+    }
+  });
+});

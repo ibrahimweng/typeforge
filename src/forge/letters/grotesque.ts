@@ -3992,6 +3992,12 @@ const ESS_CONTRAST = 0.34;
 
 /** The s: see `ess`. Measured off Geist Regular and Black. */
 export function grotesqueS(style: Style): Recipe {
+  /*
+   * At Geist's widths at its Thin and its Black, where it stood 10 narrow
+   * and 14 wide: a Thin's s a fortieth wider and its upper bowl's left side
+   * 5 units further in, and the width a heavy s gains held back from the
+   * UltraBlack on.
+   */
   const f = frame(essAcross(stackedPen(style, SMALL_ESS_GAIN)));
   return {
     ...finish(
@@ -4000,15 +4006,17 @@ export function grotesqueS(style: Style): Recipe {
         ...ess(f, {
           height: f.x,
           geist: 530,
-          unit: small(f),
+          unit: small(f) * (1 + 0.025 * thinness(f)),
           left: 104,
-          upper: { x: 263, y: [385, 378], w: 159 },
+          upper: { x: 263 + 5 * thinness(f), y: [385, 378], w: 159 - 5 * thinness(f) },
           lower: { x: 266, y: [125, 155], w: 174 },
           head: [385, 358],
           foot: [175, 172],
           inner: 0.42,
           innerBlack: 0.5,
-          blackWiden: 11,
+          blackWiden:
+            11 -
+            7 * Math.min(1, Math.max(0, (heavyT(f) - T_ULTRABLACK) / (nowBlack() - T_ULTRABLACK))),
           tilted: false,
         }),
       ],
