@@ -1775,7 +1775,33 @@ export function grotesqueQuestion(style: Style): Recipe {
   const centre = at(f.edge + halfW, crest - halfH);
   const neckX = f.edge + 189 * u;
   // Left where Geist's hook leaves its bowl for the neck, at each weight.
-  const hook = bend(f, centre, halfH, 190, atWeights(f, -40, -45, -40, -50, -50), halfW);
+  /*
+   * Geist's hook leans in from its terminal: the terminal is the hook's
+   * leftmost point and the stroke is already rising to the right there,
+   * where a hook left from beside its middle ran straight up out of the
+   * terminal and stood 15 to 20 units out past Geist's at its upper left.
+   * So its left half is drawn round a middle set lower, as far below as
+   * the hook is deep at the Thin and the Regular and less as the weight
+   * grows, left from a little above that middle, and round as an ellipse's
+   * quarter rather than the face's fuller one. The two halves meet at its
+   * crown. Held at the Black's past it. That took a third off the misfit
+   * at the Thin and two fifths off the Regular's.
+   */
+  const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
+  const knot = (knots: [number, number, number, number, number]) =>
+    pastBlack ? knots[4] : atWeights(f, ...knots);
+  const lower = knot([60, 60, 40, 25, 15]);
+  const hook = chain(
+    bend(
+      { ...f, curve: 0 },
+      at(centre.x, centre.y - lower),
+      halfH + lower,
+      knot([170, 170, 175, 178, 182]),
+      90,
+      halfW,
+    ),
+    bend(f, centre, halfH, 90, atWeights(f, -40, -45, -40, -50, -50), halfW),
+  );
   const last = hook.segments[hook.segments.length - 1];
   const from = spineEnd(hook);
   const h = headingAt(last, "end");
