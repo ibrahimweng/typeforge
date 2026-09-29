@@ -26,6 +26,9 @@ import {
   crossEachOther,
   drawn,
   gapBetween,
+  LORA_BOLD_DZHE,
+  LORA_BOLD_O_HOOK,
+  LORA_BOLD_R_COMMA,
   GEIST_DE,
   GEIST_N,
   GEIST_ORDFEMININE,
@@ -947,5 +950,83 @@ describe("heaviest, a piece of ink standing above another", () => {
       // The bar stays on the baseline.
       expect(Math.min(...bottom.nodes.map((node) => node.point.y))).toBeCloseTo(0, 0);
     }
+  });
+});
+
+describe("a font drawn in overlapping pieces", () => {
+  const lora = (contours: Contour[], advance: number) => {
+    const made = letter(contours, advance);
+    made.typeface.metrics = { ...made.typeface.metrics, xHeight: 500, capHeight: 700 };
+    return made;
+  };
+  const inkOf = (contours: Contour[]) =>
+    Math.abs(contours.reduce((sum, contour) => sum + contourArea(contour), 0));
+
+  /*
+   * Regression: two contours of ink crossing where they did not as drawn
+   * were weighed again with less weight, though what they fill together is
+   * what is drawn. The bar of an unmerged T, grown down into the serif at
+   * the foot of the stem, took the bar and the stem down to under half the
+   * weight -- as Lora Bold's H-bar, L-slash and T-bar did.
+   */
+  it("gives a bar drawn across a stem its whole weight where it grows into a serif", () => {
+    const stem = polygon([
+      [150, 0],
+      [350, 0],
+      [350, 40],
+      [280, 40],
+      [280, 700],
+      [220, 700],
+      [220, 40],
+      [150, 40],
+    ]);
+    const bar = polygon([
+      [100, 70],
+      [400, 70],
+      [400, 110],
+      [100, 110],
+    ]);
+    const { typeface, glyph } = letter([stem, bar]);
+    const [, grown] = at(typeface, glyph, { weight: 60 });
+    const box = contoursBounds([grown]);
+    expect(box.yMax - box.yMin).toBeGreaterThan(120);
+  });
+
+  /*
+   * Regression: the descender of Lora Bold's Cyrillic dzhe is drawn standing
+   * on the foot of the letter, edge on edge, and the smallest move turns a
+   * touch like that into a crossing: every lightening was refused, and the
+   * letter kept all its ink while the rest of the font went to half.
+   */
+  it("lightens a letter whose pieces are drawn touching", () => {
+    const { typeface, glyph } = lora(drawn(LORA_BOLD_DZHE), 802);
+    const light = at(typeface, glyph, { weight: -40 });
+    expect(inkOf(light) / inkOf(drawn(LORA_BOLD_DZHE))).toBeLessThan(0.7);
+  });
+
+  /*
+   * Regression: a comma below is a piece standing under the letter, and the
+   * letter was taken for the piece above it and lifted off the baseline --
+   * Lora Bold's R with a comma below by fourteen units, its counter left
+   * where it was.
+   */
+  it("keeps a letter with a comma under it on the baseline", () => {
+    const { typeface, glyph } = lora(drawn(LORA_BOLD_R_COMMA), 686);
+    const [outline, counter] = at(typeface, glyph, { weight: 60 });
+    expect(contoursBounds([outline]).yMin).toBeCloseTo(0, 0);
+    const drawnCounter = contoursBounds([drawn(LORA_BOLD_R_COMMA)[1]]);
+    // The counter moved as much as the outline did, which is not at all.
+    expect(contoursBounds([counter]).yMin).toBeGreaterThan(drawnCounter.yMin - 1);
+  });
+
+  /*
+   * Regression: one accent lifted clear of the letter left the one beside
+   * it where it was, and the circumflex of Lora Bold's O with a circumflex
+   * and a hook, condensed and heavy, came within three units of the hook.
+   */
+  it("lifts accents side by side together", () => {
+    const { typeface, glyph } = lora(drawn(LORA_BOLD_O_HOOK), 769);
+    const out = at(typeface, glyph, { weight: 40, width: 0.6 });
+    expect(gapBetween(out[2], out[3])).toBeGreaterThan(10);
   });
 });

@@ -520,7 +520,8 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
    * with no handles, which the weight pulled apart and gave handles ten to
    * seventeen units long and the repair laid back on one spot. Only a piece
    * drawn that short with handles of its own -- a small loop, a ball drawn
-   * as one curve -- keeps them, however the weight has grown them.
+   * as one curve -- keeps them, and only while they reach no more than about
+   * twice as far as drawn: the weight grows a loop, not a spike out of one.
    */
   for (let index = 0; index < count; index++) {
     const next = ring(index + 1);
@@ -533,11 +534,13 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
     if (off(out, a) <= 1e-9 && off(into, b) <= 1e-9) continue;
     const drawnFrom = drawn.nodes[index];
     const drawnTo = drawn.nodes[next];
+    const reach = Math.max(off(out, a), off(into, b));
     const drawnReach = Math.max(
       off(drawnFrom.handleOut, drawnFrom.point),
       off(drawnTo.handleIn, drawnTo.point),
     );
-    if (distance(drawnFrom.point, drawnTo.point) <= 0.5 && drawnReach > 0.5) continue;
+    const drawnShort = distance(drawnFrom.point, drawnTo.point) <= 0.5;
+    if (drawnShort && reach <= drawnReach * 2 + 1) continue;
     touched = true;
     nodes[index] = { ...nodes[index], handleOut: out && { ...a } };
     nodes[next] = { ...nodes[next], handleIn: into && { ...b } };
@@ -577,7 +580,7 @@ function keptApart(
   weighed: Contour[],
   weigh: (index: number, share: number) => Contour,
 ): Contour[] {
-  const overlapsMore = overlapsMoreThan(drawn, FINE_STEPS);
+  const overlapsMore = overlapsMoreThan(drawn, FINE_STEPS, new WeakMap(), classifyContours(drawn));
   let result = weighed;
   for (let round = 0; round < drawn.length; round++) {
     const pairs: Array<[number, number]> = [];
@@ -615,49 +618,80 @@ const CLEAR_KEPT = 0.5;
 const CLEAR_OPENING = 0.036;
 
 /**
- * And a piece of ink standing above another -- an accent over its letter,
- * the chevron of a ≥ over its bar -- kept clear of it.
+ * And the pieces of ink that float clear of the letter -- an accent over it,
+ * a comma under it, the chevron of a ≥ over its bar -- kept clear of it.
  *
- * Each is weighed against the other as drawn, and a pointed end runs out
- * along its mitre by more than the weight: the lower end of the acute on
+ * Each piece is weighed against the others as drawn, and a pointed end runs
+ * out along its mitre by more than the weight: the lower end of the acute on
  * Lora's heaviest Á came down onto the top of the A, which had grown up to
  * meet it, and the end of the lower arm of Geist's ≥ onto the bar under it,
- * which had grown up and out beneath it. The piece above is lifted, whole, as
- * far as keeps its share of the white; nothing about either shape changes,
- * and what stands on the baseline stays there. The strokes put back
- * sideways into a condensed letter are asked to keep all of it: they move
+ * which had grown up and out beneath it. What stands on the baseline stays
+ * where it is; the pieces above it are lifted together, and those below it
+ * lowered together, each with its counters, as far as keeps each its share of
+ * the white it had over or under what stands. Moved together, two accents
+ * side by side keep what is between them, and nothing about any shape
+ * changes. A condensed letter's strokes, put back sideways, are asked to keep
+ * all of the white they are handed, up to the same half an opening: they move
  * across, and closed the white under the arm of the heaviest condensed ≥ by
  * half again, as the slope of the arm carried its edge down.
  */
 function keptClear(drawn: Contour[], weighed: Contour[], em: number, kept = CLEAR_KEPT): Contour[] {
   const outer = classifyContours(drawn);
+  if (outer.filter(Boolean).length < 2) return weighed;
   const boxes = drawn.map((contour) => contoursBounds([contour]));
-  const stacks: Array<{ above: number; below: number; need: number }> = [];
-  drawn.forEach((top, above) => {
-    drawn.forEach((bottom, below) => {
-      if (above === below || !outer[above] || !outer[below]) return;
-      const a = boxes[above];
-      const b = boxes[below];
-      // Above it and over it, not beside it; and not inside it.
-      if (a.yMin < b.yMax - 1) return;
-      if (Math.min(a.xMax, b.xMax) - Math.max(a.xMin, b.xMin) <= 0) return;
-      if (a.yMin - b.yMax > em * CLEAR_OPENING * 4) return;
-      if (contourContainsPoint(bottom, top.nodes[0].point)) return;
-      const gap = clearance(top, bottom);
-      if (!(gap > 1)) return;
-      stacks.push({ above, below, need: Math.min(gap * kept, CLEAR_KEPT * em * CLEAR_OPENING) });
-    });
+  // Each piece of ink, with the contours inside it: its counters, and any
+  // island standing in one of them.
+  const tops = drawn.flatMap((contour, index) =>
+    outer[index] &&
+    !drawn.some(
+      (other, which) => which !== index && contourContainsPoint(other, contour.nodes[0].point),
+    )
+      ? [index]
+      : [],
+  );
+  if (tops.length < 2) return weighed;
+  const members = new Map(tops.map((top) => [top, [top]]));
+  drawn.forEach((contour, index) => {
+    if (tops.includes(index)) return;
+    const top = tops.find((one) => contourContainsPoint(drawn[one], contour.nodes[0].point));
+    if (top !== undefined) members.get(top)?.push(index);
   });
-  if (stacks.length === 0) return weighed;
-  const lifted = (contour: Contour, by: number): Contour =>
-    by === 0 ? contour : mapContour(contour, (point) => ({ x: point.x, y: point.y + by }));
+  const slack = em * BASELINE_SLACK;
+  const standing = tops.filter((top) => boxes[top].yMin <= slack && boxes[top].yMax >= -slack);
+  const floating = (way: 1 | -1) =>
+    tops.filter((top) => (way > 0 ? boxes[top].yMin > slack : boxes[top].yMax < -slack));
+  const moved = (contours: Contour[], group: number[], by: number): Contour[] => {
+    if (by === 0) return contours;
+    const all = new Set(group.flatMap((top) => members.get(top) ?? []));
+    return contours.map((contour, which) =>
+      all.has(which) ? mapContour(contour, (point) => ({ x: point.x, y: point.y + by })) : contour,
+    );
+  };
   let result = weighed;
-  // From the bottom up, so that what stands on a lifted piece is lifted with it.
-  stacks.sort((one, other) => boxes[one.below].yMin - boxes[other.below].yMin);
-  for (const { above, below, need } of stacks) {
-    const clear = (by: number) => clearance(lifted(result[above], by), result[below]) >= need;
+  for (const way of [1, -1] as const) {
+    const group = floating(way);
+    // Over or under what stands, not beside it.
+    const stacks = group.flatMap((piece) =>
+      standing.flatMap((ground) => {
+        const a = boxes[piece];
+        const b = boxes[ground];
+        if (Math.min(a.xMax, b.xMax) - Math.max(a.xMin, b.xMin) <= 0) return [];
+        if (way > 0 ? a.yMin < b.yMax - 1 : a.yMax > b.yMin + 1) return [];
+        if ((way > 0 ? a.yMin - b.yMax : b.yMin - a.yMax) > em * CLEAR_OPENING * 4) return [];
+        const gap = clearance(drawn[piece], drawn[ground]);
+        if (!(gap > 1)) return [];
+        return [{ piece, ground, need: Math.min(gap * kept, CLEAR_KEPT * em * CLEAR_OPENING) }];
+      }),
+    );
+    if (stacks.length === 0) continue;
+    const clear = (by: number) => {
+      const trial = moved(result, group, by * way);
+      return stacks.every(
+        ({ piece, ground, need }) => clearance(trial[piece], trial[ground]) >= need,
+      );
+    };
     if (clear(0)) continue;
-    let high = need;
+    let high = em * CLEAR_OPENING;
     for (let tries = 0; tries < 8 && !clear(high); tries++) high *= 2;
     if (!clear(high)) continue;
     let low = 0;
@@ -666,11 +700,13 @@ function keptClear(drawn: Contour[], weighed: Contour[], em: number, kept = CLEA
       if (clear(middle)) high = middle;
       else low = middle;
     }
-    const by = high;
-    result = result.map((contour, which) => (which === above ? lifted(contour, by) : contour));
+    result = moved(result, group, high * way);
   }
   return result;
 }
+
+/** How far off the baseline a piece of ink may start and still stand on it, of the em. */
+const BASELINE_SLACK = 0.02;
 
 /** The share of the white across a condensed letter that putting its strokes back leaves. */
 const CONDENSED_WHITE = 0.7;
@@ -1186,24 +1222,42 @@ function keepHeights(
     }),
   }));
   /*
-   * Kept only where it crosses nothing the letter as it came did not: an
-   * outline that would cross itself keeps the pins alone, or failing that
-   * its heights as they came; and where one contour would be taken through
-   * another -- the lighter letter's heights put back while its counters stood
-   * open wider, the two loops of Lora's section sign met -- the two take
-   * less of it together.
+   * Kept only where it crosses nothing the letter as it came did not, itself
+   * or another contour: the lighter letter's heights put back while its
+   * counters stood open wider, the two loops of Lora's section sign met.
+   * Where the field would, the pins alone; where they would too, as much of
+   * them as does not, the same for every contour.
    */
   const settle = (whole: Contour[]): Contour[] => {
-    const kept = whole.map((contour, which) => {
-      const crossedMore = crossesMoreThan(contours[which], FINE_STEPS);
-      if (!crossedMore(contour)) return contour;
-      return contour !== squeezed[which] && !crossedMore(squeezed[which])
-        ? squeezed[which]
-        : contours[which];
-    });
-    return keptApart(contours, kept, (which, share) =>
-      partway(contours[which], kept[which], share),
+    const crossedMore = contours.map((contour) => crossesMoreThan(contour, FINE_STEPS));
+    const overlapsMore = overlapsMoreThan(
+      contours,
+      FINE_STEPS,
+      new WeakMap(),
+      classifyContours(contours),
     );
+    const sound = (trial: Contour[]) =>
+      trial.every(
+        (contour, which) => contour === contours[which] || !crossedMore[which](contour),
+      ) && !overlapsMore(trial);
+    if (sound(whole)) return whole;
+    if (whole !== squeezed && sound(squeezed)) return squeezed;
+    /*
+     * Failing both, the pins taken part of the way, the whole letter
+     * together: left as it came one contour at a time, a bowl's outline
+     * kept its grown bottom while its counter was lifted, and the wall
+     * between them changed weight.
+     */
+    const partly = (share: number) =>
+      squeezed.map((contour, which) => partway(contours[which], contour, share));
+    let low = 0;
+    let high = 1;
+    for (let step = 0; step < BACK_OFF_STEPS; step++) {
+      const middle = (low + high) / 2;
+      if (sound(partly(middle))) low = middle;
+      else high = middle;
+    }
+    return low === 0 ? contours : partly(low);
   };
   if (!matched) return settle(squeezed);
   /*
@@ -1433,7 +1487,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
   const walls = contours.map((contour) => flattenContour(contour, 8));
   // Each outline laid out once for every check of every counter's trials.
   const layouts: Layouts = new WeakMap();
-  const overlapsMore = overlapsMoreThan(contours, FINE_STEPS, layouts);
+  const overlapsMore = overlapsMoreThan(contours, FINE_STEPS, layouts, outer);
   const amount = Math.abs(factor - 1);
   const opening = factor > 1;
   const follow = COUNTER_FOLLOW;
@@ -1833,7 +1887,7 @@ function followCounters(
    */
   const layouts: Layouts = new WeakMap();
   const crossedMore = before.map((contour) => crossesMoreThan(contour, FINE_STEPS, layouts));
-  const overlapsMore = overlapsMoreThan(before, FINE_STEPS, layouts);
+  const overlapsMore = overlapsMoreThan(before, FINE_STEPS, layouts, outer);
   const crosses = (moved: Contour[]): boolean =>
     moved.some((other, which) => other !== before[which] && crossedMore[which](other)) ||
     overlapsMore(moved);

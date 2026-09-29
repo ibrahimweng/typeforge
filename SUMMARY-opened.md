@@ -179,7 +179,7 @@ Fixes:
 - **Rim.** A retry must now cover the shape, checked with a boolean subtraction. Being at least the shape's area wasn't enough: a retry that dropped the dot of an i and its rim was still larger than the shape.
 - **Spike cleanup.** The spikes on Lora's A and n and on Geist's ª are on pieces drawn as a single point. So only a piece drawn short with handles of its own keeps them, however the weight grows them.
 - **Follow step.** When one counter without a map is scaled through a wall, it alone is put back as drawn. Before, the whole letter was put back, and every other counter's change with it.
-- **Speed.** The checks of one letter share their flattened outlines, and hold them weakly.
+- **Speed.** The counter steps' checks share their flattened outlines, and hold them weakly.
 
 **Between contours.** The review also found that only the counters' steps checked contours against each other. The independent sweep had never checked that either, so I added it. It found real faults:
 - **At weight −0.04 a counter cut through its outline**, in Lora's g and Geist's ª and д.
@@ -189,10 +189,27 @@ Fixes:
   - The height correction had an early return that skipped this guard, and with it Lora's § crossed, light and with its counters opened.
 - **At weight 0.06 separate pieces touched.**
   - The lower end of the acute on Lora's Á came down onto the A. The pointed end of the lower arm of Geist's ≥ and ≤ came down onto the bar, which had grown out under it.
-  - A piece standing above another is now lifted, whole, to keep half the white it had, up to half an opening (18 units). The width's give keeps all of what it is handed.
+  - A piece standing above another is now lifted to keep half the white it had, up to half an opening (18 units). The width's give keeps all of what it is handed, up to the same 18.
   - The crossbar control now stops a bar short of a separate piece. Geist's ť bar used to rise until it touched the caron; it now keeps half of the 22 units between them.
 
 Images: `light-joins-geist-*`, `light-joins-lora-*`, `parts-apart-geist-*`, `parts-apart-lora-*`.
+
+A ninth review tested on Lora Bold, a static font that ships its letters in overlapping pieces, and found that the new guards misfired there:
+- **Weight lost on overlapping ink.** The weight's check refused any new crossing between two contours, including two of ink. Two ink contours that overlap as drawn fill their union, however far into each other they grow. Refusing that took Lora Bold's heavy Ħ to 67% of the weight, Ł to 64% and Ŧ to 91%, about 40 glyphs in all. Ink contours that overlap or touch as drawn are now not asked; ink against a counter, and pieces that were apart, still are.
+- **Touching pieces couldn't be moved.** Lora Bold's Џ, Ŋ and џ are drawn with a piece standing on another, edge on edge. The smallest move turns that into a crossing, so they refused to lighten at all and kept all their ink. The same rule covers them.
+- **The wrong piece lifted.** With a comma below, as in Ŗ, the R was taken for the piece above and lifted 14 units off the baseline, without its counter. And one accent lifted alone left the accent beside it where it was: Ổ condensed and heavy had its circumflex within 3 units of its hook. Now:
+  - What stands on the baseline stays put.
+  - Every piece floating above it is lifted together, and every piece below it lowered together.
+  - Each piece moves with its counters.
+- **Smaller fixes:**
+  - The corner radius may find a crossing at most three radii along from one the letter had, not ten.
+  - The eased check doubles its step only after two steps taken in a row, and may try twice as often.
+  - The spike cleanup keeps a short piece's handles only while they reach no more than about twice as far as drawn.
+  - The height correction backs off the whole letter together, not one contour at a time.
+  - The rim retry sums the uncovered area with signs.
+  - The between-contour check scans the drawing only once a reshape crosses.
+
+On Lora Bold, 300 glyphs at weight 0.06 take 2.7 s, as they did before these guards; with them misfiring it had been 4.5 s.
 
 ## Tests
 
@@ -210,7 +227,7 @@ Three tests use real letters as fixtures, because their faults depend on the let
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,908 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,913 tests.
 
 ## What is left
 
@@ -227,7 +244,10 @@ These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vite
   - the corner radius allowing for a crossing sliding at a shallow angle;
   - the follow step putting back one counter without a map rather than the whole letter;
   - the spike cleanup's rule for pieces drawn short (the loops on Lora's A and n are covered by the d and n test);
-  - the height correction's check between contours (the § it fixed crossed only with this round's other changes).
+  - the height correction's check between contours (the § it fixed crossed only with this round's other changes), and its backing off the whole letter together;
+  - the eased check's step growing after two steps, and its budget;
+  - the spike cleanup's limit of about twice the drawn handle;
+  - the rim retry's signed uncovered area.
   An independent check of every glyph under every setting confirms none of the outlines cross.
 - **Corner radius** adds points by design, since it rounds corners with new curves.
 - **Heavy counters.** At weight 0.06, Geist's B and R counters shrink to slits. That comes from Geist's own proportions at that weight.

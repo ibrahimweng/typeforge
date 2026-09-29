@@ -368,7 +368,9 @@ function sweptClean(shape: Contour[], convolve: (contour: Contour) => Contour): 
     if (again.some(looped)) continue;
     const bare = subtract(snapped, again, "winding");
     const size = snapped.reduce((total, one) => total + contourArea(one), 0);
-    if (bare.reduce((total, one) => total + Math.abs(contourArea(one)), 0) <= size * 1e-3)
+    // Signed, so that a sliver of ring left round a counter counts as the
+    // ring, not as the ring and its hole both.
+    if (Math.abs(bare.reduce((total, one) => total + contourArea(one), 0)) <= size * 1e-3)
       return again;
   }
   return first;

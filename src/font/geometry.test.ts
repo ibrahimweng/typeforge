@@ -386,6 +386,31 @@ describe("crossesMoreThan", () => {
     // radius across the curves, and further along them.
     expect(crossesMoreThan(bowtie(0))(bowtie(10), 10)).toBe(false);
   });
+
+  /*
+   * Found in review: along curves meeting at a shallow angle a crossing was
+   * allowed to lie ten radii from one the letter had, and a rounding that
+   * tied a new knot a quarter of the way along passed.
+   */
+  it("refuses a knot a rounding ties far along a shallow crossing", () => {
+    const drawn = corners([
+      { x: 0, y: 0 },
+      { x: 1000, y: 20 },
+      { x: 1000, y: 0 },
+      { x: 0, y: 20 },
+    ]);
+    const knotted = corners([
+      { x: 0, y: 0 },
+      { x: 700, y: 14 },
+      { x: 720, y: 2 },
+      { x: 740, y: 16 },
+      { x: 1000, y: 20 },
+      { x: 1000, y: 0 },
+      { x: 0, y: 20 },
+    ]);
+    expect(crossingsOf(knotted)).toBe(3);
+    expect(crossesMoreThan(drawn)(knotted, 30)).toBe(true);
+  });
 });
 
 describe("overlapsMoreThan", () => {

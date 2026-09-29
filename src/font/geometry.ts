@@ -317,16 +317,21 @@ const NEAR = 0.01;
  * that cannot be followed in that many is taken to have tied one.
  */
 const LEAST_STEP = 1 / 256;
-const MOST_STEPS = 512;
+const MOST_STEPS = 1024;
 
 /**
  * Where a corner radius changes an outline -- it merges points and adds
  * others, so it cannot be followed point by point -- a crossing it carries
  * moves by no more than the radius across the curves, and along them by that
  * over the sine of the angle they meet at, which is taken as at least this:
- * about six degrees.
+ * about seventeen degrees, so a crossing may be found no further than three
+ * radii from one the letter had. At a tenth, ten radii, a rounding could tie
+ * a knot a quarter of the letter away from a shallow crossing and pass.
  */
-const LEAST_SINE = 0.1;
+const LEAST_SINE = 0.3;
+
+/** How near two outlines drawn a hair apart come to count as touching. */
+const TOUCHING = 0.5;
 
 /**
  * Whether a contour runs back over its own ink.
@@ -434,13 +439,32 @@ export function crossesMoreThan(
  * same two outlines, is not asked again, and each drawn pair is asked once.
  * Given a list, every pair that crosses more is put in it, rather than only
  * the first being looked for.
+ *
+ * Given which contours are ink, two of ink that overlap or touch as drawn
+ * are not asked at all: what they fill together is what is drawn, however
+ * far into each other they grow. Asked, the bar of an H-bar drawn across
+ * its stems, grown into their serifs, read as a new crossing, and the
+ * descender of a Cyrillic dzhe drawn standing on the letter's foot could not
+ * be moved without one.
  */
 export function overlapsMoreThan(
   drawn: Contour[],
   steps = 8,
   layouts: Layouts = new WeakMap(),
+  ink?: boolean[],
 ): (trial: Contour[], pairs?: Array<[number, number]>) => boolean {
   const lay = (contour: Contour) => layOf(contour, steps, layouts);
+  const joined = new Map<string, boolean>();
+  const inkTogether = (one: number, other: number): boolean => {
+    if (!ink?.[one] || !ink[other]) return false;
+    const key = `${one}:${other}`;
+    let together = joined.get(key);
+    if (together === undefined) {
+      together = clearance(drawn[one], drawn[other], steps) <= TOUCHING;
+      joined.set(key, together);
+    }
+    return together;
+  };
   const drawnPairs = new Map<string, Crossing[]>();
   const drawnBetween = (one: number, other: number): Crossing[] => {
     const key = `${one}:${other}`;
@@ -455,10 +479,14 @@ export function overlapsMoreThan(
     const first = lay(trial[one]);
     const second = lay(trial[other]);
     if (misses(first.box, second.box)) return false;
-    const had = drawnBetween(one, other);
-    const found = crossingsBetween(first, second, had.length > 0 ? Infinity : 1);
+    // Where the drawing is not yet known to cross here, one crossing of the
+    // trial is enough to look for first: most trials have none.
+    const known = drawnPairs.get(`${one}:${other}`);
+    let found = crossingsBetween(first, second, known?.length ? Infinity : 1);
     if (found.length === 0) return false;
+    const had = known ?? drawnBetween(one, other);
     if (had.length === 0) return true;
+    if (!known?.length) found = crossingsBetween(first, second, Infinity);
     const near = nearness(union(lay(drawn[one]).box, lay(drawn[other]).box));
     if (!sameShape(drawn[one], trial[one]) || !sameShape(drawn[other], trial[other]))
       return !found.every((crossing) => lies(crossing, had, near, 0));
@@ -472,11 +500,15 @@ export function overlapsMoreThan(
       one: outlineOf(trial[one], first),
       other: outlineOf(trial[other], second),
     };
+    // A contour the trial leaves as drawn stays as drawn all the way.
+    const partly = (which: number, share: number): [Contour, Laid] => {
+      if (trial[which] === drawn[which]) return [drawn[which], lay(drawn[which])];
+      const contour = eased(drawn[which], trial[which], share);
+      return [contour, laidOut(contour, steps)];
+    };
     const between = (share: number): Stage => {
-      const a = eased(drawn[one], trial[one], share);
-      const b = eased(drawn[other], trial[other], share);
-      const laidA = laidOut(a, steps);
-      const laidB = laidOut(b, steps);
+      const [a, laidA] = partly(one, share);
+      const [b, laidB] = partly(other, share);
       return {
         found: crossingsBetween(laidA, laidB, Infinity),
         one: outlineOf(a, laidA),
@@ -490,7 +522,7 @@ export function overlapsMoreThan(
     for (let one = 0; one < trial.length; one++)
       for (let other = one + 1; other < trial.length; other++) {
         if (trial[one] === drawn[one] && trial[other] === drawn[other]) continue;
-        if (!crossesMore(trial, one, other)) continue;
+        if (inkTogether(one, other) || !crossesMore(trial, one, other)) continue;
         if (!pairs) return true;
         pairs.push([one, other]);
         any = true;
@@ -765,13 +797,15 @@ function eased(from: Contour, to: Contour, share: number): Contour {
 /**
  * Whether every crossing at the end of a reshaping follows from one at its
  * start. The reshaping is taken whole first, then in steps that halve
- * wherever a crossing cannot be followed across one and double again after,
- * down to `LEAST_STEP` and for at most `MOST_STEPS` tries.
+ * wherever a crossing cannot be followed across one, and double again after
+ * two taken in a row -- after every one, a crossing sliding steadily failed
+ * every other try -- down to `LEAST_STEP` and for at most `MOST_STEPS` tries.
  */
 function followed(first: Stage, last: Stage, near: number, at: (share: number) => Stage): boolean {
   let here = first;
   let done = 0;
   let step = 1;
+  let taken = 0;
   for (let tries = 0; done < 1; tries++) {
     if (tries >= MOST_STEPS) return false;
     const to = Math.min(1, done + step);
@@ -782,9 +816,16 @@ function followed(first: Stage, last: Stage, near: number, at: (share: number) =
     if (carried) {
       here = there;
       done = to;
-      step *= 2;
+      taken++;
+      if (taken >= 2) {
+        step *= 2;
+        taken = 0;
+      }
     } else if (step <= LEAST_STEP) return false;
-    else step /= 2;
+    else {
+      step /= 2;
+      taken = 0;
+    }
   }
   return true;
 }
