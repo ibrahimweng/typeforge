@@ -114,7 +114,7 @@ Each leftover from the second round was fixed or checked and documented. Before 
 
 ### Fourth round: every weight on every base
 
-The earlier rounds swept Sans and Serif at every weight but the other bases at the default only. This round swept all 21 Draw bases at weights 30, 200 and 260 as well, with every cut and cast alone and in pairs in both orders. It also added a key sheet per face for a visual check (default weight on all 21 faces, and 30, 200 and 260 on Sans and Serif). Before and after images are the fourth group in `docs/polish/cuts/`.
+The earlier rounds swept Sans and Serif at every weight but the other bases at the default only. This round swept all 21 Draw bases at weights 30, 200 and 260 as well, with every cut and cast alone and in pairs in both orders. The final sweep on the finished code found no crossed outlines and no crashes at any weight on any base (the first found eight crossings and one crash). It also added a key sheet per face for a visual check (default weight on all 21 faces, and 30, 200 and 260 on Sans and Serif). Before and after images are the fourth group in `docs/polish/cuts/`.
 
 **Cuts** (`src/forge/cut.ts`)
 - **Tongues on slotted joins.** A band laid across a join at a slant cut most of a stroke away and left its corner standing on the next stroke as a tapering tongue: the crossbar of a slotted A on its leg, the arch of a Slab n, the stem under a Serif t's bar. What a knife leaves of a stroke's own ink is now trimmed if it is thinner than a share of that stroke's pen and runs along the knife's edge. A trim that would close a counter or break off a piece is not made: on a heavy Display m it took the middle stem's own corner. Panel: `sans-slots-joins`.
@@ -137,6 +137,8 @@ The earlier rounds swept Sans and Serif at every weight but the other bases at t
 - **Specks.** The effects now sweep for specks again after untangling. A speck stood by the leg of a Formal Script k with points after the chamfer. Panel: `formal-script-chamfer-then-points`.
 - **Motif on a roughened face.** The cut now hands on the motif's figures, and the filter for cracks leaves them alone. The roughened diamond in a Marker e was filled as a crack, and the e came back solid. Panel: `marker-motif`.
 
+- **Hairs and crumbs on the Brush.** Found by the final sweep. Where the roughened outline comes back to exactly a point it passed through, and the loop between encloses nothing, the loop is dropped: a point grown on a saw tooth of a Brush e came back as a hair of no width. And the effects now leave no more pieces than they were given where the new one is a crumb under half a stem square: the pressure thinned a tooth's neck on a light Brush e until its tip stood apart.
+
 **Checked and not faults**
 - **Serif g at 30 and Monoline Script e and t at 200 and 260.** The "lost" holes are pinholes of a few hundred square units or less in the plain drawing. The effects rightly fill them.
 - **Inline on an s at 260.** The groove in each terminal stroke is a short dash of its own, because the groove is laid stroke by stroke and ends square at a join.
@@ -147,7 +149,7 @@ The new tests are in `src/forge/cuts-cast-polish.test.ts`, `src/forge/cut.test.t
 - The inline used to be kept out of opened fonts. Those tests now use the breaks, which are still skeleton-only.
 - A bowl's groove used to stay separate from the stem's. The test now checks instead that no wall pinches.
 
-`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1788 tests.
+`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1790 tests.
 
 ## Known leftovers
 
