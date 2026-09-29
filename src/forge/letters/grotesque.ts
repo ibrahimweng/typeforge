@@ -537,9 +537,18 @@ export function grotesqueCapitalG(style: Style): Recipe {
   const middle = (f.crest(f.cap) + f.dip(0)) / 2;
   const halfH = held(f, f.crest(f.cap) - middle);
   const gain = roundGain(f, 0, 11);
-  const halfW = held(f, lerp(273, 253) * u + gain);
+  /*
+   * The Sans's Thin bowl 8 units wider, its left side held, and its
+   * terminal cut 12 lower (6 at the Regular) and its bar begun 12 further
+   * left, as Geist Thin's are: its upper right stood 15 to 22 units inside
+   * Geist Thin's and its terminal short of it. That took a third off the
+   * Thin's misfit.
+   */
+  const sans = f.style.metrics.xGrows !== undefined;
+  const thinOnly = (thin: number, regular = 0) => (sans ? atWeights(f, thin, regular, 0, 0, 0) : 0);
+  const halfW = held(f, lerp(273, 253) * u + gain) + thinOnly(8);
   const centre = at(f.edge + halfW, middle);
-  const head = angleAt(f, centre, halfW, halfH, up(f, lerp(500, 470)), false);
+  const head = angleAt(f, centre, halfW, halfH, up(f, lerp(500, 470)) + thinOnly(-12, -6), false);
   // The upright stands inside the ring's own right side, and the ring's
   // lower right is drawn in to run into it.
   const upright = Math.max(X(lerp(563, 578)) + gain * 2, centre.x + f.least);
@@ -578,7 +587,7 @@ export function grotesqueCapitalG(style: Style): Recipe {
     ink(f, bowl, f.end, BUTT),
     notched
       ? // Its bar starts 4 to 17 units further in than its measures give, as Geist's.
-        gBar(f, X(lerp(322, 344)) + atWeights(f, 0, 4, 17, 16, 13), spurX)
+        gBar(f, X(lerp(322, 344)) + atWeights(f, 0, 4, 17, 16, 13) + thinOnly(-12), spurX)
       : ink(f, straight(at(X(lerp(322, 344)), bar), at(spurX, bar)), BUTT, BUTT),
     /*
      * On a slab face the upright stands on the line bare: a slab on its foot
