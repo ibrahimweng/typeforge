@@ -66,11 +66,27 @@ export function ForgeView(): React.JSX.Element {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Stage letter={letter} revision={state.revision} parts={parts} />
         <Specimen revision={state.revision} />
-        <Warnings revision={state.settledRevision} />
-        {/* Both of these read the whole alphabet, so both wait for the drag to
-            end rather than following the live one: they catch up when the hand
-            comes off instead of holding it up. */}
-        <Alphabet names={names} selected={letter} />
+        {/*
+         * The warnings share the strip's part of the page, under it, and take
+         * nothing from the stage.
+         *
+         * They arrive when the walk over the font finishes, which is a moment
+         * after the font holds still and several on a busy machine. Standing
+         * between the specimen and the strip, the bar took its height out of
+         * the stage as it came and went, so the letter shrank and moved under
+         * the pointer after an edit: turning the grid on warns about the
+         * letters it lays past the ascender, and the press that followed landed
+         * a cell below the one aimed at. Under the strip, the only thing that
+         * moves is the strip's bottom edge, and nothing is aimed at there.
+         *
+         * Both of these read the whole alphabet, so both wait for the drag to
+         * end rather than following the live one: they catch up when the hand
+         * comes off instead of holding it up.
+         */}
+        <div className="flex min-h-0 flex-[2] flex-col">
+          <Alphabet names={names} selected={letter} />
+          <Warnings revision={state.settledRevision} />
+        </div>
       </div>
     </div>
   );
@@ -1260,7 +1276,7 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
   return (
     <div
       className={cn(
-        "shrink-0 border-b border-border px-4 py-2 transition-opacity",
+        "max-h-[45%] shrink-0 overflow-y-auto border-t border-border px-4 py-2 transition-opacity",
         stale && "opacity-50",
       )}
       data-forge-warnings
@@ -1531,7 +1547,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
   }, [ripe, settled, plain]);
 
   return (
-    <div className="toolcraft-scrollbar min-h-0 flex-[2] overflow-y-auto p-3">
+    <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
       <div className="flex flex-wrap gap-1.5">
         {cells.map((cell) => (
           <button
