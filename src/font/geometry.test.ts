@@ -343,12 +343,12 @@ describe("crossesMoreThan", () => {
   });
 
   /*
-   * Found in review: counted curve by curve, three crossings where two
-   * curves meeting at a shallow angle made one -- their flattened pieces
-   * waver across each other when either is nudged by a unit -- were two new
-   * ones, and a reshaping was backed off for nothing.
+   * Found in review: counted curve by curve, three crossings where the
+   * outline wavers across another at the one place it crossed -- as the
+   * flattened pieces of two curves meeting at a shallow angle can -- were two
+   * new ones, and a reshaping was backed off for nothing.
    */
-  it("takes three crossings at the one place it crossed for that one", () => {
+  it("takes three crossings where the outline wavers at the one place it crossed for that one", () => {
     const bowtie = (wavering: boolean): Contour =>
       corners([
         { x: 0, y: 0 },
@@ -363,6 +363,28 @@ describe("crossesMoreThan", () => {
     expect(crossingsOf(bowtie(false))).toBe(1);
     expect(crossingsOf(bowtie(true))).toBe(3);
     expect(crossesMoreThan(bowtie(false))(bowtie(true))).toBe(false);
+  });
+
+  /*
+   * Found in review: a crossing was allowed to move three times as far as
+   * its two curves moved apart, and two curves meeting at eleven degrees
+   * slide their crossing along each other by five times as much. The
+   * reshaping is followed in steps instead, halved until the crossing can be
+   * followed across each.
+   */
+  it("follows a crossing that slides a long way along two curves meeting at a shallow angle", () => {
+    const bowtie = (lift: number): Contour =>
+      corners([
+        { x: 0, y: 0 },
+        { x: 1000, y: 100 + lift },
+        { x: 1000, y: 0 },
+        { x: 0, y: 100 },
+      ]);
+    expect(crossingsOf(bowtie(20))).toBe(1);
+    expect(crossesMoreThan(bowtie(0))(bowtie(20))).toBe(false);
+    // And where a radius has changed the points, by where it is: within the
+    // radius across the curves, and further along them.
+    expect(crossesMoreThan(bowtie(0))(bowtie(10), 10)).toBe(false);
   });
 });
 
@@ -379,8 +401,14 @@ describe("overlapsMoreThan", () => {
   const stem = rect(0, 0, 100, 500);
   const drawn = [stem, rect(-200, 100, 220, 300)];
 
+  const copy = (contour: Contour): Contour => ({
+    closed: contour.closed,
+    nodes: contour.nodes.map((node) => ({ ...node, point: { ...node.point } })),
+  });
+
   it("lets contours drawn overlapping carry their overlap along", () => {
-    expect(overlapsMoreThan(drawn)(drawn)).toBe(false);
+    // Asked again of copies, since a pair left as drawn is not asked at all.
+    expect(overlapsMoreThan(drawn)(drawn.map(copy))).toBe(false);
     // Grown ten units all round: the same two crossings, moved with it.
     expect(overlapsMoreThan(drawn)([stem, rect(-210, 90, 240, 320)])).toBe(false);
     // Or pushed further into the stem, which crosses where it did.
@@ -399,5 +427,60 @@ describe("overlapsMoreThan", () => {
   it("refuses contours that did not touch crossing", () => {
     const apart = [stem, rect(200, 100, 200, 300)];
     expect(overlapsMoreThan(apart)([stem, rect(50, 100, 350, 300)])).toBe(true);
+  });
+
+  /*
+   * Found in review: a bowl whose side leaves the stem at ten degrees off
+   * upright, moved four units across, slides its crossing twenty-three units
+   * up the stem, and read as a new one: in an unmerged font every bowl that
+   * runs into its stem that way had the counters backed off for nothing.
+   */
+  it("follows an overlap whose crossings slide along a stem at a shallow angle", () => {
+    const tall = rect(0, 0, 100, 700);
+    const bowl = (by: number): Contour =>
+      corners([
+        { x: 90 + by, y: 50 },
+        { x: 125 + by, y: 250 },
+        { x: 125 + by, y: 450 },
+        { x: 90 + by, y: 650 },
+      ]);
+    expect(overlapsMoreThan([tall, bowl(0)])([tall, bowl(4)])).toBe(false);
+  });
+
+  /*
+   * Found in review: where a stroke's two sides meet at a point, each is the
+   * next piece along from the other, and a bar pulled off one side of a
+   * wedge and through the other was taken for the crossing it had, slid past
+   * the point -- which is six hundred units away.
+   */
+  it("refuses a bar pulled through the far side of a wedge", () => {
+    const wedge = corners([
+      { x: 0, y: 0 },
+      { x: 60, y: 0 },
+      { x: 30, y: 600 },
+    ]);
+    const bar = [wedge, rect(-200, 100, 215, 100)];
+    expect(overlapsMoreThan(bar)([wedge, rect(20, 100, 100, 100)])).toBe(true);
+    expect(overlapsMoreThan(bar)([wedge, rect(-200, 100, 280, 100)])).toBe(true);
+  });
+
+  /*
+   * Found in review: any number of crossings on the two curves of one drawn
+   * crossing were taken for it, so a wall bulged through a stem it crossed
+   * once -- in, out and in again -- passed.
+   */
+  it("refuses a wall bulged in and out and in again through the stem it crossed", () => {
+    const bar = (c1: Vec2, c2: Vec2): Contour => ({
+      closed: true,
+      nodes: [
+        { point: { x: 50, y: 200 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 250, y: 200 }, handleIn: null, handleOut: null, type: "corner" },
+        { point: { x: 250, y: 300 }, handleIn: null, handleOut: c1, type: "corner" },
+        { point: { x: 50, y: 300 }, handleIn: c2, handleOut: null, type: "corner" },
+      ],
+    });
+    const straight = bar({ x: 183, y: 300 }, { x: 117, y: 300 });
+    const bulged = bar({ x: -300, y: 500 }, { x: 600, y: 100 });
+    expect(overlapsMoreThan([stem, straight])([stem, bulged])).toBe(true);
   });
 });

@@ -23,6 +23,7 @@ import {
   distance,
   flattenContour,
   inkRunsAt,
+  type Layouts,
   lerp,
   normalize,
   overlapsMoreThan,
@@ -256,7 +257,12 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     };
     unweightedContours = [...contours, ...slabs];
     const unweighted = contoursBounds(unweightedContours);
-    contours = contours.map((contour, index) => applyWeight(contour, params.weight, index, around));
+    const drawnLetter = contours;
+    contours = keptApart(
+      drawnLetter,
+      contours.map((contour, index) => applyWeight(contour, params.weight, index, around)),
+      (index, share) => applyWeight(drawnLetter[index], params.weight * share, index, around),
+    );
     slabs = weighSlabs(slabs, slabbedLetter, params.weight, typeface.unitsPerEm, contours);
     /*
      * And the letter moved over by what the weight added on its left, so it
@@ -363,10 +369,20 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
        */
       const scaled = contoursBounds(contours);
       const narrow = contours;
-      contours = contours.map((contour, index) =>
-        applyWeight(contour, give, index, around, SIDEWAYS, CONDENSED_WHITE, (trial) =>
-          unfold(narrow[index], trial, params.slant),
-        ),
+      const putBack = (index: number, share: number): Contour =>
+        applyWeight(
+          narrow[index],
+          give * share,
+          index,
+          around,
+          SIDEWAYS,
+          CONDENSED_WHITE,
+          (trial) => unfold(narrow[index], trial, params.slant),
+        );
+      contours = keptApart(
+        narrow,
+        narrow.map((_, index) => putBack(index, 1)),
+        putBack,
       );
       /*
        * Moved over by what the strokes put back added on the left, and the
@@ -491,10 +507,11 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
    * spike running out and back along itself -- the heavy widened n of Lora
    * had one where the tail of its arch meets the stem, and Lora's A one in its
    * counter. Brought down by the weight or by the repair above alike: those
-   * two were pieces drawn a fraction of a unit long, which the weight pulled
-   * apart and gave handles and the repair laid back on one spot. A piece
-   * drawn that short keeps its handles only while they reach no further than
-   * they were drawn.
+   * two, and one in Geist's ordfeminine, were pieces drawn as a single point
+   * with no handles, which the weight pulled apart and gave handles ten to
+   * seventeen units long and the repair laid back on one spot. Only a piece
+   * drawn that short with handles of its own -- a small loop, a ball drawn
+   * as one curve -- keeps them, however the weight has grown them.
    */
   for (let index = 0; index < count; index++) {
     const next = ring(index + 1);
@@ -507,12 +524,11 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
     if (off(out, a) <= 1e-9 && off(into, b) <= 1e-9) continue;
     const drawnFrom = drawn.nodes[index];
     const drawnTo = drawn.nodes[next];
-    const reach = Math.max(off(out, a), off(into, b));
     const drawnReach = Math.max(
       off(drawnFrom.handleOut, drawnFrom.point),
       off(drawnTo.handleIn, drawnTo.point),
     );
-    if (distance(drawnFrom.point, drawnTo.point) <= 0.5 && reach <= drawnReach + 1e-6) continue;
+    if (distance(drawnFrom.point, drawnTo.point) <= 0.5 && drawnReach > 0.5) continue;
     touched = true;
     nodes[index] = { ...nodes[index], handleOut: out && { ...a } };
     nodes[next] = { ...nodes[next], handleIn: into && { ...b } };
@@ -533,6 +549,52 @@ function unfold(drawn: Contour, moved: Contour, slant: number): Contour {
     crossesMoreThan(lean(moved, degrees), FINE_STEPS)(lean(result, degrees)),
   );
   return worse ? moved : result;
+}
+
+/**
+ * And the letter's contours kept off each other where the weight took one
+ * through another it did not cross as drawn.
+ *
+ * Each contour is weighed on its own, measured against the letter as drawn,
+ * so neither side of a thin join knows the other is moving: at the lightest
+ * weight the crotch where the bowl of Geist's ordfeminine leaves its stem ran
+ * out along its mitre into the counter, which had grown towards it, and cut
+ * the join through. Where two contours cross, both are weighed again with
+ * the weight taken down together, as far as keeps them apart; and failing
+ * that, as drawn.
+ */
+function keptApart(
+  drawn: Contour[],
+  weighed: Contour[],
+  weigh: (index: number, share: number) => Contour,
+): Contour[] {
+  const overlapsMore = overlapsMoreThan(drawn, FINE_STEPS);
+  let result = weighed;
+  for (let round = 0; round < drawn.length; round++) {
+    const pairs: Array<[number, number]> = [];
+    if (!overlapsMore(result, pairs)) return result;
+    const [one, other] = pairs[0];
+    const at = (share: number): Contour[] =>
+      result.map((contour, which) => {
+        if (which !== one && which !== other) return contour;
+        return share === 0 ? drawn[which] : weigh(which, share);
+      });
+    // Clear of the others, the two of them, as well as of each other.
+    const clear = (trial: Contour[]): boolean => {
+      const still: Array<[number, number]> = [];
+      overlapsMore(trial, still);
+      return still.every((pair) => !pair.includes(one) && !pair.includes(other));
+    };
+    let low = 0;
+    let high = 1;
+    for (let step = 0; step < BACK_OFF_STEPS; step++) {
+      const middle = (low + high) / 2;
+      if (clear(at(middle))) low = middle;
+      else high = middle;
+    }
+    result = at(low);
+  }
+  return result;
 }
 
 /** The share of the white across a condensed letter that putting its strokes back leaves. */
@@ -1048,7 +1110,27 @@ function keepHeights(
       };
     }),
   }));
-  if (!matched) return squeezed;
+  /*
+   * Kept only where it crosses nothing the letter as it came did not: an
+   * outline that would cross itself keeps the pins alone, or failing that
+   * its heights as they came; and where one contour would be taken through
+   * another -- the lighter letter's heights put back while its counters stood
+   * open wider, the two loops of Lora's section sign met -- the two take
+   * less of it together.
+   */
+  const settle = (whole: Contour[]): Contour[] => {
+    const kept = whole.map((contour, which) => {
+      const crossedMore = crossesMoreThan(contours[which], FINE_STEPS);
+      if (!crossedMore(contour)) return contour;
+      return contour !== squeezed[which] && !crossedMore(squeezed[which])
+        ? squeezed[which]
+        : contours[which];
+    });
+    return keptApart(contours, kept, (which, share) =>
+      partway(contours[which], kept[which], share),
+    );
+  };
+  if (!matched) return settle(squeezed);
   /*
    * And what the pins could not say, because one edge carries parts that
    * moved differently. The foot of a stem made lighter rises by the weight;
@@ -1114,7 +1196,7 @@ function keepHeights(
       edges.push({ at: now, by, up });
     }
   }
-  if (!edges.some((edge) => Math.abs(edge.by) > 0.5)) return squeezed;
+  if (!edges.some((edge) => Math.abs(edge.by) > 0.5)) return settle(squeezed);
   const band = typeface.unitsPerEm * 0.1;
   const soft = (typeface.unitsPerEm * 0.01) ** 2;
   /*
@@ -1173,22 +1255,39 @@ function keepHeights(
     return { x: at.x, y };
   };
   const drawnContours = before as Contour[];
-  const fielded = squeezed.map((contour, which) => ({
-    closed: contour.closed,
-    nodes: contour.nodes.map((node, index) => {
-      const drawnNode = drawnContours[which].nodes[index];
+  return settle(
+    squeezed.map((contour, which) => ({
+      closed: contour.closed,
+      nodes: contour.nodes.map((node, index) => {
+        const drawnNode = drawnContours[which].nodes[index];
+        return {
+          ...node,
+          point: shift(node.point, drawnNode.point) as Vec2,
+          handleIn: shift(node.handleIn, drawnNode.handleIn),
+          handleOut: shift(node.handleOut, drawnNode.handleOut),
+        };
+      }),
+    })),
+  );
+}
+
+/** An outline `share` of the way to another point for point, every point and handle. */
+function partway(from: Contour, to: Contour, share: number): Contour {
+  if (share >= 1) return to;
+  const mix = (was: Vec2 | null, now: Vec2 | null): Vec2 | null =>
+    was && now ? lerp(was, now, share) : now;
+  return {
+    closed: to.closed,
+    nodes: to.nodes.map((node, index) => {
+      const was = from.nodes[index];
       return {
         ...node,
-        point: shift(node.point, drawnNode.point) as Vec2,
-        handleIn: shift(node.handleIn, drawnNode.handleIn),
-        handleOut: shift(node.handleOut, drawnNode.handleOut),
+        point: mix(was.point, node.point) as Vec2,
+        handleIn: mix(was.handleIn, node.handleIn),
+        handleOut: mix(was.handleOut, node.handleOut),
       };
     }),
-  }));
-  // Left squeezed where the field would cross itself anywhere squeezed did not.
-  return fielded.map((contour, which) =>
-    crossesMoreThan(squeezed[which], FINE_STEPS)(contour) ? squeezed[which] : contour,
-  );
+  };
 }
 
 /** Shear about the baseline, the transform that makes an oblique. */
@@ -1257,8 +1356,9 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
    */
   const outer = classifyContours(contours);
   const walls = contours.map((contour) => flattenContour(contour, 8));
-  // Each contour laid out once for every counter's trials against it.
-  const overlapsMore = overlapsMoreThan(contours, FINE_STEPS);
+  // Each outline laid out once for every check of every counter's trials.
+  const layouts: Layouts = new WeakMap();
+  const overlapsMore = overlapsMoreThan(contours, FINE_STEPS, layouts);
   const amount = Math.abs(factor - 1);
   const opening = factor > 1;
   const follow = COUNTER_FOLLOW;
@@ -1435,7 +1535,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
      * wall anyway it is backed off evenly, as weight backs off a contour,
      * rather than piece by piece, which would tear it.
      */
-    const crossedMore = crossesMoreThan(contour, FINE_STEPS);
+    const crossedMore = crossesMoreThan(contour, FINE_STEPS, layouts);
     // Against the walls where they will not follow; those that do are
     // checked once they have moved, in `followCounters`.
     const alone = !follows.left && !follows.right;
@@ -1656,18 +1756,27 @@ function followCounters(
    * crossing that following failed to clear was let through as one already
    * there.
    */
-  const crossedMore = before.map((contour) => crossesMoreThan(contour, FINE_STEPS));
-  const overlapsMore = overlapsMoreThan(before, FINE_STEPS);
+  const layouts: Layouts = new WeakMap();
+  const crossedMore = before.map((contour) => crossesMoreThan(contour, FINE_STEPS, layouts));
+  const overlapsMore = overlapsMoreThan(before, FINE_STEPS, layouts);
   const crosses = (moved: Contour[]): boolean =>
     moved.some((other, which) => other !== before[which] && crossedMore[which](other)) ||
     overlapsMore(moved);
-  // The counters chosen opened and the ink moved by their maps, and the rest
-  // of the counters that have maps as drawn.
+  /*
+   * The counters chosen opened and the ink moved by their maps, the counters
+   * without a map that are kept as scaled, and the rest of the counters as
+   * drawn.
+   */
   const mapped = new Set(maps.map((map) => map.index));
-  const opened = (chosen: typeof maps): Contour[] => {
+  const unmapped = before.flatMap((contour, which) =>
+    !mapped.has(which) && settled[which] !== contour ? [which] : [],
+  );
+  const opened = (chosen: typeof maps, kept: Set<number>): Contour[] => {
     const open = new Set(chosen.map((map) => map.index));
     const start = settled.map((contour, which) =>
-      mapped.has(which) && !open.has(which) ? before[which] : contour,
+      (mapped.has(which) && !open.has(which)) || (unmapped.includes(which) && !kept.has(which))
+        ? before[which]
+        : contour,
     );
     return moveBy(start, chosen);
   };
@@ -1677,19 +1786,28 @@ function followCounters(
    * single straight line: halfway through, the stem leaned across the lower
    * bowl, the crossing check saw it, and the upper bowl was put back.
    */
-  const together = opened(maps);
+  const all = new Set(unmapped);
+  const together = opened(maps, all);
   if (!crosses(together)) return together;
-  // Failing that, one at a time, and a counter whose walls cannot follow it
-  // stays as it was drawn.
+  /*
+   * Failing that, one at a time, and a counter that would cross a wall stays
+   * as it was drawn: first those without a map -- moved too little across
+   * for a wall to follow, or not across at all, and not always asked about
+   * the walls round them when they were scaled -- then those with. Put back
+   * all together, one counter scaled through a wall took every other
+   * counter's change with it.
+   */
+  const kept = new Set<number>();
+  for (const which of unmapped) {
+    kept.add(which);
+    if (crosses(opened([], kept))) kept.delete(which);
+  }
   let chosen: typeof maps = [];
   for (const map of maps) {
     const trial = [...chosen, map];
-    if (!crosses(opened(trial))) chosen = trial;
+    if (!crosses(opened(trial, kept))) chosen = trial;
   }
-  const result = opened(chosen);
-  // And where even that crosses -- a counter without a map, scaled through a
-  // wall -- the letter as it came.
-  return chosen.length > 0 || !crosses(result) ? result : before;
+  return opened(chosen, kept);
 }
 
 /**

@@ -23,8 +23,11 @@ import { contourArea, contoursBounds, contourSegments, cubicAt, flattenContour }
 import { importFont } from "./parse";
 import { contoursIntersect } from "./outline";
 import {
+  crossEachOther,
   drawn,
+  GEIST_DE,
   GEIST_N,
+  GEIST_ORDFEMININE,
   GEIST_R,
   LORA_D_LOWER,
   LORA_FRACTION_FOUR,
@@ -867,5 +870,40 @@ describe("heavy and condensed", () => {
     // Scaled alone it would be 0.6 of it; the strokes put back add a good deal.
     expect(ink(narrow)).toBeGreaterThan(wide * 0.6 * 1.2);
     for (const contour of narrow) expect(loopsAnywhere(contour)).toBe(false);
+  });
+});
+
+describe("lightest, each contour against the rest of the letter", () => {
+  const lightest = (contours: Contour[], advance: number): Contour[] => {
+    const { typeface, glyph } = letter(contours, advance);
+    return at(typeface, glyph, { weight: -40 });
+  };
+
+  /*
+   * Regression: where a stroke's two straight sides are both held in, each is
+   * turned to lie parallel to the other. The upright right side of the
+   * counter of Geist's д was taken for the partner of the counter's slanted
+   * left side, which faces it across the white rather than the ink, and was
+   * turned to lean like it: at the lightest weight its top corner ran out
+   * eighty units, through the stem beside it.
+   */
+  it("keeps the upright side of a counter upright", () => {
+    const [outline, counter] = lightest(drawn(GEIST_DE), 612);
+    expect(Math.abs(counter.nodes[4].point.x - counter.nodes[5].point.x)).toBeLessThan(0.5);
+    expect(crossEachOther(outline, counter)).toBe(false);
+  });
+
+  /*
+   * Regression: each contour is weighed on its own, against the letter as
+   * drawn, so neither side of a thin join knows the other is moving. At the
+   * lightest weight the crotch where the bowl of Geist's ª leaves its stem ran
+   * out along its mitre into the counter, which had grown towards it, and the
+   * two crossed: a white cut through the join.
+   */
+  it("keeps a counter from crossing the outline round it", () => {
+    const [outline, counter] = lightest(drawn(GEIST_ORDFEMININE), 401);
+    expect(crossEachOther(outline, counter)).toBe(false);
+    expect(loopsAnywhere(outline)).toBe(false);
+    expect(loopsAnywhere(counter)).toBe(false);
   });
 });

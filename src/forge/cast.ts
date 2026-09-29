@@ -353,20 +353,23 @@ function sweptClean(shape: Contour[], convolve: (contour: Contour) => Contour): 
   const first = swept(shape, convolve);
   if (!first.some(looped)) return first;
   /*
-   * And no smaller than the shape: the ground a shape covers includes the
-   * shape, and a retry whose unions lost a piece comes back without its loop
-   * and without the ink round it. Not the first answer's size, which is the
-   * one known to be wrong: a counter's paper left as a loop in it rather than
-   * taken out makes it larger than the right answer.
+   * And covering the shape, as the ground a shape covers must: a retry whose
+   * unions lost a piece comes back without its loop and without the ink
+   * round it, the dot of an i and its rim. Its size says too little. The
+   * first answer's is the one known to be wrong -- a counter's paper left
+   * in it as a loop rather than taken out makes it larger than the right
+   * answer -- and a rim adds so much to a shape that one without a dot is
+   * still larger than the shape. Asked of the shape set to the same grid, so
+   * that the edges the two share line up.
    */
-  const least = shape.reduce((total, one) => total + contourArea(one), 0) * 0.999;
   for (const grid of [1000, 100, 10]) {
-    const again = swept(
-      shape.map((contour) => onGrid(contour, grid)),
-      convolve,
-    );
-    const area = again.reduce((total, one) => total + contourArea(one), 0);
-    if (area >= least && !again.some(looped)) return again;
+    const snapped = shape.map((contour) => onGrid(contour, grid));
+    const again = swept(snapped, convolve);
+    if (again.some(looped)) continue;
+    const bare = subtract(snapped, again, "winding");
+    const size = snapped.reduce((total, one) => total + contourArea(one), 0);
+    if (bare.reduce((total, one) => total + Math.abs(contourArea(one)), 0) <= size * 1e-3)
+      return again;
   }
   return first;
 }

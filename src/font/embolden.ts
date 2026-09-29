@@ -335,6 +335,10 @@ export function applyWeight(
    */
   const sign = (isClockwise(contour) ? -1 : 1) * (isOuter ? 1 : -1) * Math.sign(amount);
   const move = (heading: Vec2): Vec2 => shape({ x: heading.y * sign, y: -heading.x * sign });
+  // And which side of the outline its ink is on, the other way from where
+  // weight moves it: as `cross(offset, heading)` has it, which is the normal
+  // above measured along.
+  const inkward = -(isClockwise(contour) ? -1 : 1) * (isOuter ? 1 : -1);
   const wanted = Math.abs(amount);
   const bolder = amount > 0;
   const em = around.unitsPerEm;
@@ -1028,7 +1032,16 @@ export function applyWeight(
       if (index === seg || other.kind !== "line") return;
       const u = lineDirection(index);
       if (t.x * u.x + t.y * u.y > -0.97) return;
-      const gap = Math.abs(cross(sub(other.from, from), t));
+      /*
+       * Across the ink, where the stroke is. The two sides of a counter face
+       * each other across the white, and so do the insides of an n's stems:
+       * the straight right side of Geist's д, taken for the partner of its
+       * counter's slanted left one, was turned to lie parallel to it, and at
+       * the lightest weight its corner ran out through the stem beside it.
+       */
+      const side = cross(sub(other.from, from), t);
+      if (side * inkward <= 0) return;
+      const gap = Math.abs(side);
       if (gap > em * 0.3 || gap < 1) return;
       // Beside it for at least half of the shorter of the two.
       const a = (other.from.x - from.x) * t.x + (other.from.y - from.y) * t.y;

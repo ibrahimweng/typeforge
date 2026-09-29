@@ -400,3 +400,111 @@ export const LORA_FRACTION_FOUR: Node6[][] = [
     [210, 619, null, null, null, null],
   ],
 ];
+
+/** Geist's д (Cyrillic de), as drawn. */
+export const GEIST_DE: Node6[][] = [
+  [
+    [114, -110, null, null, null, null],
+    [30, -110, null, null, null, null],
+    [30, 74, null, null, null, null],
+    [94, 74, null, null, 109.33333333333333, 85.33333333333333],
+    [136.5, 127.5, 123.5, 103.16666666666667, 149.5, 151.83333333333334],
+    [164, 240, 158.66666666666666, 189.33333333333334, null, null],
+    [196, 530, null, null, null, null],
+    [508, 530, null, null, null, null],
+    [508, 74, null, null, null, null],
+    [582, 74, null, null, null, null],
+    [582, -110, null, null, null, null],
+    [498, -110, null, null, null, null],
+    [498, 0, null, null, null, null],
+    [114, 0, null, null, null, null],
+  ],
+  [
+    [266, 456, null, null, null, null],
+    [240, 232, null, null, 235.33333333333334, 190],
+    [217.5, 132, 227.83333333333334, 156.66666666666666, 207.16666666666666, 107.33333333333334],
+    [186, 74, 196.66666666666666, 88, null, null],
+    [424, 74, null, null, null, null],
+    [424, 456, null, null, null, null],
+  ],
+];
+
+/** Geist's ª, as drawn. */
+export const GEIST_ORDFEMININE: Node6[][] = [
+  [
+    [156, 376, 184.66666666666666, 376, 121.33333333333334, 376],
+    [72, 399.5, 93.33333333333333, 383.8333333333333, 50.66666666666667, 415.1666666666667],
+    [40, 466, 40, 437.3333333333333, 40, 496],
+    [68, 536.5, 49.333333333333336, 519.5, 86.66666666666666, 553.5],
+    [148, 572, 113.33333333333334, 565.3333333333334, null, null],
+    [259, 594, null, null, 259, 616.6666666666666],
+    [242.5, 645, 253.5, 633.6666666666666, 231.5, 656.3333333333334],
+    [197, 662, 216.33333333333334, 662, 178.33333333333334, 662],
+    [153, 649, 163.66666666666666, 657.6666666666666, 142.33333333333334, 640.3333333333334],
+    [132, 612, 135.33333333333334, 628, null, null],
+    [46, 616, null, null, 52, 651.3333333333334],
+    [94.5, 697.5, 68.16666666666667, 678.5, 120.83333333333333, 716.5],
+    [197, 726, 155, 726, 245, 726],
+    [306, 690.5, 281.3333333333333, 714.1666666666666, 330.6666666666667, 666.8333333333334],
+    [343, 588, 343, 632.6666666666666, null, null],
+    [343, 463, null, null, 343, 447],
+    [361, 439, 349, 439, null, null],
+    [371, 439, null, null, null, null],
+    [371, 379, null, null, 369, 378.3333333333333],
+    [360, 377, 365.3333333333333, 377.6666666666667, 354.6666666666667, 376.3333333333333],
+    [341, 376, 348.3333333333333, 376, 323, 376],
+    [294.5, 388, 307.5, 380, 281.5, 396],
+    [270, 433, 273.3333333333333, 411, null, null],
+    [269, 436, null, null, 261, 418.6666666666667],
+    [228, 393, 247.33333333333334, 404.3333333333333, 208.66666666666666, 381.6666666666667],
+  ],
+  [
+    [170, 435, 140.66666666666666, 435, 196, 435],
+    [234, 456.5, 217.33333333333334, 442.1666666666667, 250.66666666666666, 470.8333333333333],
+    [259, 515, 259, 490.3333333333333, null, null],
+    [259, 538, null, null, null, null],
+    [176, 520, null, null, 158.66666666666666, 516],
+    [138, 502, 146, 510, 130, 494],
+    [126, 473, 126, 484.3333333333333, 126, 447.6666666666667],
+  ],
+];
+
+/**
+ * Whether two outlines cross each other, asked independently of the code
+ * under test, as `loopsAnywhere` asks of one: both flattened here, and every
+ * piece of one compared with every piece of the other.
+ */
+export function crossEachOther(one: Contour, other: Contour, steps = 32): boolean {
+  const flat = (contour: Contour): Vec2[] => {
+    const nodes = contour.nodes;
+    const points: Vec2[] = nodes.length > 0 ? [nodes[0].point] : [];
+    const spans = contour.closed ? nodes.length : nodes.length - 1;
+    for (let k = 0; k < spans; k++) {
+      const a = nodes[k];
+      const b = nodes[(k + 1) % nodes.length];
+      if (!a.handleOut && !b.handleIn) {
+        points.push(b.point);
+        continue;
+      }
+      const [p0, p1, p2, p3] = [a.point, a.handleOut ?? a.point, b.handleIn ?? b.point, b.point];
+      for (let step = 1; step <= steps; step++) {
+        const t = step / steps;
+        const u = 1 - t;
+        points.push({
+          x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+          y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+        });
+      }
+    }
+    return points;
+  };
+  const a = flat(one);
+  const b = flat(other);
+  const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  for (let i = 0; i + 1 < a.length; i++)
+    for (let j = 0; j + 1 < b.length; j++) {
+      const [p, q, r, s] = [a[i], a[i + 1], b[j], b[j + 1]];
+      if (side(p, q, r) * side(p, q, s) < 0 && side(r, s, p) * side(r, s, q) < 0) return true;
+    }
+  return false;
+}
