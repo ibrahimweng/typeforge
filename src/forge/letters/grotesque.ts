@@ -3489,8 +3489,12 @@ export function grotesqueBackslash(style: Style): Recipe {
   const f = frame(style);
   const u = large(f);
   const run = 295.8 * u + slashGain(f);
+  const [sl, further] = slashLight(f, [1, 0.88, 0.91, 0.94, 0.94], [0, 9, 3, 3, 5]);
+  const run2 = run + further;
   return finish(f, [
-    ink(f, straight(at(f.edge, up(f, 750)), at(f.edge + run, up(f, -110))), LEVEL, LEVEL),
+    ((one: Stroke) => inherit(one, { ...one, pen: { ...one.pen, weight: one.pen.weight * sl } }))(
+      ink(f, straight(at(f.edge, up(f, 750)), at(f.edge + run2, up(f, -110))), LEVEL, LEVEL),
+    ),
   ]);
 }
 
@@ -4359,11 +4363,12 @@ const SECTION_HALF = 0.62;
  * square end carried on down the diagonal, with no point standing out past
  * the bar and no notch cut into it.
  */
-function zed(f: Frame, u: number, t: number, top: number, bars: number[][]): Stroke[] {
+function zed(f: Frame, u: number, t: number, top: number, bars: number[][], light = 1): Stroke[] {
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge - f.half + x * u;
   const [upperFrom, upperTo, lowerTo] = bars.map(([a, b]) => X(lerp(a, b)));
-  const pen = penReach(f.style.pen);
+  const diagonal = { ...f.style.pen, weight: f.style.pen.weight * light };
+  const pen = penReach(diagonal);
   const upperLine = f.hangs(top);
   const lowerLine = f.sits(0);
   const high = at(upperTo, top - f.upright * 2);
@@ -4380,7 +4385,9 @@ function zed(f: Frame, u: number, t: number, top: number, bars: number[][]): Str
   }
   return [
     ink(f, straight(at(upperFrom, upperLine), at(upperTo, upperLine))),
-    ink(f, straight(from, to)),
+    ((one: Stroke) => (light === 1 ? one : inherit(one, { ...one, pen: diagonal })))(
+      ink(f, straight(from, to)),
+    ),
     ink(f, straight(at(X(0), lowerLine), at(lowerTo, lowerLine))),
   ];
 }
@@ -4400,11 +4407,22 @@ export function grotesqueZ(style: Style): Recipe {
   const [, t] = spread(f);
   return finish(
     f,
-    zed(f, inked(f, f.xOwn, 530), t, f.x, [
-      [10, 13],
-      [428, 492],
-      [436, 499],
-    ]),
+    zed(
+      f,
+      inked(f, f.xOwn, 530),
+      t,
+      f.x,
+      [
+        [10, 13],
+        [428, 492],
+        [436, 499],
+      ],
+      // The Sans's diagonal lighter than the pen, as Geist's is from the Regular
+      // to the UltraBlack: on the pen the Regular's carried a tenth more ink.
+      f.style.metrics.xGrows !== undefined
+        ? Math.min(1, Math.max(0.88, atWeights(f, 1, 0.88, 0.94, 0.97, 1)))
+        : 1,
+    ),
   );
 }
 
@@ -4766,13 +4784,35 @@ function slashGain(f: Frame): number {
   );
 }
 
+/**
+ * How much lighter than the pen the Sans draws a slash, and how much further
+ * across it runs for it: Geist's are a tenth lighter than its stem at the
+ * Regular and a little lighter at the Black, where on the pen they carried a
+ * seventh more ink than Geist's at the Regular. Held at the Black's past it.
+ */
+function slashLight(
+  f: Frame,
+  light: [number, number, number, number, number],
+  further: [number, number, number, number, number],
+): [number, number] {
+  if (f.style.metrics.xGrows === undefined) return [1, 0];
+  return [
+    Math.min(1, Math.max(Math.min(...light), atWeights(f, ...light))),
+    Math.max(0, atWeights(f, ...further)),
+  ];
+}
+
 /** The slash: from below the baseline to above the ascender, cut level at both. */
 export function grotesqueSlash(style: Style): Recipe {
   const f = frame(style);
   const u = large(f);
   const run = 295.8 * u + slashGain(f);
+  const [sl, further] = slashLight(f, [1, 0.88, 0.94, 0.97, 0.97], [0, 9, 3, 3, 3]);
+  const run2 = run + further;
   return finish(f, [
-    ink(f, straight(at(f.edge, up(f, -110)), at(f.edge + run, up(f, 750))), LEVEL, LEVEL),
+    ((one: Stroke) => inherit(one, { ...one, pen: { ...one.pen, weight: one.pen.weight * sl } }))(
+      ink(f, straight(at(f.edge, up(f, -110)), at(f.edge + run2, up(f, 750))), LEVEL, LEVEL),
+    ),
   ]);
 }
 

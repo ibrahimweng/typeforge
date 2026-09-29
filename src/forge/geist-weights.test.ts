@@ -1829,3 +1829,18 @@ describe("the Thin e's tail", () => {
     expect(Math.abs(tail[1] - 144)).toBeLessThan(6);
   });
 });
+
+describe("the slash and the z's diagonal", () => {
+  it("are as light as Geist's at the Regular", () => {
+    // 200 up Geist Regular's slash runs 80 across and its z's diagonal 101;
+    // on the pen they ran 91 and 112.
+    for (const [name, across] of [
+      ["slash", 80],
+      ["z", 101],
+    ] as const) {
+      const row = filled(draw(name, 87).contours, 200);
+      const [from, to] = row[row.length - 1];
+      expect(Math.abs(to - from - across), name).toBeLessThan(4);
+    }
+  });
+});

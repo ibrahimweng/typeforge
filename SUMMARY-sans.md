@@ -636,6 +636,14 @@ Geist's. The e's misfit falls from 0.178/0.060/0.056/0.031 to
 0.123/0.057/0.053/0.029 at the Thin, Regular, SemiBold and UltraBlack. The
 Black is unchanged.
 
+**Slashes and the z.** Geist's slash, backslash and z diagonal are lighter
+than its stem: about a tenth lighter at the Regular, and a little lighter at
+the heavy weights. Drawn on the full pen, ours carried a seventh more ink
+than Geist's at the Regular. Each now draws its diagonal lighter, and the
+slashes run a few units further across to keep Geist's widths. At the
+Regular the slash's misfit falls from 0.14 to 0.025 and the z's from 0.098
+to 0.072.
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
