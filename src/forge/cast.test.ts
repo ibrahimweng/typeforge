@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { contoursIntersect } from "@/font/outline";
+import { crossesItself } from "@/font/outline";
 import { importFont } from "@/font/parse";
 import { cutScaleOf } from "@/font/transform";
 
@@ -799,24 +799,92 @@ describe("a rim after a cut that cannot reach an imported letter", () => {
   });
 });
 
+/** A point with its handles, as a font file gives it. */
+type Node6 = [number, number, number | null, number | null, number | null, number | null];
+
+const drawn = (contours: Node6[][]): Contour[] =>
+  contours.map((nodes) => ({
+    closed: true,
+    nodes: nodes.map(([x, y, ix, iy, ox, oy]) => ({
+      point: { x, y },
+      handleIn: ix === null || iy === null ? null : { x: ix, y: iy },
+      handleOut: ox === null || oy === null ? null : { x: ox, y: oy },
+      type: ix !== null && ox !== null ? ("smooth" as const) : ("corner" as const),
+    })),
+  }));
+
+/** Lora's a, as drawn: [x, y, in x, in y, out x, out y] per point. */
+const LORA_A: Node6[][] = [
+  [
+    [491, 0, null, null, null, null],
+    [348, 0, null, null, 346, 11.333333333333332],
+    [344, 30, 344.6666666666667, 21.333333333333336, 343.3333333333333, 38.666666666666664],
+    [341, 57, 342.3333333333333, 47.66666666666667, 318.3333333333333, 34.333333333333336],
+    [267.5, 3.5, 293.8333333333333, 16.5, 241.16666666666666, -9.5],
+    [184, -16, 213.33333333333334, -16, 133.33333333333334, -16],
+    [71, 18.5, 95.66666666666666, -4.5, 46.333333333333336, 41.5],
+    [34, 103, 34, 69.66666666666667, 34, 133.66666666666666],
+    [62.5, 182.5, 43.5, 160.16666666666666, 81.5, 204.83333333333334],
+    [136.5, 237.5, 106.16666666666667, 223.16666666666666, 166.83333333333334, 251.83333333333334],
+    [235.5, 269.5, 199.83333333333334, 262.5, 271.1666666666667, 276.5],
+    [339, 279, 305.6666666666667, 279.6666666666667, null, null],
+    [339, 341, null, null, 339, 364.3333333333333],
+    [333, 407, 337, 386.3333333333333, 329, 427.6666666666667],
+    [307, 458, 320.3333333333333, 444.6666666666667, 293.6666666666667, 471.3333333333333],
+    [243, 479, 272.3333333333333, 478.3333333333333, 223.66666666666666, 479.6666666666667],
+    [183.5, 468, 203.83333333333334, 476, 163.16666666666666, 460],
+    [139, 427, 148.33333333333334, 446.3333333333333, 144.33333333333334, 421.6666666666667],
+    [149.5, 408.5, 147.83333333333334, 415.5, 151.16666666666666, 401.5],
+    [152, 389, 152, 395, 152, 381],
+    [142, 361.5, 148.66666666666666, 371.8333333333333, 135.33333333333334, 351.1666666666667],
+    [107, 347, 123.66666666666666, 346.3333333333333, 93, 347],
+    [75, 361.5, 82.33333333333333, 351.8333333333333, 67.66666666666667, 371.1666666666667],
+    [64, 396, 64, 382.6666666666667, 64, 418.6666666666667],
+    [89.5, 457, 72.5, 439, 106.5, 475],
+    [160, 500, 130, 489.3333333333333, 190, 510.6666666666667],
+    [262, 516, 224, 516, 318, 516],
+    [386, 471.5, 359.3333333333333, 501.1666666666667, 412.6666666666667, 441.8333333333333],
+    [425, 331, 425.6666666666667, 395, 425, 306.3333333333333],
+    [425, 256.5, 425, 281.5, 425, 231.5],
+    [424.5, 181.5, 424.8333333333333, 206.5, 424.1666666666667, 156.5],
+    [424, 106, 424, 131.33333333333334, 424, 95.33333333333333],
+    [423, 74, 423.6666666666667, 84.66666666666667, 422.3333333333333, 63.333333333333336],
+    [420, 38, 421.3333333333333, 51.33333333333333, 432, 38.666666666666664],
+    [455.5, 40, 443.8333333333333, 39.333333333333336, 467.1666666666667, 40.666666666666664],
+    [491, 42, 479, 41.333333333333336, null, null],
+  ],
+  [
+    [339, 245, 339, 221.66666666666666, 316.3333333333333, 244.33333333333334],
+    [267.5, 236.5, 292.5, 241.5, 242.5, 231.5],
+    [198.5, 214, 219.5, 224, 177.5, 204],
+    [147.5, 174.5, 160.5, 190.83333333333334, 134.5, 158.16666666666666],
+    [129, 115, 128.33333333333334, 138.33333333333334, 130.33333333333334, 90.33333333333334],
+    [153.5, 59.5, 138.5, 71.83333333333333, 168.5, 47.16666666666667],
+    [207, 41, 186.33333333333334, 41, 234.33333333333334, 41],
+    [278.5, 56.5, 258.1666666666667, 46.16666666666667, 298.8333333333333, 66.83333333333333],
+    [339, 100, 319, 81.33333333333334, 338.3333333333333, 107.33333333333333],
+    [338, 124, 338, 115.33333333333333, 338, 132.66666666666666],
+    [338, 151, 338, 141.66666666666666, 338, 154.33333333333334],
+    [338.5, 183, 338.1666666666667, 165, 338.8333333333333, 201],
+  ],
+];
+
 describe("a rim that ties no loops", () => {
   /*
-   * Regression: the boolean that resolves the rim's loop can lose a crossing
-   * between two nearly tangent curves and leave a tiny figure-eight tied in
-   * the answer, of the right size, so the area check passed it. The sample
-   * font's n and h each came back with one.
+   * Regression: the boolean that resolves the rim can lose a crossing between
+   * two nearly tangent curves and leave a tiny figure-eight tied in the
+   * answer, of the right size, so the area check passed it. Lora's a, at its
+   * own stem, came back with one.
    */
-  it("gives an outline that does not cross itself", async () => {
-    const bytes = new Uint8Array(readFileSync("src/assets/typeforge-sample.ttf"));
-    const { typeface } = await importFont(bytes, "sample.ttf");
+  it("gives Lora's a a rim that does not cross itself", () => {
+    const a = drawn(LORA_A);
+    const scale = { stem: 87, ascender: 1006, descender: -274, xHeight: 500 };
     const rim = cast((one) => {
       one.outline.on = true;
     });
-    const scale = cutScaleOf(typeface);
-    for (const char of "nh") {
-      const glyph = typeface.glyphs.find((one) => one.unicodes.includes(char.codePointAt(0) ?? 0));
-      const rimmed = shapedInk(glyph!.contours, [], scale, undefined, rim, "nesting").contours;
-      for (const contour of rimmed) expect(contoursIntersect([contour]), char).toBe(false);
-    }
+    const rimmed = shapedInk(a, [], scale, undefined, rim, "nesting").contours;
+    // A rim, and all of it.
+    expect(ink(rimmed)).toBeGreaterThan(ink(a) * 1.05);
+    for (const contour of rimmed) expect(crossesItself(contour, 32)).toBe(false);
   });
 });

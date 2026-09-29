@@ -31,7 +31,7 @@ import {
   reverseContour,
   splitCubic,
 } from "@/font/geometry";
-import { contoursIntersect } from "@/font/outline";
+import { crossesItself } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import type { CutScale } from "./cut";
 import { alongSpine } from "./shapes";
@@ -228,7 +228,7 @@ function extruded(shape: Contour[], extrude: Cast["extrude"], stem: number): Con
  */
 function sweptAlong(shape: Contour[], dx: number, dy: number): Contour[] {
   if (Math.hypot(dx, dy) < 1e-9) return shape;
-  return swept(shape, (contour) => convolved(contour, dx, dy));
+  return sweptClean(shape, (contour) => convolved(contour, dx, dy));
 }
 
 /**
@@ -315,22 +315,37 @@ function swept(shape: Contour[], convolve: (contour: Contour) => Contour): Conto
  */
 function groundOf(loop: Contour, solid: Contour): Contour[] {
   const least = contourArea(solid) * 0.999;
-  /*
-   * And that does not cross itself. The same lost crossing can leave a loop
-   * tied in the answer instead of taking area out of it: the rim round
-   * Lora's a and the sample font's n and h each came back with one, a tiny
-   * figure-eight in the outline. The next grid resolves it; failing all of
-   * them, the first answer of the right size is kept.
-   */
-  let sized: Contour[] | null = null;
   for (const grid of [0, 1000, 100, 10]) {
     const ground = filled([grid === 0 ? loop : onGrid(loop, grid)]);
     const area = ground.reduce((total, one) => total + contourArea(one), 0);
-    if (area < least) continue;
-    if (!ground.some((one) => contoursIntersect([one]))) return ground;
-    sized ??= ground;
+    if (area >= least) return ground;
   }
-  return sized ?? [solid];
+  return [solid];
+}
+
+/**
+ * The swept ground, checked for a loop tied in it.
+ *
+ * The same lost crossing can leave a loop in the answer instead of taking
+ * area out of it -- in resolving a solid's loop, or in the unions and cuts
+ * after -- and then nothing above notices: the rim round Lora's a and the
+ * sample font's n and h each came back with a tiny figure-eight in it. So
+ * the finished ground is asked once, and where it crosses itself the whole
+ * sweep is made again from the shape set to a thousandth of a unit, then a
+ * hundredth, then a tenth, each coarser than the last and all far below
+ * anything a font file records. Failing all of them the first answer stands.
+ */
+function sweptClean(shape: Contour[], convolve: (contour: Contour) => Contour): Contour[] {
+  const first = swept(shape, convolve);
+  if (!first.some((contour) => crossesItself(contour))) return first;
+  for (const grid of [1000, 100, 10]) {
+    const again = swept(
+      shape.map((contour) => onGrid(contour, grid)),
+      convolve,
+    );
+    if (!again.some((contour) => crossesItself(contour))) return again;
+  }
+  return first;
 }
 
 /** An outline with every point and handle set to the nearest step of `1 / per`. */
@@ -622,7 +637,7 @@ function outlined(shape: Contour[], width: number): Contour[] {
    * over its length round, which is the radius of a round one and half the
    * width of a slot -- and the outside keeps the rim that was asked for.
    */
-  return swept(shape, (contour) => {
+  return sweptClean(shape, (contour) => {
     const area = contourArea(contour);
     if (area >= 0) return convolvedRound(contour, corners);
     const deep = (2 * -area) / Math.max(lengthRound(contour), 1e-9);
