@@ -1591,7 +1591,7 @@ function followCounters(
    * single straight line: halfway through, the stem leaned across the lower
    * bowl, the check below saw it cross, and the upper bowl was put back.
    */
-  const together = moveBy(settled, maps);
+  const together = keepUpright(settled, moveBy(settled, maps));
   if (!crosses(together, settled)) return together;
   // Failing that, one at a time, and a counter whose walls cannot follow it
   // stays as it was drawn.
@@ -1602,6 +1602,52 @@ function followCounters(
     else result = result.map((other, which) => (which === map.index ? before[which] : other));
   }
   return result;
+}
+
+/**
+ * The straight upright edges of a letter kept upright as its counters' walls
+ * follow them.
+ *
+ * Between two counters one above the other the ink moves by a blend of the
+ * two, which changes with height, and an upright edge standing in that gap
+ * had its two ends moved by different amounts: the serif on the arm of
+ * Lora's & at 1.4 leaned by nineteen units. Each straight edge that was
+ * upright is moved across whole, by the mean of what its ends were given.
+ */
+function keepUpright(before: Contour[], after: Contour[]): Contour[] {
+  return after.map((contour, which) => {
+    const drawn = before[which];
+    const count = contour.nodes.length;
+    if (drawn.nodes.length !== count || count < 2) return contour;
+    const nodes = contour.nodes.map((node) => ({ ...node }));
+    for (let index = 0; index < count; index++) {
+      const next = (index + 1) % count;
+      const [a, b] = [drawn.nodes[index], drawn.nodes[next]];
+      if (a.handleOut || b.handleIn) continue;
+      const dx = b.point.x - a.point.x;
+      const dy = b.point.y - a.point.y;
+      if (Math.abs(dy) < 1 || Math.abs(dx) > Math.abs(dy) * 0.02) continue;
+      const here = nodes[index].point.x - a.point.x;
+      const there = nodes[next].point.x - b.point.x;
+      if (Math.abs(here - there) < 0.25) continue;
+      const mean = (here + there) / 2;
+      for (const [at, by] of [
+        [index, mean - here],
+        [next, mean - there],
+      ] as const) {
+        const along = (point: Vec2 | null): Vec2 | null =>
+          point ? { x: point.x + by, y: point.y } : null;
+        const node = nodes[at];
+        nodes[at] = {
+          ...node,
+          point: along(node.point) as Vec2,
+          handleIn: along(node.handleIn),
+          handleOut: along(node.handleOut),
+        };
+      }
+    }
+    return { closed: contour.closed, nodes };
+  });
 }
 
 /**

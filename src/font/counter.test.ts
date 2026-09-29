@@ -229,6 +229,28 @@ describe("middle space", () => {
     expect(middle).toBeLessThanOrEqual(Math.max(...ends) + 0.5);
   });
 
+  /*
+   * Regression: the handover between two stacked counters changes with
+   * height, and a block standing in the gap between them -- the serif on the
+   * arm of Lora's & -- had its two sides moved by different amounts at their
+   * top and bottom, and leaned by nineteen units at 1.4.
+   */
+  it("keeps an upright edge upright where two stacked counters hand over", () => {
+    const outside = polygon([
+      { x: 0, y: 0 },
+      { x: 600, y: 0 },
+      { x: 600, y: 1000 },
+      { x: 0, y: 1000 },
+    ]);
+    const block = rect(650, 440, 100, 120);
+    const letter = [outside, rect(100, 100, 400, 300), rect(100, 600, 300, 300), block];
+    const moved = resolve(letter, 1.4)[3];
+    const xs = moved.nodes.map((node) => node.point.x).sort((a, b) => a - b);
+    // Two lefts and two rights, each pair level with the other.
+    expect(xs[1] - xs[0]).toBeLessThan(0.5);
+    expect(xs[3] - xs[2]).toBeLessThan(0.5);
+  });
+
   it("moves the outside of the letter across with the counter, never up or down", () => {
     const resolved = resolve(ring(1000, 100), 1.4);
     const box = contoursBounds([resolved[0]]);
