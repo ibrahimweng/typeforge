@@ -2022,3 +2022,16 @@ describe("the g's bowl", () => {
     expect(Math.abs(runs[0][1] - 414)).toBeLessThan(8);
   });
 });
+
+describe("the heavy t's and f's left sides", () => {
+  it("close as Geist's do at the Black", () => {
+    // Geist Black's t sets its ink 31 in from its left and its f 36; closed
+    // at the n's rate they stood 8 and 7 further in.
+    for (const [name, from] of [
+      ["t", 31],
+      ["f", 36],
+    ] as const) {
+      expect(Math.abs(box(name, 194).xMin - from), name).toBeLessThan(3);
+    }
+  });
+});

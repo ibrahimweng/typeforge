@@ -783,6 +783,16 @@ and height). The g's misfit falls from 0.17/0.09/0.08/0.07/0.08 to
 0.16/0.08/0.06/0.06/0.08 at the Thin, Regular, SemiBold, UltraBlack and
 Black.
 
+**Heavy t and f sides (shared file, Sans only).** A side entry in the sides
+table can now take a fifth element: units added to either side at the Black
+(a `blackness` of 0.88), run in with the weight and held past it
+(`build.ts`, `style.ts`). The Sans's t and f use it to close their left sides
+7 to 8 units further at the Black, as Geist's do; the sides table's closing
+at the n's rate had left them that far out. The t's misfit falls from 0.07
+to 0.02 at the UltraBlack and from 0.10 to 0.03 at the Black, and the f's
+from 0.06–0.07 to 0.02–0.03. This replaces the heavy-f spacing entry in
+"What still differs".
+
 **Health check (shared file).** The "Reaching past the line" warning now allows
 the larger of a pen's width and 0.06 em. A Light Sans was reporting ( ) / $ ç ą
 ę ş ų ș, which Geist Thin carries just as far past its lines as its Regular
@@ -852,10 +862,6 @@ strokes as white; they now use a filled (nonzero) ruler.
   crosses the middle (108 against 128 at the Regular), while its crests match.
   A pen held at an angle took off almost nothing, because the difference is
   in the path.
-- **The heavy f's left side.** The f's shape now matches Geist's at every
-  weight, but at the UltraBlack and the Black its left side is spaced 6–7
-  units wider than Geist's. The sides table closes a stem's side at the n's
-  rate and has no way to close one faster.
 - **The five's bowl at the Black.** Geist's heavy bowl is fuller at its upper
   right and leaner at its upper left. It still stands 26 units inside Geist's
   shoulder at the Black. Drawing that quarter separately follows it, but at

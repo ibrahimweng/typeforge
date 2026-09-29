@@ -824,8 +824,15 @@ function fitted(
     // And moved at the Thin as far as the entry says, with the light opening.
     const toThin = light?.open && opened > 0 ? opened / (light.open * (figure ? 2 : 1)) : 0;
     const [thinLeft, thinRight] = set[3] ?? [0, 0];
-    const shift = unitLeft * set[0] + open + thinLeft * toThin - box.xMin;
-    return { shift, advance: box.xMax + shift + unitRight * set[1] + open + thinRight * toThin };
+    // And at the Black as far as the entry says, run in with the weight.
+    const [blackLeft, blackRight] = set[4] ?? [0, 0];
+    const toBlack = set[4] ? Math.min(1, blackness(style) / 0.88) : 0;
+    const shift = unitLeft * set[0] + open + thinLeft * toThin + blackLeft * toBlack - box.xMin;
+    return {
+      shift,
+      advance:
+        box.xMax + shift + unitRight * set[1] + open + thinRight * toThin + blackRight * toBlack,
+    };
   }
   const top = figure || isCapitalLike(name) ? style.metrics.capHeight : style.metrics.xHeight;
   /*

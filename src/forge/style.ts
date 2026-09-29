@@ -26,7 +26,9 @@ import { NO_SCRIPT, type Script } from "./script";
  * or on a stem's side only), half as fast (`"half"`, as a side with no kind
  * does), unopened at the Light, or held at the Regular's at every weight.
  * A fourth entry moves either side by that many units at the Thin, going
- * with the face's own light opening (`metrics.lightHeld`).
+ * with the face's own light opening (`metrics.lightHeld`), and a fifth by
+ * that many at the Black (a `blackness` of 0.88), run in from the face's own
+ * weight and held there past it.
  */
 export type SideKind = "closes" | "stem-left" | "stem-right" | "unopened" | "held" | "half";
 
@@ -139,7 +141,10 @@ export interface Metrics {
   counterBend?: number;
   sides?: Record<
     string,
-    [number, number] | [number, number, SideKind] | [number, number, SideKind, [number, number]]
+    | [number, number]
+    | [number, number, SideKind]
+    | [number, number, SideKind, [number, number]]
+    | [number, number, SideKind, [number, number], [number, number]]
   >;
   /**
    * How much counter a heavy weight gives back for the stem it gains, unit
@@ -775,7 +780,7 @@ export const SANS: Style = {
       p: [1, 0.52, "stem-left"],
       q: [0.52, 1, "stem-right"],
       g: [0.52, 1, "stem-right"],
-      f: [0.75, 0.53, "closes"],
+      f: [0.75, 0.53, "closes", [0, 0], [-7, -3]],
       // Its foot reaches back to the letter before (Geist -5); held inside.
       j: [0.1, 1, "closes"],
       k: [1, 0.59, "stem-left"],
@@ -786,7 +791,7 @@ export const SANS: Style = {
       v: [0.28, 0.28, "half", [-3, -3]],
       w: [0.28, 0.28, "half", [-3, -3]],
       y: [0.28, 0.28, "half", [-3, -3]],
-      t: [0.69, 0.46, "closes"],
+      t: [0.69, 0.46, "closes", [0, 0], [-8, -5]],
       x: [0.59, 0.59],
       // Geist sets its z 51 off either side from the Regular to the Black.
       z: [0.64, 0.64, "held", [2, 2]],
