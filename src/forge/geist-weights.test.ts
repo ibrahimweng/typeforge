@@ -1665,3 +1665,18 @@ describe("the Thin W's feet", () => {
     expect(Math.abs(run[run.length - 1][1] - 679)).toBeLessThan(8);
   });
 });
+
+describe("the Thin M and Z, and the R's waist", () => {
+  it("stand where Geist's do", () => {
+    // 550 up Geist Thin's M's diagonals start 182 and 635 in; they stood at
+    // 174 and 649. Geist Thin's Z is 463 wide; it stood 470 and now 458.
+    const m = filled(draw("M", 30).contours, 550);
+    expect(Math.abs(m[1][0] - 182)).toBeLessThan(5);
+    expect(Math.abs(m[2][0] - 635)).toBeLessThan(5);
+    const z = box("Z", 30);
+    expect(Math.abs(z.xMax - z.xMin - 463)).toBeLessThan(6);
+    // 300 up Geist Regular's R's waist runs from its stem to its bowl in one;
+    // set higher, the counter showed between them.
+    expect(filled(draw("R", 87).contours, 300)).toHaveLength(1);
+  });
+});

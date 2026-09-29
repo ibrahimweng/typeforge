@@ -411,6 +411,14 @@ run 236-294 and 621-679, where Draw's stood at 225-276 and 646-697. Its
 Thin is now a hundredth narrower with the feet 13 units further in, which
 took its misfit against Geist from a half to an eighth.
 
+**The Thin M and Z, and the R's waist.** Geist Thin's M starts its
+diagonals further in from the stems' heads and is a little narrower: Draw's
+stood 8 units outside Geist's all the way down, a third of its ink off.
+It now misses by a twenty-fifth. Geist Thin's Z is a fortieth narrower than
+Draw's was, and it now misses by a twelfth where it missed by a fifth.
+Geist's R sets its waist a little lower, most of all at the light weights,
+which halved the Thin's and the Regular's misfit.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

@@ -825,7 +825,11 @@ export function grotesqueR(style: Style): Recipe {
   const stem = f.edge;
   const X = (x: number) => stem + x * u;
   const top = f.hangs(f.cap);
-  const waist = up(f, lerp(343, 330));
+  // The Sans's waist a little lower, as Geist's is: fitted to its ink, that
+  // took half off the Thin's and the Regular's misfit.
+  const lower =
+    f.style.metrics.xGrows !== undefined ? Math.max(atWeights(f, -15, -14, -12, -6, -8), -15) : 0;
+  const waist = up(f, lerp(343, 330) + lower);
   const lobeHalf = held(f, (top - waist) / 2);
   const gain = roundGain(f, 8, 22, 2);
   const right = X(lerp(423, 411)) + gain;
@@ -2552,7 +2556,14 @@ export function grotesqueK(style: Style): Recipe {
 export function grotesqueM(style: Style): Recipe {
   const f = frame(style);
   const [wide, t] = spread(f, 0.5);
-  const u = wide * refit(f, 0.017, 0.006, 0);
+  /*
+   * The Sans's Thin a two-hundredth narrower, its diagonals leaving 14 units
+   * further in from the stems' heads, as Geist Thin's do: they stood 8 units
+   * outside Geist's all the way down, and the Thin M missed its ink by a
+   * third.
+   */
+  const thin = f.style.metrics.xGrows !== undefined ? thinness(f) : 0;
+  const u = wide * refit(f, 0.017, 0.006, 0) * (1 - 0.005 * thin);
   const X = (x: number) => f.edge + x * u;
   const right = X(606 + 11 * t);
   const middle = (f.edge + right) / 2;
@@ -2563,7 +2574,7 @@ export function grotesqueM(style: Style): Recipe {
    * and each other.
    */
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
-  const top = f.half * lerp(0.63, 0.74);
+  const top = f.half * lerp(0.63, 0.74) + 14 * thin;
   /*
    * Past the Black the diagonals stop crossing at their foot and grow
    * lighter than the stems, as an Ultra's must to keep white between them
@@ -4326,10 +4337,13 @@ export function grotesqueZ(style: Style): Recipe {
 
 export function grotesqueCapitalZ(style: Style): Recipe {
   const f = frame(style);
+  const sans = f.style.metrics.xGrows !== undefined;
   const [, t] = spread(f);
   return finish(
     f,
-    zed(f, inked(f, f.cap, 710), t, f.cap, [
+    // The Sans's Thin a fortieth narrower still, as Geist Thin's Z is: it
+    // stood 7 wide, and missed Geist's ink by a fifth.
+    zed(f, inked(f, f.cap, 710) * (1 - (sans ? 0.025 : 0) * thinness(f)), t, f.cap, [
       [17, 17],
       [481, 543],
       [489, 557],
