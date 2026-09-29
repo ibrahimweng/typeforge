@@ -609,3 +609,28 @@ describe("a looped ascender on a broad nib", () => {
     expect(horned).toEqual([]);
   });
 });
+
+describe("a capital on a joined face", () => {
+  /*
+   * Written: entered with a hairline swash from the lower left into the top of
+   * its first stroke. The joined faces' capitals were the Sans's, leaning --
+   * `The Quick Brown Fox` set a printed capital at the head of every word of
+   * handwriting.
+   */
+  it("is entered with a swash", () => {
+    const printed: string[] = [];
+    for (const name of JOINED) {
+      const own = base(name);
+      for (const letter of "BDEFHIKLMNPRTUVWXYZ") {
+        const written = drawLetter(letter, own, own.forms?.[letter])!;
+        const plain = drawLetter(letter, own)!;
+        // The swash is a stroke of its own, standing out to the left, and the
+        // letter is spaced round it.
+        const more = written.contours.length - plain.contours.length;
+        const wider = written.advanceWidth - plain.advanceWidth;
+        if (more < 1 || wider <= 0) printed.push(`${name} ${letter}`);
+      }
+    }
+    expect(printed).toEqual([]);
+  });
+});

@@ -1710,3 +1710,59 @@ for (const [name, hint, build] of HUMANIST) {
       : build(style);
   ALTERNATES[name].push({ id: "humanist", label: "Humanist", hint, build: drawn });
 }
+
+/*
+ * A written capital: the drawn one, entered with a hairline swash that rises
+ * from the lower left into the top of its first stroke.
+ *
+ * A joined face's capitals were the Sans's, leaning. What makes a capital read
+ * as written rather than printed is mostly that it is started with a flourish
+ * where a printed one simply begins: a copperplate `H` comes in from the left
+ * on a thin curve and lands on the top of its first stem. So the capital
+ * keeps its own construction and gains that one stroke, at join weight.
+ *
+ * Only on the capitals whose first stroke starts at the top left at every
+ * weight: the stems, the diagonals and the bars. On the round ones there is no
+ * such start to land on, and on the `G` and the `J` there is one at some
+ * weights and not at others -- a letter with a stroke at one weight and not at
+ * the next cannot follow a weight axis.
+ */
+const WRITTEN_CAPITALS = "BDEFHIKLMNPRTUVWXYZ".split("") as LetterName[];
+for (const name of WRITTEN_CAPITALS) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  ALTERNATES[name].push({
+    id: "written",
+    label: "Written",
+    hint: "Entered with a hairline swash rising into the top of its first stroke, as a hand starts a capital.",
+    build: (style) => {
+      const plain = LETTERS[name](style);
+      const f = frame(style);
+      // The leftmost end standing at the cap height, and which way its stroke
+      // runs from there.
+      const high = plain.strokes
+        .filter((stroke) => !stroke.spine.closed)
+        .flatMap((stroke) => {
+          const along = alongSpine(stroke.spine, 24);
+          return [
+            { point: along[0], next: along[1] },
+            { point: along[along.length - 1], next: along[along.length - 2] },
+          ];
+        })
+        .filter(({ point }) => point.y >= f.cap * 0.85);
+      if (high.length === 0) return plain;
+      const top = high.reduce((one, other) => (other.point.x < one.point.x ? other : one));
+      const run = Math.hypot(top.next.x - top.point.x, top.next.y - top.point.y) || 1;
+      // From a little over half-way up, a third of the cap height to the left,
+      // bowed up and over, and landing half a pen into the stroke: down into a
+      // stem, along into a bar. Aimed half a pen under the end of a bar, it
+      // missed the `T` and the `Z` altogether.
+      const from = at(top.point.x - f.cap * 0.3, f.cap * 0.55);
+      const lands = at(
+        top.point.x + ((top.next.x - top.point.x) / run) * f.half,
+        top.point.y + ((top.next.y - top.point.y) / run) * f.half,
+      );
+      const swash = lighter(ink(f, bowed(f, from, lands, 0.35), f.end, BUTT), joinWeight(style));
+      return { ...plain, strokes: [...plain.strokes, swash] };
+    },
+  });
+}
