@@ -161,7 +161,11 @@ Black rather than from 172 (it stood 13 and 22 wide). Its diagonal arms are a
 little longer than its level one, as Geist's are, so it is as tall as Geist's
 (it stood 14 short). The @'s ring is as light as Geist 1.7.2's (its sides 110
 on a stem of 194, where ours were 148), carried out to Geist's width, and the
-a's hook runs flush into it. All are within 5 of Geist.
+a's hook runs flush into it. All are within 5 of Geist. The inner a's hook
+now turns into the ring low down on its right side, leaving along the ring's
+own heading, as Geist's does; it turned at the letter's middle, 80 units
+above Geist's. The @'s mismatch against Geist fell by a third at every
+weight.
 
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
@@ -304,6 +308,12 @@ strokes as white; they now use a filled (nonzero) ruler.
   quarters, quarters drawn round a centre further in, and taller bowls cut
   at the waist did not deepen it; it needs a stroke that tapers into a
   corner.
+- **The @'s ring.** Geist's ring leans (its top stands 78 units right of its
+  bottom at the Regular), and its hook thins to the ring's weight as it
+  turns. Draw's ring is an upright superellipse and its hook keeps the
+  stem's pen, so the ring's left third stands about 17 units high and the
+  hook about 28 heavy. A leaning ring needs a spine of arcs fitted to a
+  sheared ellipse.
 - **Backslash at the Black.** It follows the Sans slash, which is about 45
   units narrower than Geist Black's.
 - **m and X at the Light.** They are plain forms, shared with every base. At

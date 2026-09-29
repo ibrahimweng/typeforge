@@ -4290,23 +4290,29 @@ export function grotesqueAt(style: Style): Recipe {
   const outerH = held(f, up(f, now(366, 363) + 22 * light + roundGain(f, 5, 5.5, 0)) + grow * 0.3);
   const rf: Frame = { ...f, half: ringPen.weight / 2 };
   /*
-   * The stem's turn lands exactly on the ring, at its widest where it runs
-   * upright as the turn arrives, so the two are one smooth run; and the turn
-   * is never tighter than the pen will go round -- past that the stem stands
-   * further in.
+   * The stem's turn lands on the ring's right side low down, where Geist's
+   * does (its turn bottoms out at 115 on the Regular and 130 on the Black), and
+   * leaves along the ring's own heading there, so the two are one smooth
+   * run; the turn is never tighter than the pen will go round -- past that
+   * the stem stands further in. Landed at the ring's widest, the hook turned
+   * at the letter's middle, 80 units above Geist's.
    */
-  const joins = 0;
+  const joins = angleAt(rf, outer, outerW, outerH, up(f, now(197, 223, 190)), false);
   const landing = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, joins, f.curve);
-  const turnY = landing.y;
-  const hook = Math.max(
-    (landing.x - X(lerp(608, 654)) - grow * 0.3) / 2,
-    (stemPen.weight / 2) * 1.2,
-  );
-  const stem = landing.x - hook * 2;
+  const ahead = bowlPoint(outer, outerW, outerH, 1 - f.square, rf.half, joins + 0.5, f.curve);
+  const heading = Math.atan2(ahead.y - landing.y, ahead.x - landing.x);
+  const lean = Math.PI / 2 - heading;
   // The hook on the stem's pen, heavier than the ring's, lands in by half
   // the difference so its outside runs on flush with the ring's: landed on
   // the ring's own spine, a Black's hook stood 18 units past the ring.
-  const hookIn = hook - (stemPen.weight - ringPen.weight) / 4;
+  const inset = (stemPen.weight - ringPen.weight) / 2;
+  const end = at(landing.x - inset * Math.sin(heading), landing.y + inset * Math.cos(heading));
+  const hookIn = Math.max(
+    (end.x - X(lerp(608, 654)) - grow * 0.3) / (1 + Math.cos(lean)),
+    (stemPen.weight / 2) * 1.2,
+  );
+  const stem = end.x - hookIn * (1 + Math.cos(lean));
+  const turnY = end.y + hookIn * Math.sin(lean);
   /*
    * The tail runs round under the ring to where Geist's ends: its middle 623
    * in on the Regular and 700 on the Black, a little under the line. Cut
@@ -4348,7 +4354,7 @@ export function grotesqueAt(style: Style): Recipe {
           f,
           chain(
             straight(at(stem, up(f, 500)), at(stem, turnY)),
-            pinned(turn(at(stem + hookIn, turnY), hookIn, 180, 360), 2),
+            pinned(turn(at(stem + hookIn, turnY), hookIn, 180, 360 - (lean * 180) / Math.PI), 2),
           ),
           f.end,
           BUTT,

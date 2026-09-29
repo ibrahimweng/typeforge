@@ -1178,3 +1178,13 @@ describe("the hyphen, the quotes, the asterisk and the at sign at the Black", ()
     expect(Math.abs(side[1] - side[0] - 110)).toBeLessThan(8);
   });
 });
+
+describe("the at sign's hook", () => {
+  it("turns into the ring low down, as Geist's does", () => {
+    // 650 in from its ink's left Geist's hook bottoms out at 85 on the
+    // Regular; landed at the ring's widest, ours turned at 150 and more.
+    const { contours } = draw("at", 87);
+    const column = filled(contours, contoursBounds(contours).xMin + 650, "x");
+    expect(column[0][0]).toBeLessThan(100);
+  });
+});
