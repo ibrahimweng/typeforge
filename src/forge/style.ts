@@ -831,12 +831,14 @@ export const SANS: Style = {
       hyphen: [0.55, 0.55, "closes"],
       // Geist's reaches past both its sides (-10 and -5); held just inside.
       numbersign: [0.1, 0.1],
-      percent: [0.59, 0.59],
-      asterisk: [0.59, 0.59],
+      // Geist closes its % * and brackets as fast as its n: half as fast,
+      // they stood 8 to 16 units loose at the Black.
+      percent: [0.55, 0.55, "closes"],
+      asterisk: [0.55, 0.55, "closes"],
       asciicircum: [0.5, 0.5, "held"],
       // Geist's brackets and braces stand well off the side they open from.
-      bracketleft: [1.15, 0.19],
-      bracketright: [0.19, 1.15],
+      bracketleft: [1.15, 0.19, "closes"],
+      bracketright: [0.19, 1.15, "closes"],
       braceleft: [0.56, 0.19],
       braceright: [0.19, 0.56],
       // Geist Thin's stands 60 off either side, its Regular's 40.

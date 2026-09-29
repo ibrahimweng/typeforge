@@ -435,6 +435,9 @@ F, L, P and R were 11 to 16 loose. Four changes fix this:
   light opening. This covers Geist Thin's closer B E F L P R T and the
   looser backslash.
 - The hyphen and underscore close as fast as the n.
+- The %, * and square brackets close as fast as the n. Half as fast, they
+  stood 8 to 16 units loose at the Black. An older test held the % to 864
+  wide at the UltraBlack; Geist's is 833, and ours is now 833.
 
 The Y's left moves to 0, the closest the health check's "touching the
 letter before it" allows at 175 once the extra closes faster. The O, H, E,

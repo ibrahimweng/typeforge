@@ -328,7 +328,8 @@ describe("the marks, at the Black and past it", () => {
       const solid = draw("percent", weight).contours.filter((one) => contourArea(one) > 0);
       expect(solid.length, `% at ${weight}`).toBe(3);
     }
-    expect(Math.abs(draw("percent", 172).advanceWidth - 864)).toBeLessThan(30);
+    // Geist UltraBlack's percent is 833 wide.
+    expect(Math.abs(draw("percent", 172).advanceWidth - 833)).toBeLessThan(30);
   });
 
   it("keeps the a inside the at sign clear of its ring", () => {
