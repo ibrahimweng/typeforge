@@ -5015,7 +5015,12 @@ export function grotesqueCapitalV(style: Style): Recipe {
 export function grotesqueCapitalA(style: Style): Recipe {
   const f = frame(style);
   const [wide, t] = spread(f, 1);
-  const u = wide * thinned(f, 0.04) * refit(f, 0.018, -0.03, 0);
+  const sans = f.style.metrics.xGrows !== undefined;
+  /*
+   * The Sans's Thin a little narrower, as Geist Thin's is: its right leg
+   * stood 4 to 7 units right of Geist's.
+   */
+  const u = wide * thinned(f, 0.04) * refit(f, 0.018, -0.03, sans ? -0.009 : 0);
   const legs = vee(
     f,
     u,
@@ -5037,15 +5042,15 @@ export function grotesqueCapitalA(style: Style): Recipe {
      * own by the Black, where a narrower head grew an extra point under a
      * chamfer and a spur.
      */
-    f.style.metrics.xGrows !== undefined
-      ? Math.min(1, Math.max(0.5, atWeights(f, 1, 1, 0.5, 0.5, 1)))
-      : 1,
+    sans ? Math.min(1, Math.max(0.5, atWeights(f, 1, 1, 0.5, 0.5, 1))) : 1,
   );
   // Geist's height, moved with the crossbar control from where the face has it.
   uses("crossbar");
   const bar =
     up(f, 245 + (215 - 245) * Math.min(t, 1.5)) +
-    (f.style.parts.crossbar.height - SANS_CROSSBAR) * f.cap;
+    (f.style.parts.crossbar.height - SANS_CROSSBAR) * f.cap +
+    // And Geist Thin's 5 higher, where the Sans's stood 5 low.
+    (sans ? Math.max(0, atWeights(f, 5, 0, 0, 0, 0)) : 0);
   // Across the legs at that height, and buried in each.
   const across = (stroke: Stroke) => {
     const one = stroke.spine.segments[0];
