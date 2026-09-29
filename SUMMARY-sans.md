@@ -583,8 +583,10 @@ strokes as white; they now use a filled (nonzero) ruler.
   both sides.
 - **The 3's notch.** Geist's bowls meet on the right in a sharp corner, 123
   units in from the bowl's right at the Regular, its upper bowl thinning into
-  it. Draw's bowls are strokes on one pen, meeting the waist on a tangent, so
-  the notch stands 35 units out at the Regular and 60 at the Black. Rounder
+  it. Draw's bowls are strokes on one pen, meeting the waist on a tangent.
+  Their quarters on the waist side are now nearly circular, which took a
+  sixth off the misfit at the Thin and the Regular, but the notch still
+  stands about 40 units out at the Regular and 60 at the Black. Rounder
   quarters, quarters drawn round a centre further in, and taller bowls cut
   at the waist did not deepen it; it needs a stroke that tapers into a
   corner.

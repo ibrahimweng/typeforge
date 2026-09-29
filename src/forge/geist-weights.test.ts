@@ -1691,3 +1691,12 @@ describe("the Thin's round and diagonal sides", () => {
     expect(Math.abs(contoursBounds(e.contours).xMin - 32)).toBeLessThan(3);
   });
 });
+
+describe("the three's notch", () => {
+  it("runs further in where the bowls meet", () => {
+    // 380 up Geist Regular's three's bowls meet 422 in; on the face's
+    // fullness Draw's met in a shallow dip at 470.
+    const run = filled(draw("three", 87).contours, 380);
+    expect(run[run.length - 1][1]).toBeLessThan(466);
+  });
+});

@@ -1882,18 +1882,36 @@ function threeOf(style: Style, sans: boolean): Recipe {
           centre,
           halfH,
           angleAt(g, centre, upperW, halfH, up(f, 560 - drop), true),
-          -90,
+          0,
           upperW,
         ),
+        bend(waistSide(g), centre, halfH, 0, -90, upperW),
         straight(at(centre.x, waist), at(X(247), waist)),
       ),
       f.end,
       BUTT,
     );
+  /*
+   * The Sans's bowls round into the waist on the right as a circle nearly
+   * does, so the notch where they meet runs further in, as Geist's does:
+   * on the face's fullness they met in a shallow dip. Fitted to Geist's ink,
+   * that took a sixth off the misfit at the Thin and the Regular.
+   */
+  const waistSide = (g: Frame): Frame => (sans ? { ...g, curve: 0.03 } : g);
   const lowerBowl = (g: Frame, centre: Vec2, halfH: number): Stroke =>
     ink(
       g,
-      bend(g, centre, halfH, 90, angleAt(g, centre, lowerW, halfH, up(f, 188), true) - 360, lowerW),
+      chain(
+        bend(waistSide(g), centre, halfH, 90, 0, lowerW),
+        bend(
+          g,
+          centre,
+          halfH,
+          0,
+          angleAt(g, centre, lowerW, halfH, up(f, 188), true) - 360,
+          lowerW,
+        ),
+      ),
       BUTT,
       f.end,
     );
