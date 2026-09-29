@@ -1908,7 +1908,9 @@ export function grotesqueFour(style: Style): Recipe {
   const X = across(f, 50, 0, fit);
   const [, lerp] = squared(f);
   // Geist Black's bar sits a little higher.
-  const stem = X(461);
+  // 7 units further left than first measured, with the bar running 86 past
+  // it, as Geist's does: the stem stood 7 to 9 units right of Geist's.
+  const stem = X(454);
   const bar = up(f, lerp(188, 200.5));
   const pen = penReach(f.style.pen);
   const flank = Math.abs(reachAlong(at(1, 0), pen).x);
@@ -1924,11 +1926,11 @@ export function grotesqueFour(style: Style): Recipe {
     ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
     ink(f, straight(at(low.x + shift.x, low.y + shift.y), at(high.x + shift.x, high.y + shift.y))),
     /*
-     * The bar runs 81 past the stem's outside at every weight, as Geist's
+     * The bar runs 86 past the stem's outside at every weight, as Geist's
      * does; measured from the stem's middle, a Black's bar was nearly flush
      * with it and the 4 lost its crossbar.
      */
-    ink(f, straight(at(inkLeft, bar), at(stem + flank + 81 * large(f, 1) * fit, bar)), BUTT, f.end),
+    ink(f, straight(at(inkLeft, bar), at(stem + flank + 86 * large(f, 1) * fit, bar)), BUTT, f.end),
   ]);
 }
 

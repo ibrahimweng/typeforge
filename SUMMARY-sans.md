@@ -368,6 +368,10 @@ every weight from the Regular to the Black and took three fifths off the
 Thin's. Geist's stroke is also lighter where it leaves the arm at the heavy
 weights: 550 up at the Black it is 186 across, where Draw's is 221.
 
+**The 4's stem.** It stood 7 to 9 units right of Geist's at every weight,
+with its bar running 81 past it where Geist's runs 86. Both are now Geist's,
+which took a third to three fifths off its misfit.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

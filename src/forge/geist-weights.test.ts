@@ -1586,3 +1586,18 @@ describe("the seven's stroke", () => {
     }
   });
 });
+
+describe("the four's stem", () => {
+  it("stands where Geist's does", () => {
+    // 100 up Geist's four's stem runs 391-477 at the Regular and 368-564 at
+    // the Black; it stood at 398-485 and 376-570.
+    for (const [weight, from, to] of [
+      [87, 391, 477],
+      [194, 368, 564],
+    ]) {
+      const [left, right] = filled(draw("four", weight).contours, 100)[0];
+      expect(Math.abs(left - from), `4 at ${weight}`).toBeLessThan(4);
+      expect(Math.abs(right - to), `4 at ${weight}`).toBeLessThan(4);
+    }
+  });
+});
