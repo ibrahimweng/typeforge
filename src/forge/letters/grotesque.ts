@@ -1629,6 +1629,20 @@ function angleAt(
   return (low + high) / 2;
 }
 
+/** How long the two's reverse turn is at most, on Geist's measures. */
+const REVERSE = 330;
+/**
+ * How deep the two's bowl's lower right is against its top, and how far from
+ * upright its reverse turn runs before it rounds into the foot, in degrees,
+ * at Geist's Thin, Regular, SemiBold, UltraBlack and Black: fitted to Geist's
+ * stroke across the letter at each. Landed upright off a quarter a fifth
+ * deeper, it stood 26 to 39 units right of Geist's above the middle and 16 to
+ * 41 left of it below, an S where Geist's is nearly a diagonal; at one lean
+ * for every weight the Thin's stood 50 units right and the Black's 40 left.
+ */
+const TWO_DEEP: [number, number, number, number, number] = [0.95, 0.95, 0.95, 1, 1.05];
+const TWO_LEAN: [number, number, number, number, number] = [12, 18, 26, 34, 38];
+
 /**
  * The two: a bowl from a terminal cut level on the left, over and down the
  * right, then a reverse curve that comes down into the left end of the foot
@@ -1642,15 +1656,22 @@ export function grotesqueTwo(style: Style): Recipe {
   const top = f.crest(f.cap);
   const cy = up(f, 510);
   const halfH = held(f, top - cy);
-  const halfW = held(f, 195 * large(f, 1) * thinned(f, 0.055) * fit);
-  const centre = at(X(315), cy);
+  // And at the Thin as wide as Geist Thin's bowl, which reaches the foot's
+  // end: narrowed with the face's light letters it stood 45 units narrow.
+  const halfW = held(f, 195 * large(f, 1) * thinned(f, 0.055) * fit + atWeights(f, 24, 0, 0, 0, 0));
+  const centre = at(X(315) + atWeights(f, 12, 0, 0, 0, 0), cy);
   const foot = f.sits(0, f.bar);
   /*
-   * The reverse turn lands upright on the foot's top edge and runs straight
-   * down into it: landed at the foot's middle, the turn was still leaning
-   * where it crossed the foot's top and the foot's corner stood out past it.
+   * The reverse turn comes down leaning and rounds upright on a short arc
+   * as it meets the foot, then runs straight down into it: still leaning
+   * where it crossed the foot's top, the foot's corner stood out past it.
    */
-  const land = at(f.edge, foot * 2);
+  const leanDegrees = atWeights(f, ...TWO_LEAN);
+  const lean = (leanDegrees * Math.PI) / 180;
+  const upright = at(f.edge, foot * 1.5);
+  // No tighter than the pen, or its inner side folds.
+  const soft = f.half * 1.4;
+  const land = at(upright.x + soft * (1 - Math.cos(lean)), upright.y + soft * Math.sin(lean));
   const from = angleAt(f, centre, halfW, halfH, up(f, 495), true);
   /*
    * Round the right, straight down across the letter, and a reverse turn
@@ -1660,8 +1681,8 @@ export function grotesqueTwo(style: Style): Recipe {
    */
   // As long a reverse turn as the bowl leaves room for.
   let falling: Spine | null = null;
-  for (let reverse = 330 * large(f, 1) * fit; !falling && reverse > f.least; reverse *= 0.9) {
-    const landing = at(land.x + reverse, land.y);
+  for (let reverse = REVERSE * large(f, 1) * fit; !falling && reverse > f.least; reverse *= 0.9) {
+    const landing = at(land.x + reverse * Math.cos(lean), land.y - reverse * Math.sin(lean));
     /*
      * The bowl's lower right a deeper quarter than its top, left as late as
      * a tangent allows, as Geist's is: the stroke comes on round the bowl
@@ -1670,22 +1691,51 @@ export function grotesqueTwo(style: Style): Recipe {
      * band, bulkier and up and left of Geist's curve.
      */
     falling = crossTangent(
-      bend(f, centre, held(f, halfH * 1.2), 0, -90, halfW),
-      pinned(turn(landing, reverse, 90, 180), 1),
+      bend(f, centre, held(f, halfH * atWeights(f, ...TWO_DEEP)), 0, -90, halfW),
+      pinned(turn(landing, reverse, 90, 180 - leanDegrees), 1),
       -1,
       true,
     );
   }
   let over: Spine | null = falling
-    ? chain(bend(f, centre, halfH, from, 0, halfW), falling, straight(land, at(land.x, foot)))
+    ? chain(
+        bend(f, centre, halfH, from, 0, halfW),
+        falling,
+        turn(
+          at(land.x + soft * Math.cos(lean), land.y - soft * Math.sin(lean)),
+          soft,
+          180 - leanDegrees,
+          180,
+        ),
+        straight(upright, at(upright.x, foot)),
+      )
     : null;
   if (!over)
     over = chain(
       bend(f, centre, halfH, from, -45, halfW),
-      straight(pointOn(centre, halfW, -45), land),
-      straight(land, at(land.x, foot)),
+      straight(pointOn(centre, halfW, -45), upright),
+      straight(upright, at(upright.x, foot)),
     );
-  return finish(f, [ink(f, over, f.end, BUTT), arm(f, f.edge - f.half, X(559), foot)]);
+  // The foot runs out as far as the bowl's right side, as Geist's does at
+  // every weight: held to the Regular's measure it stood 57 units short at
+  // the Black.
+  const footEnd = Math.max(X(559), centre.x + halfW + f.half);
+  /*
+   * And the Sans's diagonal as heavy as Geist's at a heavy weight (184 across
+   * at the Black on a stem of 194): a pen lighter across left it 166. Laid
+   * again along the diagonal alone on a pen half as light across; both its
+   * ends lie where the run stands near upright, inside it.
+   */
+  const heavier =
+    falling && f.style.metrics.xGrows !== undefined
+      ? [
+          inherit(ink(f, falling, BUTT, BUTT), {
+            ...ink(f, falling, BUTT, BUTT),
+            pen: { ...f.style.pen, contrast: f.style.pen.contrast * 0.5 },
+          }),
+        ]
+      : [];
+  return finish(f, [ink(f, over, f.end, BUTT), ...heavier, arm(f, f.edge - f.half, footEnd, foot)]);
 }
 
 /**

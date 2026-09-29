@@ -1352,3 +1352,23 @@ describe("the one's cove", () => {
     expect(Math.abs(flag[0][1] - flag[0][0] - 136)).toBeLessThan(6);
   });
 });
+
+describe("the two's diagonal", () => {
+  it("falls across the letter where Geist's does, from the Thin to the Black", () => {
+    // Geist's stroke 300 up runs from 227 to 297 in from its foot's left at
+    // the Thin, 168 to 340 at the Regular and 107 to 418 at the Black. As an
+    // S landed upright it ran 296-353, 124-395 and 51-428.
+    const geist: Record<number, [number, number]> = {
+      30: [227, 297],
+      87: [168, 340],
+      194: [107, 418],
+    };
+    for (const [weight, [from, to]] of Object.entries(geist)) {
+      const two = draw("two", Number(weight)).contours;
+      const foot = filled(two, 20)[0][0];
+      const [left, right] = filled(two, 300)[0];
+      expect(Math.abs(left - foot - from)).toBeLessThan(20);
+      expect(Math.abs(right - foot - to)).toBeLessThan(10);
+    }
+  });
+});

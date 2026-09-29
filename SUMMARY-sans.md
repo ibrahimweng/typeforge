@@ -260,6 +260,21 @@ corner under the cove that a thin turn leaves open. It overlays Geist's at
 every weight, its cove within a few units (15 fuller at the Thin, whose cove
 is a little squarer than the drawn one).
 
+**The 2's diagonal.** Geist's 2 falls from its bowl across the letter in a
+near-straight diagonal that rounds upright only as it meets the foot. Draw's
+came off a deep quarter into an upright reverse turn, an S: 300 units up it
+ran 296-353 in from the foot's left at the Thin where Geist's runs 227-297,
+124-395 at the Regular against 168-340, and 51-428 at the Black against
+107-418. The reverse turn now leans (12 degrees at the Thin, 18 at the
+Regular, 26 at the SemiBold, 34 at the UltraBlack and 38 at the Black) and
+rounds upright on a short arc as it meets the foot, so the foot has no step
+where it meets it. The arc is never tighter than the pen, whose inner side
+would fold. The bowl's lower quarter deepens a little at the heavy weights, the
+Thin's bowl is as wide as Geist Thin's, the foot runs out as far as the bowl's
+right side, and the Sans's diagonal is laid again on a pen half as light
+across, as heavy as Geist's (184 across at the Black). Each weight now stands
+within 10 units of Geist's 300 up.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
