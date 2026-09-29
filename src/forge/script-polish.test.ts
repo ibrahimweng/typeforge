@@ -28,6 +28,7 @@ const base = (name: string): Style => BASES.find((one) => one.name === name)!;
 const at = (style: Style, weight: number): Style => ({ ...style, pen: { ...style.pen, weight } });
 const weightsOf = (style: Style) => [30, style.pen.weight, 200, 260];
 const LOWER = "abcdefghijklmnopqrstuvwxyz".split("");
+const CAPITAL = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 beforeAll(async () => {
   await ready();
@@ -135,15 +136,23 @@ describe("every drawing of a joined letter", () => {
    * -- at every weight the slider reaches. The written `r` set after a `b`
    * aimed its lead-out at the waist and hooked back across itself, and the
    * written `n` taken high folded its lead-in into its own apex on four faces.
+   *
+   * At every fifth weight the slider reaches, and at the ones where a fold was
+   * found between them: the Roundhand's `s` at 209 to 212 and the Monoline's
+   * word-end `r` at 217, each a hairline on one weight and on neither side of
+   * it, which a handful of weights stepped straight over. The capitals too,
+   * which hand on and so are drawn with and without a lead-out.
    */
   it("never crosses itself", () => {
     const crossed: string[] = [];
     const sides = [{}, { entry: false }, { exit: false }, { entry: false, exit: false }];
+    const steps = Array.from({ length: 49 }, (_, index) => 20 + index * 5);
     for (const name of JOINED) {
       const own = base(name);
-      for (const weight of [30, own.pen.weight, 120, 160, 200, 260]) {
+      const weights = [...new Set([30, own.pen.weight, ...steps, 209, 210, 211, 212, 217])];
+      for (const weight of weights) {
         const style = at(own, weight);
-        for (const letter of LOWER) {
+        for (const letter of [...LOWER, ...CAPITAL]) {
           const form = own.forms?.[letter];
           for (const high of [false, true]) {
             for (const without of sides) {
@@ -314,8 +323,9 @@ describe("a joined face as a variable font", () => {
     const { deliver } = await import("./deliver");
     const { setFamily, startFrom } = await import("./document");
     const held: string[] = [];
-    // The two whose masters came apart; the other three always rode the axis.
-    for (const name of ["Monoline Script", "Roundhand"]) {
+    // Every joined face: the two whose masters came apart, and the three that
+    // rode the axis and have to go on doing so.
+    for (const name of JOINED) {
       let forge = startFrom(base(name));
       const drawn = forge.family!.drawn;
       forge = setFamily(forge, {
