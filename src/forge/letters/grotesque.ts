@@ -609,21 +609,28 @@ export function grotesqueCapitalQ(style: Style): Recipe {
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const X = (x: number) => f.edge - f.half + x * u;
   const ring = [capitalRing(f)];
+  /*
+   * The Sans's tail as light as Geist's, which lightens with the weight
+   * (137 across at the UltraBlack on a stem of 172, where the pen's stood
+   * 201), keeping its right side; and at the Thin as far left as Geist
+   * Thin's, where it stood 29 units right.
+   */
+  const sans = f.style.metrics.xGrows !== undefined;
+  const light = sans ? Math.max(atWeights(f, 1, 0.88, 0.75, 0.7, 0.65), 0.65) : 1;
+  const shift = sans ? f.half * (1 - light) * 1.27 + atWeights(f, -29, 0, 10, 0, -12) : 0;
+  const tail = ink(
+    f,
+    straight(
+      // Past the Black the tail starts lower, under a counter that has shut down onto it.
+      at(X(lerp(339.5, 350)) + shift, up(f, lerp(200, 260) - 90 * Math.max(0, t - 1))),
+      at(X(lerp(548, 598.7)) + shift, up(f, lerp(-69, -59))),
+    ),
+    LEVEL,
+    LEVEL,
+  );
   return finish(
     f,
-    [
-      ...ring,
-      ink(
-        f,
-        straight(
-          // Past the Black the tail starts lower, under a counter that has shut down onto it.
-          at(X(lerp(339.5, 350)), up(f, lerp(200, 260) - 90 * Math.max(0, t - 1))),
-          at(X(lerp(548, 598.7)), up(f, lerp(-69, -59))),
-        ),
-        LEVEL,
-        LEVEL,
-      ),
-    ],
+    [...ring, inherit(tail, { ...tail, pen: { ...tail.pen, weight: tail.pen.weight * light } })],
     true,
   );
 }

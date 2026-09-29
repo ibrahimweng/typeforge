@@ -1511,3 +1511,18 @@ describe("the tilde and the w", () => {
     expect(Math.abs(w.xMax - w.xMin - 797)).toBeLessThan(4);
   });
 });
+
+describe("the Q's tail", () => {
+  it("is as light as Geist's and stands where it does", () => {
+    // 50 under the line Geist's tail runs 556-593 at the Thin and 566-703 at
+    // the UltraBlack; on the pen it ran 586-623 and 504-705.
+    for (const [weight, from, to] of [
+      [30, 556, 593],
+      [172, 566, 703],
+    ]) {
+      const [left, right] = filled(draw("Q", weight).contours, -50)[0];
+      expect(Math.abs(left - from), `Q at ${weight}`).toBeLessThan(6);
+      expect(Math.abs(right - to), `Q at ${weight}`).toBeLessThan(8);
+    }
+  });
+});

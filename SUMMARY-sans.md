@@ -334,6 +334,13 @@ width at every weight. The w stood 11 narrow at the SemiBold and now sits
 within 3 of Geist's at every weight. The $'s bar still stops 33 short of
 Geist's 800 at the Thin, where the health check holds it.
 
+**The Q's tail.** Geist's tail lightens with the weight, to 137 across at
+the UltraBlack on a stem of 172, where on the pen Draw's stood 201. The
+Thin's also stood 29 units right of Geist Thin's. The Sans's tail now has
+Geist's weight and keeps its right side at every weight, and the Thin's
+stands where Geist's does. Past the Black its lightness is held at the
+Black's.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across
