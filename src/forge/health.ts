@@ -21,7 +21,7 @@
 
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
-import { builtFrom, letterNames } from "./build";
+import { builtFrom, letterNames, overhangOf } from "./build";
 import { draw, familyOf, weighted, type Forge } from "./document";
 import { nameOfWeight, weightsOf } from "./family";
 
@@ -205,7 +205,10 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
      */
     const roof = builtFrom(letter) ? capped : ceiling;
     if (bounds.yMax > roof || bounds.yMin < floor) overflowing.push(letter);
-    if (bounds.xMin < em * 0.005) touching.push(letter);
+    // Or past the letter's own side by more than the face lets it hang there:
+    // see `metrics.overhangs`.
+    const hang = overhangOf(letter, forge.style);
+    if (bounds.xMin < (hang > 0 ? -hang : em * 0.005)) touching.push(letter);
   }
 
   const found: Trouble[] = [];

@@ -895,13 +895,15 @@ describe("the Sans's sidebearings", () => {
   it("stand where Geist's do at the Regular and the Black", () => {
     // Geist's left and right sidebearings at the Regular and the Black. The
     // W stood 17 closer than Geist's, the ! 6 to 11 closer, the T, Y, 7 and
-    // X 12 to 26 further off, and the O 15 closer at the Black. Geist's Y
-    // reaches 6 past its sides, and is held just inside them: its left as
-    // close as the health check allows at every weight, 12 in at the Regular.
+    // X 12 to 26 further off, and the O 15 closer at the Black. Geist's Y, #
+    // and j hang past their sides (the # 10 at the Regular), which the health
+    // check once forbade: they were held 8 to 12 inside them instead.
     const geist: Record<string, [number, number, number, number]> = {
       W: [38, 38, 36, 36],
       T: [15, 15, 12, 12],
-      Y: [6, 0, 3, 0],
+      Y: [-6, -4, -9, -7],
+      numbersign: [-10, -5, 8, 10],
+      j: [-5, 80, -4, 62],
       X: [15, 15, 10, 10],
       O: [45, 45, 40, 40],
       seven: [20, 8, 20, 7],

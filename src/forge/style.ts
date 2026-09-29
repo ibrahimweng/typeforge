@@ -221,6 +221,14 @@ export interface Metrics {
    * Thin's capital and figure stems are 32 on a lowercase stem of 30.
    */
   capitalThin?: number;
+  /**
+   * The letters that hang past their own sides, and how far they may -- on
+   * the left before the health check calls them touching the letter before
+   * -- as a share of the em. A letter not listed starts at least half a
+   * hundredth in. Geist hangs its Y, j and # up to ten units past their
+   * sides, as a text face's overhangs do.
+   */
+  overhangs?: Record<string, number>;
   /** Set on the style a capital or figure is drawn with: see `capitalContrast`. Never saved. */
   capital?: boolean;
   /**
@@ -752,6 +760,8 @@ export const SANS: Style = {
     capitalContrast: 0.61,
     // Geist Thin's capitals and figures stand on stems of 32 to its lowercase's 30.
     capitalThin: 0.067,
+    // Geist's Y, j and # hang up to 10 past their left sides.
+    overhangs: { Y: 0.012, j: 0.012, numbersign: 0.012 },
     contrastRise: { from: 87, to: 0.27, over: 56, past: 0.82 },
     // Geist Thin's o and n are both a little wider down the stroke than the
     // Regular's, and set 5 units further apart on either side (its figures 10).
@@ -781,8 +791,8 @@ export const SANS: Style = {
       q: [0.52, 1, "stem-right"],
       g: [0.52, 1, "stem-right"],
       f: [0.75, 0.53, "closes", [0, 0], [-7, -3]],
-      // Its foot reaches back to the letter before (Geist -5); held inside.
-      j: [0.1, 1, "closes"],
+      // Its foot reaches back under the letter before (Geist -5 to -3).
+      j: [-0.06, 1, "closes", [-5, -9]],
       k: [1, 0.59, "stem-left"],
       // Fitted, its arm's side closed to 20 at the Light; Geist Thin's is 50.
       r: [1, 0.55, "closes"],
@@ -830,12 +840,10 @@ export const SANS: Style = {
       V: [0.11, 0.11, "held", [5, 5]],
       W: [0.33, 0.33, "held", [5, 5]],
       X: [0.04, 0.04],
-      // Geist's Y reaches 6 past both its sides: held just inside them, its
-      // left as far as the health check's "touching the letter before it"
-      // allows at every weight and its right as far as its own advance (it
-      // stood 15 in).
-      Y: [0, -0.1],
-      // Its bars reach further than the Y's arms: set as the Y was.
+      // Geist's Y reaches past both its sides (6 and 4 at the Regular, 9 and
+      // 7 at the Black), as `overhangs` lets it; held inside, it stood 12 in.
+      Y: [-0.225, -0.2, "half", [-1, -4]],
+      // Its bars reach further than the Y's arms: held just inside its sides.
       yen: [0.11, 0.11],
       Z: [0.19, 0.19, "held", [5, 5]],
       zero: [0.63, 0.63],
@@ -866,8 +874,9 @@ export const SANS: Style = {
       // Geist closes its hyphen and underscore as fast as its n (44 off at
       // the Regular, 32 at the Black); half as fast, they stood 8 loose.
       hyphen: [0.55, 0.55, "closes"],
-      // Geist's reaches past both its sides (-10 and -5); held just inside.
-      numbersign: [0.1, 0.1],
+      // Geist's reaches past both its sides at the Regular (-10 and -5), and
+      // stands 8 and 10 in at the Black.
+      numbersign: [-0.125, -0.06, "half", [-5, -6], [22, 18]],
       // Geist closes its % * and brackets as fast as its n: half as fast,
       // they stood 8 to 16 units loose at the Black.
       percent: [0.55, 0.55, "closes"],

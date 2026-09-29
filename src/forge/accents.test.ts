@@ -19,7 +19,7 @@
 import { describe, expect, it } from "vitest";
 
 import { contoursBounds } from "@/font/geometry";
-import { builtFrom, canDraw, drawLetter, letterNames, makeLetter, reachesOut } from "./build";
+import { builtFrom, canDraw, drawLetter, letterNames, makeLetter, overhangOf, reachesOut } from "./build";
 import { accentedNameFor, drawnAs, codepointOfAccented } from "./accents";
 import { editPart, editPen, startFrom, draw } from "./document";
 import { codepointFor } from "./typeface";
@@ -222,11 +222,13 @@ describe("what an accented letter is allowed", () => {
         if (!drawn) continue;
         if (reachesOut(name, base)) continue;
         const bounds = contoursBounds(drawn.contours);
-        expect(bounds.xMin, `${name} on ${base.name} runs off the left`).toBeGreaterThan(0);
+        expect(bounds.xMin, `${name} on ${base.name} runs off the left`).toBeGreaterThan(
+          -overhangOf(name, base),
+        );
         expect(
           drawn.advanceWidth - bounds.xMax,
           `${name} on ${base.name} runs off the right`,
-        ).toBeGreaterThan(0);
+        ).toBeGreaterThan(-overhangOf(name, base));
       }
     }
   });

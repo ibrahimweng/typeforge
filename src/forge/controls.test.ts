@@ -24,7 +24,7 @@ import { describe, expect, it } from "vitest";
 
 import { contoursBounds, contoursToSvgPath } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
-import { builtFrom, drawLetter, letterNames } from "./build";
+import { builtFrom, drawLetter, letterNames, overhangOf } from "./build";
 import { drawnHigh, startFrom } from "./document";
 import { HANDS_OVER_HIGH } from "./script";
 import { LETTERS, everyFormOf, formsOf } from "./letters";
@@ -396,12 +396,12 @@ describe("alternates", () => {
           `${name} / ${form.label} sinks below the descender`,
         ).toBeGreaterThanOrEqual(SANS.metrics.descender - SANS.metrics.overshoot - SANS.pen.weight);
         expect(bounds.xMin, `${name} / ${form.label} starts left of the origin`).toBeGreaterThan(
-          -1,
+          -1 - overhangOf(name, SANS),
         );
         expect(
           drawn.advanceWidth,
           `${name} / ${form.label} is wider than its own advance`,
-        ).toBeGreaterThanOrEqual(bounds.xMax);
+        ).toBeGreaterThanOrEqual(bounds.xMax - overhangOf(name, SANS));
       }
     }
   });

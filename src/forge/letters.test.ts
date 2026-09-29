@@ -17,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
 import { unite } from "@/font/boolean";
 import { contoursIntersect } from "@/font/outline";
-import { builtFrom, drawLetter, letterNames, reachesOut } from "./build";
+import { builtFrom, drawLetter, letterNames, overhangOf, reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
 import { readyToShape } from "./layers";
 import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
@@ -196,7 +196,9 @@ describe("the character set", () => {
               ? style.parts.script.eye * Math.abs(style.metrics.descender)
               : 0;
           expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
-            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - swing - 1 : -1,
+            reaches
+              ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - swing - 1
+              : -1 - overhangOf(name, style),
           );
           expect(bounds.xMax, `${name} runs off the right`).toBeLessThan(unitsPerEm * 1.6);
         }
@@ -219,11 +221,13 @@ describe("the character set", () => {
           if (drawn.contours.length === 0) continue;
           if (reachesOut(name, style)) continue;
           const bounds = contoursBounds(drawn.contours);
-          expect(bounds.xMin, `${name} touches its left edge`).toBeGreaterThan(0);
+          expect(bounds.xMin, `${name} touches its left edge`).toBeGreaterThan(
+            -overhangOf(name, style),
+          );
           expect(
             drawn.advanceWidth - bounds.xMax,
             `${name} touches its right edge`,
-          ).toBeGreaterThan(0);
+          ).toBeGreaterThan(-overhangOf(name, style));
         }
       });
 

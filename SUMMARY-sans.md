@@ -808,6 +808,18 @@ counters, the Light warnings, the slant spacing). Each one fails on the old
 code. Some older s tests used an even-odd ruler that reads two overlapping
 strokes as white; they now use a filled (nonzero) ruler.
 
+**Overhangs: Y, j, #.** Geist hangs these past their own sides. The Y is 6
+and 4 past at the Regular and 9 and 7 at the Black, the # 10 and 5 at the
+Regular, and the j's foot 5 under the letter before. The health check's
+"touching the letter before it" forbade any of that, so all three were held 8
+to 12 inside. That spacing was their whole misfit. A face can now list letters
+in `metrics.overhangs` with how far each may hang, and accented letters take
+their base letter's allowance. The Sans lists these three, up to 12
+thousandths of the em. Their sides now land within 2 units of Geist's at every
+weight, and their misfit at the Regular is 0.02 (Y), 0.04 (#) and 0.06 (j).
+The sidebearings test now carries Geist's real values for all three, which
+the old spacing missed by 13 to 18 units.
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's
@@ -819,8 +831,6 @@ strokes as white; they now use a filled (nonzero) ruler.
   lemon-shaped counters. Pulling the rings apart matched the notch but made the
   waist half as thick again. Matching it needs the eight rebuilt as crossing
   strokes.
-- **#.** The sidebearings are kept just inside the advance. Geist's reach past
-  both sides.
 - **The 3's notch.** Geist's bowls meet on the right in a sharp corner, 123
   units in from the bowl's right at the Regular, its upper bowl thinning into
   it. Draw's bowls are strokes on one pen, meeting the waist on a tangent.

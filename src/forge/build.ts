@@ -138,6 +138,17 @@ export function builtFrom(name: string): Parts | null {
 }
 
 /**
+ * How far this glyph may start left of its own origin, in units: what the
+ * face lists in `metrics.overhangs` for it, or for the letter under its mark.
+ */
+export function overhangOf(name: string, style: Style): number {
+  const hangs = style.metrics.overhangs;
+  if (!hangs) return 0;
+  const parts = builtFrom(name);
+  return (hangs[parts ? parts.base : name] ?? 0) * style.metrics.unitsPerEm;
+}
+
+/**
  * Whether this glyph is one of the ones a joined face reaches out of.
  *
  * The accented letters answer for the letter under the mark: an `à` in a script
