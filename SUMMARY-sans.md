@@ -353,6 +353,12 @@ at 385. Its round is now 0.9 of half its height rather than 1.05. That took
 the D's misfit against Geist from a fifth of its ink to a twentieth at the
 Thin, and to half or less at every other weight.
 
+**The comma's tail (shared file, Sans only).** Geist's tail leaves the
+dot's foot near its right corner and gets heavier and more upright with the
+weight. Draw's left from the middle of the foot, so 40 under the line it
+stood 12 units left of Geist's at the Regular and 21 to 35 at the
+UltraBlack. It is now within 3 units of Geist's at every weight.
+
 **Heavy s counters.** The lighter pen that rounds them now takes its
 lightness mostly from the crowns and spine rather than the sides, as Geist's
 weight is set: at the Black the counters are narrow and tall (about 95 across

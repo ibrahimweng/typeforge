@@ -1554,3 +1554,19 @@ describe("the P's bowl", () => {
     }
   });
 });
+
+describe("the comma's tail", () => {
+  it("leaves the dot and leans as Geist's does", () => {
+    // 40 under the line Geist's tail runs 83-138 at the Regular and 91-191
+    // at the UltraBlack; out of the middle of the dot's foot it ran 71-124
+    // and 70-158.
+    for (const [weight, from, to] of [
+      [87, 83, 138],
+      [172, 91, 191],
+    ]) {
+      const [left, right] = filled(draw("comma", weight).contours, -40)[0];
+      expect(Math.abs(left - from), `, at ${weight}`).toBeLessThan(6);
+      expect(Math.abs(right - to), `, at ${weight}`).toBeLessThan(6);
+    }
+  });
+});
