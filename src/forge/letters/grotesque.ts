@@ -2773,9 +2773,19 @@ export function grotesqueW(style: Style): Recipe {
   const outer = 179 + 4.4 * t + 13 * thin;
   // The two feet of each vertex apart by a share of the pen, so they meet at
   // every weight: Geist's are 26 apart on a stem of 86, 33 on one of 172.
-  const inner = outer + (f.half * (0.6 - 0.22 * Math.min(t, 1.5))) / u;
-  const stroke = (top: number, foot: number) =>
-    ink(f, straight(at(X(top), f.cap), at(X(foot), 0)), LEVEL, LEVEL);
+  /*
+   * The Sans's vertices' feet half as far apart from the SemiBold on, and
+   * its strokes a twentieth lighter at the Black, as Geist's are: that took
+   * a tenth to a fifth off the heavy W's misfit.
+   */
+  const closer = thin === 0 && f.style.metrics.xGrows !== undefined;
+  const nearer = closer ? Math.max(0.5, atWeights(f, 1, 1, 0.5, 0.5, 0.5)) : 1;
+  const lighter = closer ? Math.max(0.95, atWeights(f, 1, 1, 1, 1, 0.95)) : 1;
+  const inner = outer + ((f.half * (0.6 - 0.22 * Math.min(t, 1.5))) / u) * nearer;
+  const stroke = (top: number, foot: number) => {
+    const one = ink(f, straight(at(X(top), f.cap), at(X(foot), 0)), LEVEL, LEVEL);
+    return inherit(one, { ...one, pen: { ...one.pen, weight: one.pen.weight * lighter } });
+  };
   return finish(f, [
     stroke(0, outer),
     stroke(apex, inner),
@@ -4530,6 +4540,16 @@ export function grotesqueCapitalA(style: Style): Recipe {
     },
     0,
     f.cap,
+    1,
+    /*
+     * The Sans's head half as wide at the SemiBold and UltraBlack, as
+     * Geist's is: that took a sixth off the misfit there. Back to the face's
+     * own by the Black, where a narrower head grew an extra point under a
+     * chamfer and a spur.
+     */
+    f.style.metrics.xGrows !== undefined
+      ? Math.min(1, Math.max(0.5, atWeights(f, 1, 1, 0.5, 0.5, 1)))
+      : 1,
   );
   // Geist's height, moved with the crossbar control from where the face has it.
   uses("crossbar");

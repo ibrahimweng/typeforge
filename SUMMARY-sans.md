@@ -327,6 +327,14 @@ Geist Thin's is. That took a fifth off its misfit. The width a heavy s gains
 is held back from the UltraBlack on. Both now sit within 1 unit of Geist's
 width.
 
+**The heavy A and W.** From the SemiBold on, Geist's A's head and W's
+vertices are half as wide as the face's measures gave, and its Black's W
+strokes are a twentieth lighter than the pen. The A's head is now narrowed
+at the SemiBold and UltraBlack, a sixth off its misfit there. At the Black
+it keeps the face's own width, where a narrower head grew an extra point
+under a chamfer and a spur. The W's vertices are narrowed from the SemiBold
+on, a tenth to a fifth off its misfit.
+
 **The y's left arm.** Geist's is lighter than the pen from the Regular
 on, most of all at the SemiBold, where it runs 125 across 300 up. That took
 a third off the SemiBold y's misfit and a tenth to a sixth off the others'.

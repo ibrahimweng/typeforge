@@ -1738,3 +1738,15 @@ describe("the y's left arm", () => {
     expect(Math.abs(right - left - 125)).toBeLessThan(6);
   });
 });
+
+describe("the heavy A's head and W's feet", () => {
+  it("are as narrow as Geist's at the UltraBlack", () => {
+    // 690 up Geist UltraBlack's A's head is 217 across, where Draw's stood
+    // about 242; 20 up its W's feet are 192 and 193 across, where Draw's
+    // stood about 230.
+    const a = filled(draw("A", 172).contours, 690)[0];
+    expect(Math.abs(a[1] - a[0] - 217)).toBeLessThan(12);
+    const w = filled(draw("W", 172).contours, 20);
+    expect(Math.abs(w[0][1] - w[0][0] - 192)).toBeLessThan(15);
+  });
+});
