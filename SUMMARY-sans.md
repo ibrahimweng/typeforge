@@ -884,6 +884,11 @@ lower bowl is 15 and 10 higher. The S's misfit went from 0.26, 0.15, 0.11 and
 0.14 to 0.22, 0.12, 0.08 and 0.13 (Thin to UltraBlack); the Black's is 0.12,
 from 0.11. The $, drawn on the same S, improved at every weight.
 
+**The O's overshoot.** Geist's O overshoots its lines by 16, not the o's 12.
+A face can now give single capitals their own amount (`metrics.overshoots`),
+and the Sans gives the O 16. It now stands at Geist's height at every
+weight, and its Thin misfit went from 0.26 to 0.14 (the Ö's from 0.28 to 0.16).
+
 ## What still differs from Geist
 
 - **s counters at the Black.** Close to Geist's size and shape now; Geist's
@@ -940,13 +945,13 @@ from 0.11. The $, drawn on the same S, improved at every weight.
   right and leaner at its upper left. It still stands 26 units inside Geist's
   shoulder at the Black. Drawing that quarter separately follows it, but at
   twice the nodes.
-- **Round capitals' overshoot.** Geist's round capitals and figures (C G O S
-  0 3 6 8 9 &) overshoot 16 units past each line, where its o overshoots 12.
-  Draw uses 12 for both, so they stand 8 units short overall. Giving
-  capitals their own overshoot put the heights right, but it moved the
-  apexes and curves those letters were fitted with, and most of them fitted
-  worse (the Regular's mean for capitals and figures went from 0.059 to
-  0.077).
+- **Round capitals' overshoot.** Geist's round capitals and figures (C G S 0
+  3 6 8 9 &) overshoot 16 units past each line, where its o overshoots 12.
+  Draw uses 12 for them, so they stand 8 units short overall. Only the O
+  has 16 now (see below). Tried again after the refits, 16 for all of them
+  still made most of them fit worse (the Thin's mean for capitals and
+  figures went from 0.13 to 0.17). Their curves and apexes are measured from
+  the lines at 12.
 - **Past 194.** Geist has nothing heavier than its Black. At 200–260 the
   letters follow their own rules for keeping counters open, not Geist.
 - **œ.** Not in the review list, and it is still poor past the Black: its o

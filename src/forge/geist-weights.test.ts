@@ -584,6 +584,18 @@ describe("the S at the Regular", () => {
   });
 });
 
+describe("the O", () => {
+  it("overshoots its lines by Geist's 16", () => {
+    // Geist's O runs from -16 to 726 at every weight; at the o's 12 it
+    // stood 8 short, and 0.26 off at the Thin.
+    for (const weight of [30, 87, 172]) {
+      const ink = box("O", weight);
+      expect(Math.abs(ink.yMax - 726), `top at ${weight}`).toBeLessThan(2);
+      expect(Math.abs(ink.yMin + 16), `foot at ${weight}`).toBeLessThan(2);
+    }
+  });
+});
+
 describe("the Thin ampersand", () => {
   it("turns its loop in to the crossing where Geist Thin's does", () => {
     // 450 up, Geist Thin's loop has come round into the crossing: its ink

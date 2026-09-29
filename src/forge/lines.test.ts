@@ -120,7 +120,8 @@ describe("the letters stand on their lines", () => {
           ["nine", capHeight],
         ] as Array<[string, number]>) {
           expect(
-            Math.abs(topOf(name, style) - line - overshoot),
+            // Or by its own, where the face gives it one: see `metrics.overshoots`.
+            Math.abs(topOf(name, style) - line - (style.metrics.overshoots?.[name] ?? overshoot)),
             `${name} does not crest on its line`,
           ).toBeLessThan(room + bounce(name));
         }
@@ -141,7 +142,7 @@ describe("the letters stand on their lines", () => {
           "eight",
         ]) {
           expect(
-            Math.abs(footOf(name, style) + overshoot),
+            Math.abs(footOf(name, style) + (style.metrics.overshoots?.[name] ?? overshoot)),
             `${name} does not dip to the baseline`,
           ).toBeLessThan(room + bounce(name));
         }
