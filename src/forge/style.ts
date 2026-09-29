@@ -1502,7 +1502,12 @@ export const MARKER: Style = {
    * grows, and at the slider's heaviest it stood off the bowl as a hook and
    * the letter read as a 6. The spur keeps the bar on the bowl at every weight.
    */
-  forms: { g: "curled", t: "straight", y: "straight", l: "tailed", G: "spurred" },
+  /*
+   * And the grotesque `k`, its arm and leg meeting the stem on the diagonal.
+   * The plain one's arm runs out nearly flat, and as the pen grows it reaches
+   * further: at 260 it stood out past the letter as a long thin blade.
+   */
+  forms: { g: "curled", t: "straight", y: "straight", l: "tailed", G: "spurred", k: "grotesque" },
   /*
    * And the tool, which is where this face stops being a slanted sans.
    *
@@ -1655,7 +1660,12 @@ export const BRUSH: Style = {
    * grows, and at the slider's heaviest it stood off the bowl as a hook and
    * the letter read as a 6. The spur keeps the bar on the bowl at every weight.
    */
-  forms: { g: "curled", f: "descending", y: "straight", l: "tailed", G: "spurred" },
+  /*
+   * And the grotesque `k`, its arm and leg meeting the stem on the diagonal.
+   * The plain one's arm runs out nearly flat, and as the pen grows it reaches
+   * further: at 260 it stood out past the letter as a long thin blade.
+   */
+  forms: { g: "curled", f: "descending", y: "straight", l: "tailed", G: "spurred", k: "grotesque" },
   /*
    * The pressure, which is what separates a brush from a slanted pen.
    *
