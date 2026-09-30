@@ -1,6 +1,16 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { intersect, pieces, ready, subtract, unite } from "./boolean";
+import {
+  coverOf,
+  filled,
+  intersect,
+  linesUnlike,
+  pieces,
+  ready,
+  subtract,
+  unite,
+  withoutStutter,
+} from "./boolean";
 import { contourArea, contoursBounds } from "./geometry";
 import type { Contour } from "./types";
 
@@ -269,5 +279,260 @@ describe("how hard unite works at joining", () => {
     const dotted = [rect(40, 0, 20, 100), rect(40, 120, 20, 20)];
     expect(pieces(unite(dotted, "winding", "whole"))).toBe(2);
     expect(pieces(unite(dotted, "winding"))).toBe(2);
+  });
+});
+
+const corner = (x: number, y: number) => ({
+  point: { x, y },
+  handleIn: null,
+  handleOut: null,
+  type: "corner" as const,
+});
+
+/** A circle of four quarter arcs, anticlockwise unless turned. */
+const circle = (cx: number, cy: number, r: number, clockwise = false): Contour => {
+  const k = r * 0.5522847498;
+  const nodes = [
+    {
+      point: { x: cx + r, y: cy },
+      handleIn: { x: cx + r, y: cy - k },
+      handleOut: { x: cx + r, y: cy + k },
+    },
+    {
+      point: { x: cx, y: cy + r },
+      handleIn: { x: cx + k, y: cy + r },
+      handleOut: { x: cx - k, y: cy + r },
+    },
+    {
+      point: { x: cx - r, y: cy },
+      handleIn: { x: cx - r, y: cy + k },
+      handleOut: { x: cx - r, y: cy - k },
+    },
+    {
+      point: { x: cx, y: cy - r },
+      handleIn: { x: cx - k, y: cy - r },
+      handleOut: { x: cx + k, y: cy - r },
+    },
+  ].map((node) => ({ ...node, type: "smooth" as const }));
+  if (!clockwise) return { closed: true, nodes };
+  return {
+    closed: true,
+    nodes: [...nodes]
+      .reverse()
+      .map((node) => ({ ...node, handleIn: node.handleOut, handleOut: node.handleIn })),
+  };
+};
+
+/** The same contours made bigger, as the same drawing on a bigger em. */
+const scaled = (contours: Contour[], by: number): Contour[] =>
+  contours.map((contour) => ({
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: { x: node.point.x * by, y: node.point.y * by },
+      handleIn: node.handleIn && { x: node.handleIn.x * by, y: node.handleIn.y * by },
+      handleOut: node.handleOut && { x: node.handleOut.x * by, y: node.handleOut.y * by },
+    })),
+  }));
+
+/*
+ * The folds a boolean leaves where it hesitated, taken out -- all of them,
+ * however many there are, and not just as many as there were passes left once
+ * each pass had shortened the outline by one.
+ */
+describe("withoutStutter", () => {
+  it("hands back an outline with nothing to take out as it was", () => {
+    const square = rect(0, 0, 100, 100);
+    expect(withoutStutter(square)).toBe(square);
+  });
+
+  it("merges every run of nodes in one place, however long the runs", () => {
+    // Every corner of a square three times over: eight nodes too many.
+    const tripled: Contour = {
+      closed: true,
+      nodes: rect(0, 0, 100, 100).nodes.flatMap((node) => [node, node, node]),
+    };
+    const clean = withoutStutter(tripled);
+    expect(clean?.nodes.map((node) => node.point)).toEqual(
+      rect(0, 0, 100, 100).nodes.map((node) => node.point),
+    );
+  });
+
+  it("takes out every spike along an edge, and the steps each one leaves", () => {
+    // A square whose bottom edge runs out and back along ten spikes. Each is
+    // two nodes too many: the tip, and the node it comes back to.
+    const spikes = Array.from({ length: 10 }, (_, at) => 50 * (at + 1));
+    const combed: Contour = {
+      closed: true,
+      nodes: [
+        corner(0, 0),
+        ...spikes.flatMap((x) => [corner(x, 0), corner(x, -50), corner(x, 0)]),
+        corner(600, 0),
+        corner(600, 600),
+        corner(0, 600),
+      ],
+    };
+    const clean = withoutStutter(combed);
+    expect(clean?.nodes.map((node) => node.point)).toEqual([
+      { x: 0, y: 0 },
+      ...spikes.map((x) => ({ x, y: 0 })),
+      { x: 600, y: 0 },
+      { x: 600, y: 600 },
+      { x: 0, y: 600 },
+    ]);
+    expect(contourArea(clean as Contour)).toBeCloseTo(600 * 600, 6);
+  });
+
+  it("takes out a spike that only shows once the one beyond it has gone", () => {
+    // Out along the top edge and back in two steps: the far tip goes first,
+    // which leaves the near one a spike of its own.
+    const nested: Contour = {
+      closed: true,
+      nodes: [
+        corner(0, 0),
+        corner(100, 0),
+        corner(100, 100),
+        corner(50, 100),
+        corner(50, 150),
+        corner(50, 200),
+        corner(50, 150),
+        corner(50, 100),
+        corner(0, 100),
+      ],
+    };
+    const clean = withoutStutter(nested);
+    expect(clean?.nodes.map((node) => node.point)).toEqual([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+      { x: 50, y: 100 },
+      { x: 0, y: 100 },
+    ]);
+  });
+
+  it("leaves nothing that draws of an outline that was nothing but folds", () => {
+    // Out and back along one line, with the ends doubled.
+    const fold: Contour = {
+      closed: true,
+      nodes: [corner(0, 0), corner(100, 0), corner(100, 0), corner(0, 0), corner(0, 0)],
+    };
+    const clean = withoutStutter(fold);
+    // Either gone, or two nodes enclosing nothing, which the speck filter
+    // after it takes away.
+    if (clean) {
+      expect(clean.nodes).toHaveLength(2);
+      expect(contourArea(clean)).toBe(0);
+    }
+  });
+});
+
+/*
+ * Whether a union covers what it was handed, measured on lines across it --
+ * and measured the same way at any em. The slack for drawing curves as lines
+ * is a share of the drawing's size, so a letter on a 2048 unit em is judged as
+ * the same letter on a 1000 unit one is, rather than twice as strictly.
+ */
+describe("the cover a union is judged by", () => {
+  const o = [circle(350, 350, 350), circle(350, 350, 200, true)];
+  const outers = [true, false];
+
+  for (const em of [1000, 2048]) {
+    const by = em / 1000;
+    describe(`at ${em} units to the em`, () => {
+      it("finds a good union the same as what it was given", () => {
+        const given = scaled(o, by);
+        expect(linesUnlike(coverOf(given, outers), unite(given))).toBe(0);
+      });
+
+      it("finds a filled counter unlike on every line through it", () => {
+        const given = scaled(o, by);
+        const solid = scaled([o[0]], by);
+        // The counter is four sevenths of the height, so more than twenty
+        // of the forty-eight lines cross it.
+        expect(linesUnlike(coverOf(given, outers), solid)).toBeGreaterThanOrEqual(24);
+      });
+
+      it("allows a drawing its own share of slack, and no more", () => {
+        // A stem 700 tall, and answers three and five units wider at 1000:
+        // the three is within the four units a drawing that size is allowed,
+        // the five is not -- and at 2048 the same answers are twice as far
+        // out, against twice the slack.
+        const stem = scaled([rect(0, 0, 10, 700)], by);
+        const given = coverOf(stem, [true]);
+        expect(linesUnlike(given, scaled([rect(0, 0, 13, 700)], by))).toBe(0);
+        expect(linesUnlike(given, scaled([rect(0, 0, 15, 700)], by))).toBe(48);
+      });
+    });
+  }
+
+  it("scales the slack with the drawing", () => {
+    const small = coverOf([rect(0, 0, 10, 900)], [true]);
+    const big = coverOf(scaled([rect(0, 0, 10, 900)], 2.048), [true]);
+    expect(small.slack).toBeCloseTo(4.5, 9);
+    expect(big.slack / small.slack).toBeCloseTo(2.048, 9);
+    expect(big.lines).toHaveLength(small.lines.length);
+  });
+
+  it("never allows a small piece less than the rounding a boolean does", () => {
+    expect(coverOf([rect(0, 0, 40, 40)], [true]).slack).toBe(4);
+  });
+});
+
+/*
+ * The ground outlines cover under the non-zero rule, directions as written.
+ * Unlike `unite`, nothing is told what it is: a loop going round twice is
+ * covered once, and a contour inside another is a counter only if it runs the
+ * other way.
+ */
+describe("filled", () => {
+  it("answers nothing for nothing", () => {
+    expect(filled([])).toEqual([]);
+    expect(filled([{ closed: true, nodes: [corner(0, 0)] }])).toEqual([]);
+  });
+
+  it("covers ground an outline goes round twice once, and keeps it", () => {
+    // A five-pointed star drawn in one stroke: it goes round its middle
+    // twice, which an even-odd fill would leave as a hole.
+    const radius = 100;
+    const star: Contour = {
+      closed: true,
+      nodes: [0, 2, 4, 1, 3].map((at) => {
+        const angle = Math.PI / 2 + (at * 2 * Math.PI) / 5;
+        return corner(radius * Math.cos(angle), radius * Math.sin(angle));
+      }),
+    };
+    // Counted by the fold's own arithmetic the middle comes in twice.
+    const inner = (radius * Math.cos((2 * Math.PI) / 5)) / Math.cos(Math.PI / 5);
+    const middle = 2.5 * inner * inner * Math.sin((2 * Math.PI) / 5);
+    const answer = filled([star]);
+    expect(pieces(answer)).toBe(1);
+    expect(answer.every((contour) => contourArea(contour) * ink(answer) > 0)).toBe(true);
+    expect(Math.abs(ink(answer))).toBeCloseTo(Math.abs(contourArea(star)) - middle, 3);
+  });
+
+  it("keeps a counter that runs the other way", () => {
+    const answer = filled([circle(0, 0, 100), circle(0, 0, 50, true)]);
+    expect(answer).toHaveLength(2);
+    const outer = Math.abs(contourArea(circle(0, 0, 100)));
+    const inner = Math.abs(contourArea(circle(0, 0, 50)));
+    expect(Math.abs(ink(answer))).toBeCloseTo(outer - inner, 0);
+  });
+
+  it("fills in a contour inside another that runs the same way", () => {
+    const answer = filled([circle(0, 0, 100), circle(0, 0, 50)]);
+    expect(answer).toHaveLength(1);
+    expect(Math.abs(ink(answer))).toBeCloseTo(Math.abs(contourArea(circle(0, 0, 100))), 0);
+  });
+
+  it("covers both lobes of a figure eight, which wind opposite ways", () => {
+    const eight: Contour = {
+      closed: true,
+      nodes: [corner(0, 0), corner(100, 100), corner(100, 0), corner(0, 100)],
+    };
+    const answer = filled([eight]);
+    expect(pieces(answer)).toBe(2);
+    expect(
+      answer.reduce((total, contour) => total + Math.abs(contourArea(contour)), 0),
+    ).toBeCloseTo(2 * 2500, 3);
   });
 });
