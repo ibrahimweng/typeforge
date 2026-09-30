@@ -114,14 +114,12 @@ export interface Cuts {
   /**
    * A groove down the middle of every stroke.
    *
-   * The same skeleton swept a second time with a much thinner pen, and taken
-   * away. Which is why it follows the letter exactly and costs almost nothing
-   * to work out -- the hard part, where the middle of a stroke runs, is the
-   * thing this half of the application already knows.
-   *
-   * It is also why this is one of the two that cannot reach a letter somebody
-   * drew elsewhere: an imported outline has no middle to run down. Nothing
-   * happens rather than something wrong, and the panel says so.
+   * The letter shrunk by a wall's thickness all round, so both walls are the
+   * same wherever the groove runs, and taken away. Which is why it reaches a
+   * letter somebody drew elsewhere as well as one drawn here: shrinking asks
+   * nothing of a skeleton. The skeleton, where there is one, only says where
+   * the terminals are, so the groove can stop short of them by the inset; a
+   * letter from a font file has its groove stopped a wall short of every end.
    */
   inline: {
     on: boolean;
@@ -145,7 +143,13 @@ export const NO_CUTS: Cuts = {
   tooth: { on: false, pitch: 0.11, depth: 0.3, edge: "left" },
   chamfer: { on: false, size: 0.5 },
   split: { on: false, size: 0.45 },
-  inline: { on: false, width: 0.3, inset: 0.45 },
+  /*
+   * A fifth of the stem, which leaves each wall twice the groove. At three
+   * tenths the walls and the groove came out nearly alike, and a letter
+   * read as outlined in hairlines rather than grooved -- at a text size on
+   * the grid most of all.
+   */
+  inline: { on: false, width: 0.2, inset: 0.45 },
   motif: { on: false, shape: "diamond", size: 1 },
 };
 

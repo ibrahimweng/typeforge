@@ -336,7 +336,11 @@ describe("the inline at a terminal", () => {
     // The hold-back took the paper beside a curving terminal as well as past
     // it, and grown by the inset it bit a step into the groove's side where
     // the groove ended: one corner more than the groove's square end has.
-    const forge = forgeOf("Sans", 87, { cuts: { inline: {} } });
+    // At the width these counts were taken at: a groove narrower than the
+    // growing's rounding keeps both corners of its square end, one more
+    // corner apiece and no jog (the default narrowed from 0.3 to 0.2 so an
+    // inline no longer reads as a letter outlined in hairlines).
+    const forge = forgeOf("Sans", 87, { cuts: { inline: { width: 0.3 } } });
     const corners = (letter: string) => {
       let count = 0;
       for (const contour of unite(drawn(letter, forge), "winding")) {
@@ -380,9 +384,12 @@ describe("the inline on a roughened face", () => {
     ] as const) {
       const weight = BASES.find((one) => one.name === face)!.pen.weight;
       // Measured as ink taken: a groove that runs out through a terminal is
-      // a notch rather than a counter.
+      // a notch rather than a counter. At the width the share was set for:
+      // the default groove is narrower now and takes less of the ink.
       const plain = area(drawn(letter, forgeOf(face, weight, {})));
-      const grooved = area(drawn(letter, forgeOf(face, weight, { cuts: { inline: {} } })));
+      const grooved = area(
+        drawn(letter, forgeOf(face, weight, { cuts: { inline: { width: 0.3 } } })),
+      );
       expect(grooved, `${face} ${letter}`).toBeLessThan(plain * 0.9);
     }
   });
