@@ -1208,6 +1208,13 @@ const STILL = 600;
  */
 const SLICE = 8;
 
+/**
+ * How often the strip shows the letters it has made so far while it catches
+ * up: often enough to be seen to move, and not so often that putting four
+ * hundred and fifty-two cells on the page again is most of the work.
+ */
+const BATCH = 120;
+
 /** How long the letter holds still before the tool is drawn on it. */
 const PROOF_WAIT = 220;
 
@@ -1300,7 +1307,29 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
     };
   }, [state.settled, state.resting, revision]);
 
-  if (found.length === 0) return null;
+  /*
+   * And a check under way says so, whether or not the last one found anything.
+   *
+   * Only an earlier answer used to show that the letters were being looked
+   * over again: starting from a font with nothing to say and switching on a
+   * cut, the space under the strip stayed empty for the nine seconds the walk
+   * took and then filled, which reads as the page having missed something and
+   * caught up. One quiet line in the same place, under the strip, which the
+   * stage does not share.
+   */
+  if (found.length === 0) {
+    if (!stale) return null;
+    return (
+      <div
+        className="shrink-0 border-t border-border px-4 py-2 text-2xs text-muted-foreground"
+        data-forge-checking
+        role="status"
+        aria-busy
+      >
+        Checking letters…
+      </div>
+    );
+  }
   return (
     <div
       className={cn(
@@ -1525,32 +1554,83 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
    * The page stays answerable the whole way through, and nothing is lost but
    * the promptness of a shadow on a picture nine pixels across.
    */
-  const [ripe, setRipe] = React.useState<{ of: Forge; cells: Cell[] } | null>(null);
+  /*
+   * The letters made for the font the strip is showing, as they come.
+   *
+   * Handed over in batches rather than all at once at the end. Waiting for the
+   * last letter kept every other one as it was before the change: switching
+   * on Slots cut the letter on the stage at once and left the strip uncut for
+   * five seconds, which reads as the strip disagreeing with the stage rather
+   * than as a picture being redrawn. A batch goes up every tenth of a second or
+   * so, the letters in sight first, and the rest wait their turn marked as
+   * waiting.
+   */
+  const [ripe, setRipe] = React.useState<{
+    of: Forge;
+    cells: ReadonlyMap<string, Cell>;
+  } | null>(null);
+  const ripeNow = React.useRef(ripe);
+  ripeNow.current = ripe;
   React.useEffect(() => {
     // Nothing to put back on, so what is drawn already is the finished thing.
     // Asked for rather than assigned, because this runs again whenever the
     // visible set grows, and an answer that has not changed should not cost a
     // render of four hundred and fifty-two cells to say so.
     if (unshaped(settled) === settled) {
-      setRipe((was) => (was?.of === settled ? was : { of: settled, cells: plain }));
+      setRipe((was) =>
+        was?.of === settled && was.cells.size === plain.length
+          ? was
+          : { of: settled, cells: new Map(plain.map((cell) => [cell.name, cell])) },
+      );
       return;
     }
-    const made: Cell[] = [];
+    /*
+     * What was made for this font already is kept -- this runs again when a
+     * scroll brings more letters near -- except a letter that was far then and
+     * is near now, which was made as an empty box and has to be drawn.
+     */
+    const made = new Map<string, Cell>();
+    if (ripeNow.current?.of === settled)
+      for (const [name, cell] of ripeNow.current.cells)
+        if (cell.d || !near.has(name)) made.set(name, cell);
+    const order = [
+      ...names.filter((name) => near.has(name) && !made.has(name)),
+      ...names.filter((name) => !near.has(name) && !made.has(name)),
+    ];
+    if (order.length === 0) return;
     let at = 0;
-    let asked = 0;
-    const slice = () => {
+    let live = true;
+    let shown = performance.now();
+    /*
+     * Picked up again as the next task rather than at the next frame, as the
+     * health check below is: waiting for a frame between slices left the
+     * thread idle for the rest of every frame, and a cut letter that costs
+     * tens of milliseconds took a frame of its own.
+     */
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      if (!live) return;
       const until = performance.now() + SLICE;
-      while (at < names.length && performance.now() < until) {
-        made.push(cellOf(names[at++], near, settled));
+      while (at < order.length && performance.now() < until) {
+        const name = order[at++];
+        made.set(name, cellOf(name, near, settled));
       }
-      if (at < names.length) asked = window.requestAnimationFrame(slice);
-      else setRipe({ of: settled, cells: made });
+      const done = at >= order.length;
+      if (done || performance.now() - shown >= BATCH) {
+        shown = performance.now();
+        setRipe({ of: settled, cells: new Map(made) });
+      }
+      if (!done) channel.port2.postMessage(null);
     };
-    asked = window.requestAnimationFrame(slice);
-    return () => window.cancelAnimationFrame(asked);
+    channel.port2.postMessage(null);
+    return () => {
+      live = false;
+      channel.port1.onmessage = null;
+      channel.port1.close();
+    };
   }, [settled, near, names, plain]);
   /*
-   * The best each letter has, until the whole strip has caught up.
+   * The best each letter has, and whether it is the letter as it now stands.
    *
    * Falling back to the plain letters wholesale looked wrong in a way the
    * timings did not show: change one setting and for the better part of a
@@ -1561,23 +1641,39 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
    *
    * So a letter that already had a shape keeps it until its new one is ready,
    * and only a letter that has none -- one being scrolled to for the first
-   * time -- shows the plain drawing while it waits. The strip is always a whole
-   * font rather than a mixture caught mid-change.
+   * time -- shows the plain drawing while it waits. Either way a letter that
+   * is not yet the letter as it now stands is dimmed and marked as waiting, so
+   * the strip never passes off an old picture as the font.
    */
+  const shown = React.useRef<ReadonlyMap<string, Cell>>(new Map());
   const cells = React.useMemo(() => {
-    if (ripe?.of === settled) return ripe.cells;
-    if (!ripe) return plain;
-    const before = new Map(ripe.cells.map((cell) => [cell.name, cell]));
+    // Nothing cast or cut, and the plain letters are the letters.
+    if (unshaped(settled) === settled) return plain.map((cell) => ({ cell, waiting: false }));
+    const current = ripe?.of === settled ? ripe.cells : null;
     return plain.map((cell) => {
-      const was = before.get(cell.name);
-      return was?.d ? was : cell;
+      const fresh = current?.get(cell.name);
+      if (fresh) return { cell: fresh, waiting: false };
+      const was = shown.current.get(cell.name);
+      return { cell: was?.d ? was : cell, waiting: true };
     });
   }, [ripe, settled, plain]);
+  React.useEffect(() => {
+    shown.current = new Map(cells.map(({ cell }) => [cell.name, cell]));
+  }, [cells]);
+  const waiting = cells.some((one) => one.waiting);
 
-  return (
-    <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
+  /*
+   * The cells made once for what they show, not again on every change to the
+   * font while the strip holds still. It follows the settled font, so during a
+   * drag nothing in it changes -- but it was built afresh, four hundred and
+   * fifty-two buttons, on every frame of the drag all the same, and in a
+   * development build that was the largest single cost of a step of the
+   * weight slider.
+   */
+  const letters = React.useMemo(
+    () => (
       <div className="flex flex-wrap gap-1.5">
-        {cells.map((cell) => (
+        {cells.map(({ cell, waiting: behind }) => (
           <button
             key={cell.name}
             type="button"
@@ -1591,10 +1687,14 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
                   : cell.name
             }
             data-forge-cell={cell.name}
+            data-forge-cell-waiting={behind ? "yes" : undefined}
             ref={watch}
             className={tile(
               cell.name === selected,
-              "relative flex size-14 items-center justify-center rounded-md border",
+              cn(
+                "relative flex size-14 items-center justify-center rounded-md border",
+                behind && "opacity-40",
+              ),
             )}
           >
             {/* A size larger than it was: the frame is the whole font's reach now,
@@ -1638,6 +1738,31 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
           </button>
         ))}
       </div>
+    ),
+    [cells, selected, watch],
+  );
+
+  return (
+    <div
+      className="toolcraft-scrollbar relative min-h-0 flex-1 overflow-y-auto p-3"
+      data-forge-strip
+      data-forge-strip-updating={waiting ? "yes" : undefined}
+      aria-busy={waiting}
+    >
+      {/* Held at the top as the strip scrolls, and taking no room in it: a
+          note that pushed the letters about would move the one being aimed
+          at. */}
+      {waiting && (
+        <div className="pointer-events-none sticky top-0 z-10 h-0">
+          <span
+            className="absolute -top-2 right-0 rounded bg-card px-1.5 py-0.5 text-2xs text-muted-foreground shadow-sm"
+            data-forge-strip-note
+          >
+            Updating letters…
+          </span>
+        </div>
+      )}
+      {letters}
     </div>
   );
 }

@@ -47,10 +47,12 @@ import { buildGsubTable, type ChainRule, type GlyphSet, type Ligature } from "./
 import {
   anythingCut,
   effectiveParams,
+  isReshaped,
   paramsAreDefault,
   resolveAdvanceWidth,
   resolveGlyphContours,
 } from "./transform";
+import { type Resolved, resolveAll } from "./resolve-pool";
 import { readyToShape } from "@/forge/layers";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
 import {
@@ -302,14 +304,16 @@ async function resolvedGlyphs(
    * came down seven kilobytes and four more letters could follow the axis.
    */
   extremes = true,
+  /** The outlines worked out already, off the main thread, where they were. */
+  pre?: Resolved | null,
 ) {
   const out: Array<{
     glyph: Typeface["glyphs"][number];
     contours: ReturnType<typeof resolveGlyphContours>;
   }> = [];
 
-  for (const glyph of typeface.glyphs) {
-    let contours = resolveGlyphContours(glyph, typeface);
+  for (const [index, glyph] of typeface.glyphs.entries()) {
+    let contours = pre?.contours[index] ?? resolveGlyphContours(glyph, typeface);
 
     // Merging first, because it introduces points where contours crossed and
     // those new curves need extremes of their own afterwards. The merge sorts
@@ -348,6 +352,7 @@ async function masterOf(
   typeface: Typeface,
   context: { tolerance: number; mergeOverlaps: boolean; roles: Roles },
   shape: GlyfBuildInput[],
+  pre?: Resolved | null,
 ): Promise<Master> {
   // A master, so no extremes: see `resolvedGlyphs`. The default master is
   // written without them too, or it would not line up with these.
@@ -357,6 +362,7 @@ async function masterOf(
     context.mergeOverlaps,
     context.roles,
     false,
+    pre,
   );
   const built = buildGlyfTables(
     resolved.map((entry, index) => ({
@@ -378,12 +384,26 @@ async function masterOf(
       const drawn = resolved[index].contours.some((contour) => contour.nodes.length > 0);
       return {
         points,
-        advanceWidth: resolveAdvanceWidth(resolved[index].glyph, typeface),
+        advanceWidth: pre?.advances[index] ?? resolveAdvanceWidth(resolved[index].glyph, typeface),
         leftSideBearing: drawn ? Math.round(bounds.xMin) : 0,
         xMin: bounds.xMin,
       };
     }),
   };
+}
+
+/**
+ * The outlines of the font and of each master, resolved together off the
+ * main thread, or null where that is not worth doing: nothing reshaped means
+ * nothing to work out but the drawing itself.
+ */
+async function pooled(
+  typeface: Typeface,
+  variable: VariableOptions | undefined,
+): Promise<Resolved[] | null> {
+  const all = [typeface, ...(variable?.masters.map((master) => master.typeface) ?? [])];
+  if (!all.some((one) => one.glyphs.some((glyph) => isReshaped(glyph, one)))) return null;
+  return resolveAll(all);
 }
 
 async function exportTrueType(
@@ -400,12 +420,24 @@ async function exportTrueType(
     variable?: VariableOptions;
   },
 ): Promise<Uint8Array> {
+  /*
+   * Every outline the file needs, the masters' too, worked out across the
+   * cores the browser has before anything is written -- see `resolve-pool.ts`.
+   * Null where there is nothing costly to work out, or nowhere to work it out
+   * but here, and then each is resolved as it is reached, as it always was.
+   */
+  const pool = await pooled(typeface, context.variable);
   const resolved = await resolvedGlyphs(
     typeface,
     "truetype",
     context.mergeOverlaps,
     context.roles,
     !context.variable,
+    pool?.[0],
+  );
+  // After the outlines, which is what leaves each letter's advance known.
+  const advances = typeface.glyphs.map(
+    (glyph, index) => pool?.[0].advances[index] ?? resolveAdvanceWidth(glyph, typeface),
   );
   const preserving = context.fidelity === "preserve" && typeface.source !== null;
 
@@ -467,11 +499,11 @@ async function exportTrueType(
     !context.mergeOverlaps,
   );
 
-  const metrics = resolved.map((entry) => {
+  const metrics = resolved.map((entry, index) => {
     const bounds = contoursBounds(entry.contours);
     const hasOutline = entry.contours.some((contour) => contour.nodes.length > 0);
     return {
-      advanceWidth: resolveAdvanceWidth(entry.glyph, typeface),
+      advanceWidth: advances[index],
       leftSideBearing: hasOutline ? Math.round(bounds.xMin) : 0,
     };
   });
@@ -513,8 +545,8 @@ async function exportTrueType(
     };
 
     const others: Master[] = [];
-    for (const master of varying.masters) {
-      others.push(await masterOf(master.at, master.typeface, context, inputs));
+    for (const [index, master] of varying.masters.entries()) {
+      others.push(await masterOf(master.at, master.typeface, context, inputs, pool?.[index + 1]));
     }
 
     const { gvar, unvarying } = buildGvar(varying.axes, mine, others);
@@ -566,7 +598,7 @@ async function exportTrueType(
     patchWinMetrics(tables, built.bounds);
     patchIdentityTables(tables, typeface, identity, invented);
   } else {
-    buildBaselineTables(tables, typeface, built, numberOfHMetrics, context.now, invented);
+    buildBaselineTables(tables, typeface, built, numberOfHMetrics, context.now, invented, advances);
   }
 
   applyKerning(tables, typeface, context.includeKerning, false, context.notes);
@@ -1465,6 +1497,8 @@ function buildBaselineTables(
   now: number,
   /** Names the font invented for its own axes and instances, if it has any. */
   invented: Array<{ id: number; value: string }> = [],
+  /** Every glyph's advance, where the caller has them already. */
+  known?: number[],
 ): void {
   const mappings: Array<{ codepoint: number; glyphId: number }> = [];
   typeface.glyphs.forEach((glyph, index) => {
@@ -1472,7 +1506,7 @@ function buildBaselineTables(
   });
   const codepoints = mappings.map((entry) => entry.codepoint);
 
-  const advances = typeface.glyphs.map((glyph) => resolveAdvanceWidth(glyph, typeface));
+  const advances = known ?? typeface.glyphs.map((glyph) => resolveAdvanceWidth(glyph, typeface));
   const isItalic = /italic|oblique/i.test(typeface.meta.styleName);
   /*
    * The bold bit means "this is the bold of its family", not "this is heavy".

@@ -482,7 +482,8 @@ function Parameters({
                     if (started.on === "glyph") {
                       store.setGlyphParam(started.name, spec.key, scaled);
                     } else {
-                      store.setFamilyParam(spec.key, scaled);
+                      // A step of the gesture: drawn as a draft until it ends.
+                      store.setFamilyParam(spec.key, scaled, true);
                     }
                     return;
                   }

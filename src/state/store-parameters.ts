@@ -1,13 +1,39 @@
 import { noCuts, NO_CUTS, sameCut, type CutName, type Cuts } from "@/font/cuts";
 import { noCast, NO_CAST, sameCast, type Cast, type CastName } from "@/font/cast";
+import { isDraft, markDraft } from "@/font/draft";
 import type { GlyphParams } from "@/font/types";
 import { PenStore } from "./store-pen";
 
+/**
+ * How long the weight holds still, in the middle of a gesture, before the
+ * letters are drawn exactly. A drag says when it ends; a run of arrow presses
+ * never does, and this is what ends it.
+ */
+const DRAFT_REST = 500;
+
 export abstract class ParameterStore extends PenStore {
-  setFamilyParam<K extends keyof GlyphParams>(key: K, value: GlyphParams[K]): void {
+  private draftRest: ReturnType<typeof setTimeout> | undefined;
+
+  /**
+   * Set one of the family's parameters. `draft` says this is a step in a
+   * gesture still under way, and a weight set so is drawn from the weights the
+   * letters were last drawn at rather than weighed again (see `draft.ts`):
+   * exactly once the gesture ends, or once it has held still a moment.
+   */
+  setFamilyParam<K extends keyof GlyphParams>(key: K, value: GlyphParams[K], draft = false): void {
     const typeface = this.state.typeface;
     if (!typeface) return;
     typeface.params = { ...typeface.params, [key]: value };
+    clearTimeout(this.draftRest);
+    if (draft && key === "weight") {
+      markDraft(typeface.params);
+      this.draftRest = setTimeout(() => {
+        if (this.state.typeface !== typeface || !isDraft(typeface.params)) return;
+        // The same values, no longer a draft.
+        typeface.params = { ...typeface.params };
+        this.touch();
+      }, DRAFT_REST);
+    }
     this.touch();
   }
 
