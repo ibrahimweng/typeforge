@@ -308,6 +308,16 @@ let takingHigh: { entry?: boolean; exit?: boolean } = {};
  */
 let endsWithout: Partial<Ends> | null = null;
 
+/**
+ * Which halves of the join the letter being drawn now is taking high and doing
+ * without, said as a key: two drawings of a letter under different answers
+ * are different drawings, and whatever keeps one must not hand it out as the
+ * other.
+ */
+export function joiningNow(): string {
+  return `${takingHigh.entry}${takingHigh.exit}${endsWithout?.entry}${endsWithout?.exit}`;
+}
+
 export function joiningWithout<T>(which: Partial<Ends>, run: () => T): T {
   const was = endsWithout;
   endsWithout = which;

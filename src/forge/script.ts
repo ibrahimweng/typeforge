@@ -1191,8 +1191,37 @@ function reaching(
   half: number,
   across: number,
 ): { much: number; over: number } {
-  const lands = (much: number, over: number) =>
-    spines.some((one) => standsOn(one, at(end.x + over, end.y + much), half));
+  /*
+   * Each run laid out once, where `standsOn` laid it out again for every step
+   * of the walk, and boxed: a point further from a run's box than `half` is
+   * further than that from every point of it. The same points, asked the same
+   * way, of the runs that can answer yes.
+   */
+  const laid = spines.map((one) => {
+    const along = alongSpine(one, SAMPLES);
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    for (const point of along) {
+      xMin = Math.min(xMin, point.x);
+      xMax = Math.max(xMax, point.x);
+      yMin = Math.min(yMin, point.y);
+      yMax = Math.max(yMax, point.y);
+    }
+    return { along, xMin, xMax, yMin, yMax };
+  });
+  const lands = (much: number, over: number) => {
+    const point = at(end.x + over, end.y + much);
+    return laid.some(
+      (run) =>
+        point.x >= run.xMin - half - 1e-9 &&
+        point.x <= run.xMax + half + 1e-9 &&
+        point.y >= run.yMin - half - 1e-9 &&
+        point.y <= run.yMax + half + 1e-9 &&
+        run.along.some((one) => Math.hypot(one.x - point.x, one.y - point.y) <= half),
+    );
+  };
   if (lands(deep, 0) || half <= 0) return { much: deep, over: 0 };
   for (let much = deep + half; much <= available; much += half) {
     if (lands(much, 0)) return { much, over: 0 };
