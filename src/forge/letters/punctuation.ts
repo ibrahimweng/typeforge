@@ -33,6 +33,7 @@ import {
   fraction,
   type Frame,
   frame,
+  inherit,
   ink,
   joined,
   LEVEL,
@@ -996,6 +997,30 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   yen: outOf("Y", (f, y) => {
     const drawn = y();
     const across = spread(drawn);
+    // A face that says where its bars go (`metrics.yen`) draws them there.
+    const told = f.style.metrics.yen;
+    if (told) {
+      const middle = (across.xMin + across.xMax) / 2 + f.cap * told.shift;
+      const reach = f.cap * told.reach;
+      // Never deeper than leaves a third of the space between them open:
+      // past a Black the two ran together into a block.
+      const apart = f.cap * Math.abs(told.bars[1] - told.bars[0]);
+      const deep = Math.min(f.style.pen.weight * told.deep, apart * 0.67);
+      return joined(
+        f,
+        drawn,
+        told.bars.map((share) => {
+          const row = f.cap * share;
+          const one = thin(
+            f,
+            straight(at(middle - reach, row), at(middle + reach, row)),
+            BUTT,
+            BUTT,
+          );
+          return inherit(one, { ...one, pen: { ...one.pen, contrast: 0, weight: deep } });
+        }),
+      );
+    }
     const bar = f.style.pen.weight * f.bar;
     const junction = f.cap * 0.46;
     const top = junction - f.style.pen.weight * 0.85 - bar / 2;

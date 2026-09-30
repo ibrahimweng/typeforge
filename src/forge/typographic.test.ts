@@ -211,10 +211,12 @@ describe("where the typographic punctuation sits", () => {
       );
       expect(minus.xMax - minus.xMin).toBeCloseTo(plus.xMax - plus.xMin, -1);
       const bullet = box("bullet", style);
-      expect(
-        Math.abs((bullet.yMin + bullet.yMax) / 2 - style.metrics.xHeight / 2),
-        style.name,
-      ).toBeLessThan(style.metrics.unitsPerEm * 0.02);
+      // The Serif's stands where Lora's does, three quarters of the way up the
+      // x-height (374 on 500), rather than on its middle.
+      const middle = style.metrics.xHeight * (style.name === "Serif" ? 0.748 : 0.5);
+      expect(Math.abs((bullet.yMin + bullet.yMax) / 2 - middle), style.name).toBeLessThan(
+        style.metrics.unitsPerEm * 0.02,
+      );
       expect(bullet.xMax - bullet.xMin).toBeGreaterThan(
         box("period", style).xMax - box("period", style).xMin,
       );

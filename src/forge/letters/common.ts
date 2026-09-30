@@ -14,6 +14,7 @@
  * finished loading.
  */
 
+import { contoursBounds } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { wrapAngle } from "../angles";
 import { LETTERS, recipeOf } from "../letters";
@@ -4498,8 +4499,10 @@ export function ordinal(f: Frame, name: LetterName): Recipe {
 
 /** A superior figure: the figure, small, with its head at the cap line. */
 export function superior(f: Frame, name: LetterName): Recipe {
-  const share = 0.6;
-  return { strokes: setSmall(f.style, name, share, f.edge, f.cap * (1 - share)) };
+  const set = f.style.metrics.superiors;
+  const share = set?.share ?? 0.6;
+  const foot = set ? f.cap * set.foot : f.cap * (1 - share);
+  return { strokes: setSmall(f.style, name, share, f.edge, foot, set?.pen) };
 }
 
 /**
@@ -4510,6 +4513,7 @@ export function superior(f: Frame, name: LetterName): Recipe {
  * halves are level reads as two figures with a slash in the middle.
  */
 export function fraction(f: Frame, over: LetterName, under: LetterName): Recipe {
+  if (f.style.metrics.superiors) return textFraction(f, over, under);
   const share = 0.58;
   const gap = f.style.pen.weight * 0.34;
   const numerator = setSmall(f.style, over, share, f.edge, f.cap * (1 - share));
@@ -4526,6 +4530,47 @@ export function fraction(f: Frame, over: LetterName, under: LetterName): Recipe 
       ...numerator,
       ...stroke,
       ...setSmall(f.style, under, share, spread(stroke).xMax + gap, 0),
+    ],
+  };
+}
+
+/**
+ * A fraction as a text face sets it (`metrics.superiors`): the numerator a
+ * superior figure, the denominator the same figure standing on the line, and
+ * between them a long slash from the line to the cap line, cut square, its
+ * foot under the middle of the numerator and the denominator tucked under
+ * its head -- Lora's, where the figures overlap the slash's run rather than
+ * standing clear of it.
+ */
+function textFraction(f: Frame, over: LetterName, under: LetterName): Recipe {
+  const set = f.style.metrics.superiors!;
+  const numerator = setSmall(f.style, over, set.share, f.edge, f.cap * set.foot, set.pen);
+  // Measured off the swept ink: the skeleton and the pen alone miss the
+  // serifs, and the slash then stood off the middle of a flagged one.
+  const inkOf = (strokes: Stroke[]) => {
+    const all = strokes.flatMap((stroke) => sweep(stroke));
+    return contoursBounds(all);
+  };
+  const top = inkOf(numerator);
+  const wide = Math.max(f.style.pen.weight * set.slash, f.cap * 0.03);
+  const low = -f.cap * 0.004;
+  const high = f.cap * 1.0007;
+  const foot = at(top.xMin + (top.xMax - top.xMin) * 0.52, low);
+  const head = at(foot.x + (high - low) * set.slope, high);
+  const drawn = ink(f, straight(foot, head), BUTT, BUTT);
+  const slash = finish(f, [
+    inherit(drawn, { ...drawn, pen: { ...f.style.pen, contrast: 0, weight: wide } }),
+  ]).strokes;
+  // The denominator's ink starts 0.41 of the cap height on from the slash's
+  // foot, under its head, as Lora's does (287 on a cap height of 700).
+  const along = foot.x + f.cap * 0.41;
+  const denominator = setSmall(f.style, under, set.share, 0, 0, set.pen);
+  const box = inkOf(denominator);
+  return {
+    strokes: [
+      ...numerator,
+      ...slash,
+      ...denominator.map((stroke) => shovedStroke(stroke, along - box.xMin, 0)),
     ],
   };
 }
