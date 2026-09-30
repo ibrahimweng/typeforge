@@ -1071,6 +1071,8 @@ function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
    * black weight the drop filled the upper counter.
    */
   const footBeak = ["S", "\u0405", "s", "\u0455"].includes(decidedBy(name));
+  // And which of them stands to the cap height: the S, and the $ drawn from it.
+  const tallS = ["S", "\u0405"].includes(decidedBy(name));
   // And the J is the one capital whose hook ends in a drop, as Lora's does:
   // cut plain, its end came to a point under the letter.
   const capitalDrop = capital && ["J", "\u0408"].includes(decidedBy(name));
@@ -1091,6 +1093,7 @@ function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
       footBeak,
       capitalDrop,
       anyDrop,
+      tallS,
     ),
   );
   const swept = dressed.map((stroke) => sweep(stroke));
@@ -1166,6 +1169,7 @@ function dress(
   footBeak = false,
   capitalDrop = false,
   anyDrop = false,
+  tallS = false,
 ): Stroke {
   if (stroke.spine.closed || stroke.spine.segments.length === 0) return stroke;
   const straight = endsStraight(stroke.spine);
@@ -1218,7 +1222,9 @@ function dress(
       const curve = insideOfCurve(spine, at);
       const top = curve !== null && curve.toward.y < -0.25;
       const foot = footBeak && curve !== null && curve.toward.y > 0.25 && outward.x < -0.2;
-      const height = capital ? style.metrics.capHeight : style.metrics.xHeight;
+      // An S's beaks hang from the cap height, and so do a $'s drawn from it.
+      const tall = capital || (tallS && footBeak);
+      const height = tall ? style.metrics.capHeight : style.metrics.xHeight;
       if (decided(top || foot)) {
         return {
           kind: "butt",
@@ -1226,6 +1232,25 @@ function dress(
           beak: {
             reach: top ? height * (1 - BEAK) : height * BEAK,
             way: top ? -1 : 1,
+            /*
+             * The s's and the S's as Lora's: an upright bar from the line to
+             * the beak's depth, the curve running into its inside, where a
+             * wedge off the end read as a blob. Lora's are about half a stem
+             * across, at the Regular and the Bold.
+             */
+            bar: footBeak
+              ? {
+                  // Past the Bold gaining only a third of what the pen does,
+                  // or a Black's were blocks closing the counters.
+                  width:
+                    (tall ? S_BAR : S_BAR_SMALL) *
+                    Math.min(
+                      stroke.pen.weight,
+                      boldPen(style) + (stroke.pen.weight - boldPen(style)) / 3,
+                    ),
+                  from: top ? height + style.metrics.overshoot : 0,
+                }
+              : undefined,
           },
         };
       }
@@ -1693,6 +1718,16 @@ function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
  */
 const BEAK = 0.3;
 
+/** How wide the S's beaks are drawn as bars, against its pen: Lora's are 50 on 87. */
+const S_BAR = 0.56;
+/** And the s's: Lora's are 40 on 87, and 76 on 142. */
+const S_BAR_SMALL = 0.5;
+
+/** The pen of Lora's Bold, 142 on an x-height of 500, on this face. */
+function boldPen(style: Style): number {
+  return (142 * style.metrics.xHeight) / 500;
+}
+
 /**
  * The beaks on one stroke: an upright wedge off a curved end.
  *
@@ -1726,6 +1761,24 @@ function beaksFor(stroke: Stroke): Contour[] {
         ? Math.min(beak.reach, outer.y - width * 0.8)
         : Math.max(beak.reach, outer.y + width * 0.8);
     const tip = { x: outer.x, y: tipY };
+    if (beak.bar) {
+      // An upright bar from the line to the tip, standing inside the
+      // letter from the end's outer corner: the same four nodes.
+      const inward = curve.toward.x < 0 ? -1 : 1;
+      const x = outer.x;
+      const x2 = outer.x + inward * beak.bar.width;
+      const bar: Contour = {
+        nodes: [
+          node({ x, y: beak.bar.from }),
+          node({ x, y: tipY }),
+          node({ x: x2, y: tipY }),
+          node({ x: x2, y: beak.bar.from }),
+        ],
+        closed: true,
+      };
+      out.push(contourArea(bar) < 0 ? reverseContour(bar) : bar);
+      continue;
+    }
     /*
      * The inside is one hollow curve from the tip back to the end's inner
      * corner: leaving the tip upright and arriving at the corner along the

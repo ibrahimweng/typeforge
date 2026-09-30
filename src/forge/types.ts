@@ -226,7 +226,16 @@ export interface Terminal {
    * units, and `way` which way it runs: minus one down, one up.
    * Settled when the end is dressed; the end itself is then a plain cut.
    */
-  beak?: { reach: number; way: number };
+  beak?: {
+    reach: number;
+    way: number;
+    /**
+     * Drawn as an upright bar `width` across, from the line at `from` to the
+     * tip, standing inside the letter from the end's outer corner: the s's
+     * and the S's, as Lora draws them.
+     */
+    bar?: { width: number; from: number };
+  };
 }
 
 /**
