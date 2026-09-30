@@ -1048,31 +1048,80 @@ export function closestApproach(
 ): { distance: number; on: Vec2; off: Vec2 } {
   const a = flattenedLoop(one, steps);
   const b = flattenedLoop(other, steps);
-  const none = { distance: Infinity, on: { x: 0, y: 0 }, off: { x: 0, y: 0 } };
-  if (a.length < 2 || b.length < 2) return none;
-  const apart = (p: Bounds, q: Bounds) =>
-    Math.max(p.xMin - q.xMax, q.xMin - p.xMax, p.yMin - q.yMax, q.yMin - p.yMax, 0);
-  const boxesA = a.slice(1).map((point, index) => boundsOf([a[index], point]));
-  const boxesB = b.slice(1).map((point, index) => boundsOf([b[index], point]));
-  let best = none;
-  const consider = (distance: number, on: Vec2, off: Vec2) => {
-    if (distance < best.distance) best = { distance, on, off };
+  if (a.length < 2 || b.length < 2)
+    return { distance: Infinity, on: { x: 0, y: 0 }, off: { x: 0, y: 0 } };
+  /*
+   * Written out, with nothing made for a pair of pieces that is passed over:
+   * this is asked of every pair of pieces of a letter that come near each
+   * other, every time a letter is weighed, and the boxes, lists and points it
+   * made for each were most of what it cost. The pieces are asked in the same
+   * order and each distance worked out the same way, so the answer is the
+   * same one; a distance plainly longer than the best found so far is passed
+   * over on its square before it is worked out exactly.
+   */
+  const boxesA = pieceBoxes(a);
+  const boxesB = pieceBoxes(b);
+  let best = Infinity;
+  let on: Vec2 = { x: 0, y: 0 };
+  let off: Vec2 = { x: 0, y: 0 };
+  // The best distance squared, a hair long, for passing over what is further.
+  let bound = Infinity;
+  const consider = (px: number, py: number, qx: number, qy: number, pOn: boolean) => {
+    const dx = qx - px;
+    const dy = qy - py;
+    if (dx * dx + dy * dy > bound) return;
+    const gap = Math.hypot(dx, dy);
+    if (gap < best) {
+      best = gap;
+      on = pOn ? { x: px, y: py } : { x: qx, y: qy };
+      off = pOn ? { x: qx, y: qy } : { x: px, y: py };
+      bound = best * best * (1 + 1e-9) + 1e-12;
+    }
   };
-  for (let i = 0; i + 1 < a.length; i++)
+  // The nearest place to p on the piece from s to e, handed to `consider`.
+  const toPiece = (p: Vec2, s: Vec2, e: Vec2, pOn: boolean) => {
+    const dx = e.x - s.x;
+    const dy = e.y - s.y;
+    const length = dx * dx + dy * dy;
+    const t =
+      length > 0 ? Math.max(0, Math.min(1, ((p.x - s.x) * dx + (p.y - s.y) * dy) / length)) : 0;
+    consider(p.x, p.y, s.x + t * dx, s.y + t * dy, pOn);
+  };
+  for (let i = 0; i + 1 < a.length; i++) {
+    const ai = i * 4;
     for (let j = 0; j + 1 < b.length; j++) {
-      if (apart(boxesA[i], boxesB[j]) >= best.distance) continue;
+      const bj = j * 4;
+      const apart = Math.max(
+        boxesA[ai] - boxesB[bj + 1],
+        boxesB[bj] - boxesA[ai + 1],
+        boxesA[ai + 2] - boxesB[bj + 3],
+        boxesB[bj + 2] - boxesA[ai + 3],
+        0,
+      );
+      if (apart >= best) continue;
       const hit = crossingOf(a[i], a[i + 1], b[j], b[j + 1]);
       if (hit) return { distance: 0, on: hit.at, off: hit.at };
-      for (const point of [a[i], a[i + 1]]) {
-        const near = nearestOn(point, b[j], b[j + 1]);
-        consider(distance(point, near), point, near);
-      }
-      for (const point of [b[j], b[j + 1]]) {
-        const near = nearestOn(point, a[i], a[i + 1]);
-        consider(distance(point, near), near, point);
-      }
+      toPiece(a[i], b[j], b[j + 1], true);
+      toPiece(a[i + 1], b[j], b[j + 1], true);
+      toPiece(b[j], a[i], a[i + 1], false);
+      toPiece(b[j + 1], a[i], a[i + 1], false);
     }
-  return best;
+  }
+  return { distance: best, on, off };
+}
+
+/** The box round each piece of a polyline, as xMin, xMax, yMin, yMax in turn. */
+function pieceBoxes(points: Vec2[]): Float64Array {
+  const boxes = new Float64Array(Math.max(0, points.length - 1) * 4);
+  for (let k = 0; k + 1 < points.length; k++) {
+    const p = points[k];
+    const q = points[k + 1];
+    boxes[k * 4] = Math.min(p.x, q.x);
+    boxes[k * 4 + 1] = Math.max(p.x, q.x);
+    boxes[k * 4 + 2] = Math.min(p.y, q.y);
+    boxes[k * 4 + 3] = Math.max(p.y, q.y);
+  }
+  return boxes;
 }
 
 /**
@@ -1103,18 +1152,6 @@ export function pointInside(contour: Contour): Vec2 | null {
 function flattenedLoop(contour: Contour, steps: number): Vec2[] {
   const points = flattenContour(contour, steps);
   return contour.closed && points.length > 0 ? [...points, points[0]] : points;
-}
-
-/** The nearest place to a point on a straight piece. */
-function nearestOn(point: Vec2, from: Vec2, to: Vec2): Vec2 {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = dx * dx + dy * dy;
-  const t =
-    length > 0
-      ? Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / length))
-      : 0;
-  return { x: from.x + t * dx, y: from.y + t * dy };
 }
 
 /** Even-odd containment test, used to tell counters from outer shapes. */
