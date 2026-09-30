@@ -325,8 +325,13 @@ export function assemble(tiles: Tiles, style: Style, kit: Kit): Assembled {
      * the middle, they are a straight line -- and drawn as a turn instead,
      * every horizontal arm in the font came back as a row of V's.
      */
+    // Not a diagonal that only passes through a corner, though: two arms of a
+    // Y arriving at the top corners of its stem are a fork, not a bar.
+    const diagonal = (port: Port): boolean => diagonalOnly(tiles, column, row, port);
     for (const port of [...spare]) {
-      const along = spare.find((other) => other !== port && sameEdge(port, other));
+      const along = spare.find(
+        (other) => other !== port && sameEdge(port, other) && !diagonal(port) && !diagonal(other),
+      );
       if (spare.includes(port) && along) {
         straight(port, along);
         take(port, along);
@@ -479,7 +484,14 @@ function bend(from: Vec2, corner: Vec2, to: Vec2, radius: number, penHalf: numbe
 
   const halfTurn = between / 2;
   const arm = Math.min(distanceBetween(corner, from), distanceBetween(corner, to));
-  const fits = Math.min(radius, arm * Math.tan(halfTurn));
+  /*
+   * Held a thousandth short of the whole arm. A turn that takes all of it ends
+   * its arc exactly on the port, and a ring built only of such turns -- the o
+   * of the grid alphabet, a rounded square -- came out of the fuse as one
+   * solid with no counter. A thousandth of the arm is a tenth of a unit, and
+   * leaves each end a straight stub the fuse has no trouble joining.
+   */
+  const fits = Math.min(radius, arm * Math.tan(halfTurn) * 0.999);
   if (fits <= penHalf * 1.02) return square;
 
   const back = fits / Math.tan(halfTurn);

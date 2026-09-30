@@ -8,7 +8,9 @@
 
 import { describe, expect, it } from "vitest";
 
-import { layOut, startFrom } from "./document";
+import { ready, unite } from "@/font/boolean";
+import { contourArea } from "@/font/geometry";
+import { draw, layOut, startFrom, useKit } from "./document";
 import { cellKey, GRID, type Tiles } from "./kit";
 import { DRAWN_ON_GRID, drawnTiles } from "./kit-alphabet";
 import { SANS } from "./style";
@@ -86,6 +88,21 @@ describe("the alphabet drawn for the grid", () => {
     expect(drawnTiles("c", { ...GRID, rows: 7 })).toBeNull();
     expect(drawnTiles("c", { ...GRID, below: 1 })).toBeNull();
   });
+
+  it("keeps the counters of the round letters through the fuse", async () => {
+    // A ring of four full-roundness turns came out of the fuse solid.
+    await ready();
+    const grid = useKit(layOut(startFrom(SANS)), true);
+    for (const letter of ["o", "O", "zero", "b", "e", "Y"]) {
+      const fused = unite(draw(letter, grid)!.contours, "winding");
+      expect(
+        fused.filter((one) => contourArea(one) > 0),
+        letter,
+      ).toHaveLength(1);
+      const holes = fused.filter((one) => contourArea(one) < 0).length;
+      expect(holes, letter).toBe(letter === "Y" ? 0 : 1);
+    }
+  }, 60_000);
 
   it("is what a new grid starts from", () => {
     const kit = layOut(startFrom(SANS)).kit!;
