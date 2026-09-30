@@ -1759,6 +1759,85 @@ function inlineTool(
 }
 
 /**
+ * Whether a shape anywhere narrows to less than `across`: two points of its
+ * outline that near each other with the shape between them, which are not
+ * simply neighbours along one stretch of it. Asked before the erosion that
+ * finds where, since most grooves have no neck and an erosion round a whole
+ * groove costs more than the rest of the inline.
+ */
+function pinched(shape: Contour[], across: number): boolean {
+  const outlines = shape.map((contour) => flattenContour(contour, 8));
+  const inside = (point: Vec2): boolean => {
+    let winding = 0;
+    for (const points of outlines) {
+      for (let index = 0; index < points.length; index++) {
+        const a = points[index];
+        const b = points[(index + 1) % points.length];
+        const side = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+        if (a.y <= point.y) {
+          if (b.y > point.y && side > 0) winding++;
+        } else if (b.y <= point.y && side < 0) winding--;
+      }
+    }
+    return winding !== 0;
+  };
+  // How far along each outline each of its points lies.
+  const runs = outlines.map((points) => {
+    const run = [0];
+    for (let index = 1; index < points.length; index++) {
+      const a = points[index - 1];
+      const b = points[index];
+      run.push(run[index - 1] + Math.hypot(b.x - a.x, b.y - a.y));
+    }
+    const last = points[points.length - 1];
+    const total = run[run.length - 1] + Math.hypot(points[0].x - last.x, points[0].y - last.y);
+    return { run, total };
+  });
+  // Each point of each outline against each edge of every outline: an edge
+  // is measured along its length, so a neck between two long straight edges
+  // is found from the end of either.
+  for (let one = 0; one < outlines.length; one++) {
+    for (let two = 0; two < outlines.length; two++) {
+      const a = outlines[one];
+      const b = outlines[two];
+      for (let i = 0; i < a.length; i++) {
+        const p = a[i];
+        for (let j = 0; j < b.length; j++) {
+          const from = b[j];
+          const to = b[(j + 1) % b.length];
+          if (
+            p.x < Math.min(from.x, to.x) - across ||
+            p.x > Math.max(from.x, to.x) + across ||
+            p.y < Math.min(from.y, to.y) - across ||
+            p.y > Math.max(from.y, to.y) + across
+          )
+            continue;
+          const dx = to.x - from.x;
+          const dy = to.y - from.y;
+          const span = dx * dx + dy * dy;
+          const t =
+            span > 0
+              ? Math.max(0, Math.min(1, ((p.x - from.x) * dx + (p.y - from.y) * dy) / span))
+              : 0;
+          const q = { x: from.x + dx * t, y: from.y + dy * t };
+          const off = Math.hypot(p.x - q.x, p.y - q.y);
+          if (off >= across || off < 1e-6) continue;
+          if (one === two) {
+            const { run, total } = runs[one];
+            const at = run[j] + Math.sqrt(span) * t;
+            const apart = Math.abs(at - run[i]);
+            // Neighbours along the outline, or round a groove's own end.
+            if (Math.min(apart, total - apart) < across * 3) continue;
+          }
+          if (inside({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 })) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
  * A groove parted where it runs through a neck no wider than twice `reach`.
  *
  * Where a bowl meets its stem thinned, in the notch the Sans's b, d, p and q
@@ -1771,8 +1850,13 @@ function inlineTool(
  */
 function withoutNecks(core: Contour[], reach: number): Contour[] {
   if (core.length === 0) return core;
-  const opened = outlined(eroded(core, reach), reach);
   const solids = (contours: Contour[]) => contours.filter((one) => contourArea(one) > 0);
+  if (!pinched(core, reach * 2)) return core;
+  // Grown back only where shrinking it parted it: growing never parts
+  // anything, so a groove the shrinking leaves whole has no neck.
+  const shrunk = eroded(core, reach);
+  if (solids(shrunk).length <= solids(core).length) return core;
+  const opened = outlined(shrunk, reach);
   const kept = solids(opened);
   if (kept.length <= solids(core).length) return core;
   const bridges = solids(subtract(core, opened, "winding")).filter(
