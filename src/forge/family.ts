@@ -195,11 +195,6 @@ export function weightsOf(family: Family): number[] {
   return [...new Set([family.drawn, ...family.also])].sort((one, other) => one - other);
 }
 
-/** Whether a set of weights is more than the one on screen. */
-export function isFamily(family: Family): boolean {
-  return weightsOf(family).length > 1;
-}
-
 /**
  * What one member of the family is called, and what file it goes in.
  *

@@ -1005,10 +1005,6 @@ export const CUT_SPECS: CutSpec[] = [
   },
 ];
 
-export function cutSpecFor(name: CutName): CutSpec | undefined {
-  return CUT_SPECS.find((spec) => spec.name === name);
-}
-
 /** A cut's current values as a plain record, for reading a control out of it. */
 export function cutValuesOf(name: CutName, cuts: Cuts): Record<string, number | boolean | string> {
   return cuts[name] as unknown as Record<string, number | boolean | string>;
@@ -1099,10 +1095,6 @@ export const CAST_SPECS: CastSpec[] = [
     ],
   },
 ];
-
-export function castSpecFor(name: CastName): CastSpec | undefined {
-  return CAST_SPECS.find((spec) => spec.name === name);
-}
 
 /** One operation's current values as a plain record, for reading a control out. */
 export function castValuesOf(
