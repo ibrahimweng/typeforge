@@ -298,7 +298,14 @@ export function Inspector(): React.JSX.Element {
                 }
                 className={segment(
                   scope === option,
-                  cn("min-w-0 flex-1 truncate", option === "glyph" && !glyph && "opacity-40"),
+                  // The letter's tab carries a name as well as a word, so it
+                  // gets the room for one: at equal thirds "Letter newGlyph"
+                  // came out as "Letter ne…".
+                  cn(
+                    "min-w-0 truncate",
+                    option === "glyph" ? "flex-[2]" : "flex-1",
+                    option === "glyph" && !glyph && "opacity-40",
+                  ),
                 )}
               >
                 {/*

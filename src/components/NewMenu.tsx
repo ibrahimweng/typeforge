@@ -32,6 +32,7 @@ import * as React from "react";
 import type { Mode } from "@/App";
 import { useMenuBehaviour } from "@/components/menu-keys";
 import { OUTLINE_ACTION } from "@/components/controls";
+import { BASE_COUNT, inWords } from "@/forge/base-count";
 import { useAssemble } from "@/state/useAssemble";
 import { useQuill } from "@/state/useQuill";
 import { useAppState } from "@/state/useStore";
@@ -93,7 +94,7 @@ export function NewMenu({
        * made.
        */
       holds: opened.has("forge"),
-      said: "Pick one of twenty families and a whole alphabet is drawn for you",
+      said: `Pick one of ${inWords(BASE_COUNT)} styles and a whole alphabet is drawn for you`,
     },
     {
       mode: "quill",
