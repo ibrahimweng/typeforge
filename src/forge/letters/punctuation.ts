@@ -6,9 +6,12 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
-import { spineEnd, spineStart } from "../shapes";
-import type { Style } from "../style";
-import type { Terminal } from "../types";
+import { spineEnd } from "../shapes";
+import { penReach, reachAlong } from "../sweep";
+import { blackness, type Style } from "../style";
+import type { Vec2 } from "@/font/types";
+import type { Spine, Stroke, Terminal } from "../types";
+import { stackedPen } from "./grotesque";
 import {
   arm,
   at,
@@ -17,30 +20,36 @@ import {
   bend,
   bendWidth,
   bent,
+  bookish,
   brace,
   BUTT,
   chain,
   chevrons,
+  deg,
   dot,
   enclosed,
   figureWidth,
   finish,
   fraction,
+  type Frame,
   frame,
   ink,
   joined,
+  LEVEL,
   type LetterName,
   ordinal,
   outOf,
+  shovedStroke,
+  spine,
   pointOn,
   type Recipe,
   ring,
   shortEnd,
-  shovedStroke,
   signGap,
   signWidth,
-  spine,
   spread,
+  squareDots,
+  stopRadius,
   straight,
   superior,
   tail,
@@ -48,46 +57,373 @@ import {
   thin,
   turn,
   turnedDown,
+  hookFrom,
+  stemSide,
 } from "./common";
+
+/** The hairline of a text face's marks: the thin of its own pen, with a floor. */
+function hairline(f: Frame): number {
+  const { weight, contrast } = f.style.pen;
+  return Math.max(
+    weight * (1 - Math.min(Math.max(contrast, 0), 0.9)) * 0.9,
+    f.style.metrics.unitsPerEm * 0.012,
+  );
+}
+
+/**
+ * An upright wedge, wide at the top and narrow at the foot, cut level at both.
+ *
+ * Drawn as two leaning strokes side by side, each a parallelogram half the
+ * width of the top: together their outer edges are the two sides of the
+ * wedge, and between them there is no gap as long as the foot is at least half
+ * as wide as the top, which it is held to.
+ */
+function wedge(
+  f: Frame,
+  x: number,
+  top: number,
+  bottom: number,
+  topWide: number,
+  footWide: number,
+): Stroke[] {
+  const a = topWide;
+  const b = Math.max(footWide, a * 0.52);
+  const w = a / 2;
+  const h = Math.max(top - bottom, 1);
+  return [-1, 1].map((side) => {
+    const from = at(x + side * (a / 2 - w / 2), top);
+    const to = at(x + side * (b / 2 - w / 2), bottom);
+    const lean = Math.atan2(Math.abs(to.x - from.x), h);
+    return {
+      spine: straight(from, to),
+      pen: { ...f.style.pen, contrast: 0, weight: w * Math.cos(lean) },
+      start: LEVEL,
+      end: LEVEL,
+    };
+  });
+}
+
+/** How wide a text face's straight quote is across its top: Lora's is 0.72 of its full stop. */
+function quoteWidth(f: Frame): number {
+  return stopRadius(f) * 1.44;
+}
+
+/** One straight quote: a wedge from the cap height down about a third of it. */
+function quote(f: Frame, x: number): Stroke[] {
+  const wide = quoteWidth(f);
+  const depth = Math.max(f.cap * 0.31, wide * 1.7);
+  return wedge(f, x, f.cap, f.cap - depth, wide, wide * 0.55);
+}
+
+/**
+ * A text face's slash and backslash: from below the descender to the
+ * ascender, as its parentheses are, leaning well over, and cut level at both
+ * ends. Drawn from the cap height to six tenths of the descender it stood
+ * shorter than the parentheses either side of it and nearly upright.
+ */
+function solidus(f: Frame, side: 1 | -1): Stroke {
+  const foot = f.desc * 0.92;
+  const head = f.asc;
+  const lean = (head - foot) * 0.36;
+  const from = at(side === 1 ? f.edge : f.edge + lean, foot);
+  const to = at(side === 1 ? f.edge + lean : f.edge, head);
+  return { ...ink(f, straight(from, to), LEVEL, LEVEL) };
+}
+
+/**
+ * How far a bracket's arms reach from its upright. On a text face, past the
+ * upright by at least most of a stem: at Black the arms were otherwise stubs
+ * and the bracket read as a bar.
+ */
+function bracketReach(f: Frame): number {
+  const w = f.arch * 0.52;
+  return bookish(f) ? Math.max(w, f.half + f.arch * 0.36) : w;
+}
+
+/**
+ * A comma's drop: a round head and a tail drawn down and to the left out of
+ * its right side, thinning to a point.
+ *
+ * The tail is drawn with a broad nib held so that it is at its widest where
+ * the tail leaves the head, travelling straight down, and at its thinnest
+ * where the tail finishes, travelling down and away to the left -- which is
+ * how a pen draws a comma, and what makes the tail taper without anything
+ * having to be tapered. `centre` is the middle of the head.
+ */
+function drop(f: Frame, centre: Vec2, radius: number): Stroke[] {
+  const reach = radius * 3.4;
+  const bend = 42;
+  const R = reach / Math.sin(deg(bend));
+  const pen = { weight: radius * 2.55, contrast: 0.9, angle: 90 - bend + 8 };
+  /*
+   * The tail starts where the right corner of its first cut sits just inside
+   * the head's right side, so its right edge leaves the head running straight
+   * down, as a tangent to it: started further in, the head met the tail in a
+   * notch, and further out the corner stood proud of the head as a spur. The
+   * cut's other corner then lies inside the head as well.
+   */
+  const corner = reachAlong(at(1, 0), penReach(pen));
+  const from = at(centre.x + radius * 0.96 - corner.x, centre.y + radius * 0.22 - corner.y);
+  const pivot = at(from.x - R, from.y);
+  const arc = turn(pivot, R, 0, -bend);
+  return [
+    dot(f, centre, radius),
+    {
+      spine: { ...arc, segments: arc.segments.map((one) => ({ ...one, pieces: 2 })) },
+      pen,
+      start: BUTT,
+      end: BUTT,
+    },
+  ];
+}
+
+/**
+ * A text face's parenthesis: a crescent from the ascender to below the
+ * descender, as thick as a stem in the middle and a hairline at each end.
+ *
+ * A pen that does not change its width cannot draw one, and a broad nib thins
+ * it far too little round a curve this shallow. So it is three runs that share
+ * their tips: each leaves a tip along the same line, turns down onto the
+ * upright and comes back to the other tip the same way. The outer one runs
+ * straight a little way before it turns, which carries it further out; the
+ * inner one turns on a tighter curve and stands upright for a stretch through
+ * the middle, which keeps it further in; and the third lies between them. So
+ * the three lie side by side through the middle and close up to one hairline
+ * at the tips, which is what a crescent is -- with the difference shared
+ * between a lead on the outside and a flat on the inside, neither is long
+ * enough to see. Only the outer run reaches the tips; the others stop a unit
+ * inside them, a hair narrower, so no two edges lie on top of each other.
+ *
+ * Each run is drawn with a broad nib held level, at its widest upright in the
+ * middle and a little lighter at the leaning tips, and cut level there.
+ *
+ * `side` is 1 for the opening one and -1 for the closing one.
+ */
+function crescent(f: Frame, side: 1 | -1): Stroke[] {
+  const t = hairline(f);
+  const thick = Math.max(f.style.pen.weight * 0.84, t * 1.6);
+  const tip = deg(42);
+  const pen = { weight: 0, contrast: 0.9, angle: 0 };
+  const nib = t / Math.hypot(Math.cos(tip), 0.1 * Math.sin(tip));
+  const top = f.asc - t * 0.1;
+  const bottom = f.desc + t * 0.1;
+  const middle = (top + bottom) / 2;
+  const d = at(-Math.sin(tip), -Math.cos(tip));
+  // How far a run's middle stands out from its tip, for a lead of a given
+  // length and a turn of a given share of the radius that would reach the
+  // middle with no flat at all.
+  const full = (lead: number): number => (top + lead * d.y - middle) / Math.sin(tip);
+  const out = (lead: number, share: number): number =>
+    -lead * d.x + full(lead) * share * (1 - Math.cos(tip));
+  const apart = Math.max(thick - nib, nib * 0.2);
+  // Half the difference from the outer run's lead, half from the inner's flat.
+  const lead = apart / 2 / Math.tan(tip / 2);
+  const share = 1 - apart / 2 / (full(0) * (1 - Math.cos(tip)));
+  const runs = [
+    { lead, share: 1 },
+    { lead: lead / 2, share: (1 + share) / 2 },
+    { lead: 0, share },
+  ];
+  const reach = out(lead, 1);
+  // The tips stand at the right of the opening one and the left of the closing
+  // one, far enough in that the crescent's outer side sits on the edge.
+  const left = f.edge - f.half;
+  const tipX = side === 1 ? left + nib * 0.5 + reach : left + t * 0.5;
+  const place = (p: Vec2): Vec2 => at(tipX + side * p.x, p.y);
+  const turnsAt = 180 - (tip * 180) / Math.PI;
+  const arc = (centre: Vec2, radius: number, from: number, to: number): Spine => {
+    const drawn =
+      side === 1
+        ? turn(place(centre), radius, from, to)
+        : turn(place(centre), radius, 180 - from, 180 - to);
+    return { ...drawn, segments: drawn.segments.map((one) => ({ ...one, pieces: 2 })) };
+  };
+  return runs.map((run, index) => {
+    const inset = index === 0 ? 0 : 1;
+    const from = at(d.x * inset, top + d.y * inset);
+    const high = at(d.x * (run.lead + inset), top + d.y * (run.lead + inset));
+    const radius = full(run.lead + inset) * run.share;
+    const centre = at(high.x + radius * Math.cos(tip), high.y - radius * Math.sin(tip));
+    const upright = centre.x - radius;
+    const low = (p: Vec2): Vec2 => at(p.x, 2 * middle - p.y);
+    const pieces: Spine[] = [straight(place(from), place(high)), arc(centre, radius, turnsAt, 180)];
+    if (index > 0) {
+      pieces.push(
+        straight(place(at(upright, centre.y)), place(at(upright, 2 * middle - centre.y))),
+      );
+    }
+    pieces.push(
+      arc(low(centre), radius, 180, 360 - turnsAt),
+      straight(place(low(high)), place(low(from))),
+    );
+    return {
+      spine: chain(...pieces),
+      /*
+       * The middle run wide enough to reach the two either side of it, so the
+       * three close into one crescent: on a face whose hairline is a small
+       * share of its stem -- the Didone's -- three hairlines a stem apart left
+       * white between them, and the bracket drew as a sheaf of lines.
+       */
+      pen: {
+        ...pen,
+        weight:
+          index === 0 ? nib : index === 1 ? Math.max(nib * 0.96, apart - nib * 0.7) : nib * 0.96,
+      },
+      start: BUTT,
+      end: BUTT,
+    };
+  });
+}
+
+/**
+ * Where the upper dot of a colon stands: at the x-height on most faces, and
+ * lower on one with square dots, whose colon Geist sets with its top at 0.87
+ * of the x-height so the two dots sit about the middle of the lowercase.
+ */
+function upperStop(f: Frame, radius: number): number {
+  if (!squareDots(f)) return f.x - radius;
+  /*
+   * Its top stands a little under the x-height, and lower as the pen thins:
+   * 0.90 of it at Geist Thin, 0.955 at the Regular (506 of 530) and 0.965
+   * at the Black. Never nearer the full stop than two thirds of a dot, nor
+   * above the x-height.
+   */
+  const stem = f.half * 2;
+  const share =
+    stem < 86
+      ? 0.955 - 0.053 * Math.min(1, (86 - stem) / 56)
+      : 0.955 + 0.01 * Math.min(1, (stem - 86) / 86);
+  return Math.min(Math.max(f.xOwn * share - radius, radius * 3.7), f.x - radius);
+}
+
+/**
+ * The comma of a face with square dots: the full stop, and a straight tail
+ * leaning down to the left out of its foot, cut level under the line.
+ */
+function squareComma(f: Frame, radius: number): Stroke[] {
+  const side = radius * 2;
+  const stem = f.half * 2;
+  const light = Math.min(1, Math.max(0, (stem - 30) / 56));
+  const heavy = Math.min(1, Math.max(0, (stem - 86) / 86));
+  /*
+   * The Sans's tail as Geist's: out of the dot's foot near its right corner,
+   * leaning further at the Thin, and heavier than half the dot from the
+   * Regular on (0.85 of its half at the Thin, 1.05 at the UltraBlack).
+   * Out of the middle of the foot it stood 12 to 35 units left of Geist's.
+   */
+  const sans = f.style.metrics.xGrows !== undefined;
+  const weight = radius * (sans ? 0.85 + 0.1 * light + 0.1 * heavy : 0.95);
+  /*
+   * Its tail as deep as Geist's: 125 under the line at the Thin, 155 at the
+   * Regular, 159 at the Black and no deeper past it. Drawn as deep as the
+   * dot is big, a Black's ran well below the descender.
+   */
+  const depth =
+    125 +
+    30 * Math.min(1, Math.max(0, (stem - 30) / 56)) +
+    4 * Math.min(1, Math.max(0, (stem - 86) / 86));
+  const foot = at(
+    f.edge - side * (sans ? 0.33 - 0.08 * light - 0.08 * heavy : 0.25),
+    -(depth / 530) * f.x,
+  );
+  /*
+   * The Sans's cut level along the dot's foot, its right side running out of
+   * the dot's corner as Geist's does: cut square across itself at the dot's
+   * middle, its corner stood out past the dot's side as a spur.
+   */
+  let top = at(f.edge + side * 0.12, radius);
+  if (sans) {
+    top = at(f.edge + radius * 0.5, 1);
+    for (let pass = 0; pass < 8; pass++) {
+      const lean = Math.atan2(top.x - foot.x, top.y - foot.y);
+      top = at(f.edge + radius * 0.93 - weight / 2 / Math.cos(lean), 1);
+    }
+  }
+  return [
+    dot(f, at(f.edge, radius), radius),
+    {
+      spine: straight(top, foot),
+      pen: { ...f.style.pen, contrast: 0, weight },
+      start: sans ? LEVEL : BUTT,
+      end: { ...f.end, open: true },
+    },
+  ];
+}
+
+/**
+ * The pen the bar through a dollar or a cent is drawn with: the face's own up
+ * to a text stem, and past it only a fifth of what the stem gains. At the
+ * stem's own weight a Black's bar was a slab laid over the letter, closing
+ * both its counters.
+ */
+function barPen(f: Frame): Stroke["pen"] {
+  const { weight } = f.style.pen;
+  const text = f.x * 0.19;
+  return { ...f.style.pen, weight: weight <= text ? weight : text + (weight - text) * 0.2 };
+}
 
 export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- punctuation -------------------------------------------------------
 
   space: (style) => {
     const f = frame(style);
+    /*
+     * A face measured off another's word space keeps it (`metrics.wordSpace`):
+     * Geist's is 250 at the Thin and the Regular and 221 at the Black. Taken
+     * off the arch, a Thin's shrank with its stem and its words ran together.
+     */
+    const given = f.style.metrics.wordSpace;
+    if (given) {
+      const t = Math.min(1, blackness(f.style) / 0.67);
+      return { strokes: [], width: f.xOwn * (given[0] + (given[1] - given[0]) * t) };
+    }
     return { strokes: [], width: f.arch * 1.1 };
   },
 
   period: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
     return finish(f, [dot(f, at(f.edge, radius), radius)]);
   },
 
   comma: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
+    if (bookish(f)) return finish(f, drop(f, at(f.edge, radius), radius));
+    if (squareDots(f)) return finish(f, squareComma(f, radius));
     return finish(f, [tail(f, radius)]);
   },
 
   colon: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
     return finish(f, [
       dot(f, at(f.edge, radius), radius),
-      dot(f, at(f.edge, f.x - radius), radius),
+      dot(f, at(f.edge, upperStop(f, radius)), radius),
     ]);
   },
 
   semicolon: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
+    if (squareDots(f)) {
+      return finish(f, [
+        ...squareComma(f, radius),
+        dot(f, at(f.edge, upperStop(f, radius)), radius),
+      ]);
+    }
+    if (bookish(f)) {
+      return finish(f, [
+        ...drop(f, at(f.edge, radius), radius),
+        dot(f, at(f.edge, f.x - radius), radius),
+      ]);
+    }
     return finish(f, [tail(f, radius), dot(f, at(f.edge, f.x - radius), radius)]);
   },
 
   exclam: (style) => {
     const f = frame(style);
-    const radius = f.half * 0.95;
+    const radius = stopRadius(f);
     return finish(f, [
       ink(f, straight(at(f.edge, radius * 3), at(f.edge, f.cap)), f.end, f.end),
       dot(f, at(f.edge, radius), radius),
@@ -96,18 +432,67 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   question: (style) => {
     const f = frame(style);
-    const radius = Math.max(figureWidth(f) * 0.42, f.least);
-    const centre = at(f.edge + radius, f.crest(f.cap) - radius);
-    const radiusDot = f.half * 0.95;
+    const radiusDot = stopRadius(f);
+    // The neck stops clear of the dot under it, which at a black weight is
+    // higher than three tenths of the cap height.
+    const neck = Math.max(f.cap * 0.3, radiusDot * 2 + f.half * 0.9);
+    /*
+     * The hook and the neck are one run, the neck leaving the hook along its
+     * own tangent, so there is no join to see.
+     *
+     * Drawn as two strokes butted together at a fixed point on the hook, they
+     * met at whatever angle the neck happened to leave at, and at a black
+     * weight -- where the neck has to stop high, clear of a big dot -- it left
+     * nearly level and the join was a notch. So the hook is made no bigger than
+     * leaves the neck room to leave it on a tangent, and where even that is
+     * not enough the neck stops a little nearer the dot.
+     */
+    const crest = f.crest(f.cap);
+    const radius = Math.max(Math.min(figureWidth(f) * 0.42, (crest - neck) / 2.2), f.least);
+    const centre = at(f.edge + radius, crest - radius);
+    // Past what the hook can give, the neck stops closer to the dot instead.
+    const foot = at(centre.x, Math.min(neck, centre.y - radius * 1.15));
+    const leaves = -90 + (Math.acos(radius / (centre.y - foot.y)) * 180) / Math.PI;
+    /*
+     * Always in three pieces, which is what a turn of two hundred and thirty
+     * degrees or so takes anyway: pinned, so a hook that turns a little less
+     * at some weight is still drawn with the points of the others.
+     */
+    const turned = turn(centre, radius, hookFrom(f), leaves);
+    const hook = {
+      ...turned,
+      segments: turned.segments.map((segment) =>
+        segment.kind === "arc" ? { ...segment, pieces: 3 } : segment,
+      ),
+    };
     return finish(f, [
-      ink(f, turn(centre, radius, 190, -35), f.end, BUTT),
-      ink(f, straight(pointOn(centre, radius, -35), at(centre.x, f.cap * 0.3)), BUTT, f.end),
-      dot(f, at(centre.x, radiusDot), radiusDot),
+      ink(f, chain(hook, straight(pointOn(centre, radius, leaves), foot)), f.end, f.end),
+      dot(f, at(foot.x, radiusDot), radiusDot),
     ]);
   },
 
   hyphen: (style) => {
     const f = frame(style);
+    /*
+     * A text face's hyphen is a short heavy bar a little above the middle of
+     * the x-height: Lora's is two thirds of an x-height long and three
+     * quarters of a stem thick. Drawn as a crossbar it was a hairline, since
+     * a pen with contrast is at its thinnest going across.
+     */
+    if (bookish(f)) {
+      const width = f.x * 0.62 + f.half * 0.4;
+      const thick = Math.max(f.style.pen.weight * 0.74, hairline(f) * 1.5);
+      const y = f.x * 0.6;
+      const round: Terminal = { kind: "butt" };
+      return finish(f, [
+        {
+          spine: straight(at(f.edge - f.half + (thick / 2) * 0, y), at(f.edge - f.half + width, y)),
+          pen: { ...f.style.pen, contrast: 0, weight: thick },
+          start: round,
+          end: round,
+        },
+      ]);
+    }
     const width = f.arch * 0.7;
     return finish(f, [
       thin(f, straight(at(f.edge, axis(f)), at(f.edge + width, axis(f))), f.plain, f.plain),
@@ -116,6 +501,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   parenleft: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, crescent(f, 1));
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge + radius, f.cap * 0.4);
     return finish(f, [ink(f, turn(centre, radius, 145, 215), f.end, f.end)]);
@@ -123,6 +509,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   parenright: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, crescent(f, -1));
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge - radius + f.arch * 0.32, f.cap * 0.4);
     return finish(f, [ink(f, turn(centre, radius, 35, -35), f.end, f.end)]);
@@ -130,6 +517,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   slash: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, [solidus(f, 1)]);
     const lean = f.arch * 0.75;
     return finish(f, [
       ink(f, straight(at(f.edge, f.desc * 0.6), at(f.edge + lean, f.cap)), f.plain, f.plain),
@@ -138,6 +526,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   quotesingle: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, quote(f, f.edge));
     return finish(f, [
       ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
     ]);
@@ -145,7 +534,20 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   quotedbl: (style) => {
     const f = frame(style);
-    const gap = f.style.pen.weight * 1.6;
+    if (bookish(f)) {
+      const one = quoteWidth(f);
+      /*
+       * The white between the two marks Lora's: 55 at the Regular, closing to
+       * 32 by the Bold -- and never less at a hairline weight, where the marks
+       * narrow and, set a share of their own width apart, read as one.
+       */
+      const gap = Math.max(f.x * 0.11 - Math.max(0, f.half - f.x * 0.087) * 0.8, f.x * 0.04);
+      return finish(f, [...quote(f, f.edge), ...quote(f, f.edge + one + gap)]);
+    }
+    // A mark's width and then white of its own, never less than a share of
+    // the x-height: at a hairline weight, set a share of the pen apart, the
+    // two marks read as one split bar.
+    const gap = f.style.pen.weight + Math.max(f.style.pen.weight * 0.6, f.x * 0.09);
     return finish(f, [
       ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
       ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
@@ -218,8 +620,18 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const f = frame(style);
     const w = signWidth(f);
     const y = axis(f);
-    const radius = f.half * 0.85;
-    const reach = (f.style.pen.weight * f.bar) / 2 + signGap(f) * 0.85 + radius;
+    // No larger than a seventh of the sign, and held off the bar by no more
+    // than its own daylight: at a Black the dots were the pen's and stood
+    // over the cap line and under the baseline.
+    // And never much smaller than the full stop: at a hairline weight the
+    // pen's own dot was a speck beside the colon.
+    const radius = Math.min(Math.max(f.half * 0.85, stopRadius(f) * 0.8), w * 0.14);
+    const reach = Math.min(
+      f.upright * f.bar + signGap(f) * 0.85 + radius,
+      w * 0.5 + radius * 0.4,
+      // And the dots between the baseline and the x-height, as the signs are.
+      Math.max(y - radius - f.over, radius * 1.6),
+    );
     return finish(f, [
       thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
       dot(f, at(f.edge + w / 2, y + reach), radius),
@@ -236,17 +648,28 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * them, which holds at every weight.
    */
   plusminus: (style) => {
-    const f = frame(style);
+    // Lighter past the Black, as the s is: two marks stacked in the height.
+    const f = frame(stackedPen(style, 0.4));
     const w = signWidth(f);
     const bar = f.style.pen.weight * f.bar;
-    const under = axis(f) - signWidth(f) * 0.5 - bar * 1.15;
-    const y = axis(f) + bar * 0.35;
+    /*
+     * The rule never under the baseline: at a Black the gap under the plus
+     * grew with the bars and put it there. The plus stands shorter instead --
+     * and where even that leaves less than half a bar of daylight between its
+     * stem and the rule, stands higher: at an Ultra the stem ran down into the
+     * rule and the two read as one block.
+     */
+    const under = Math.max(axis(f) - signWidth(f) * 0.5 - bar * 1.15, bar * 0.5);
     const half = w / 2;
+    const least = bar * 0.8;
+    const low = axis(f) + bar * 0.35;
+    const y = Math.max(low, under + bar * 1.5 + least);
+    const rise = Math.max(Math.min(half * 0.86, y - under - bar * 1.5), least);
     return finish(f, [
       thin(f, straight(at(f.edge, y), at(f.edge + w, y)), f.plain, f.plain),
       thin(
         f,
-        straight(at(f.edge + half, y - half * 0.86), at(f.edge + half, y + half * 0.86)),
+        straight(at(f.edge + half, y - rise), at(f.edge + half, y + half * 0.86)),
         shortEnd(f),
         shortEnd(f),
       ),
@@ -335,7 +758,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   bracketleft: (style) => {
     const f = frame(style);
-    const w = f.arch * 0.52;
+    const w = bracketReach(f);
     const { foot, head } = tall(f);
     return finish(f, [
       ink(
@@ -353,7 +776,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   bracketright: (style) => {
     const f = frame(style);
-    const w = f.arch * 0.52;
+    const w = bracketReach(f);
     const { foot, head } = tall(f);
     return finish(f, [
       ink(
@@ -371,6 +794,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
 
   backslash: (style) => {
     const f = frame(style);
+    if (bookish(f)) return finish(f, [solidus(f, -1)]);
     const lean = f.arch * 0.75;
     return finish(f, [
       ink(f, straight(at(f.edge, f.cap), at(f.edge + lean, f.desc * 0.6)), f.plain, f.plain),
@@ -453,26 +877,53 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   cent: outOf("c", (f, c) => {
     const centre = f.edge + f.bowl;
     const over = f.x * 0.22;
-    return joined(
+    const bar = ink(
       f,
-      c(),
-      [ink(f, straight(at(centre, -over), at(centre, f.x + over)), shortEnd(f), shortEnd(f))],
-      true,
+      straight(at(centre, -over), at(centre, f.x + over)),
+      shortEnd(f),
+      shortEnd(f),
     );
+    // No heavier than the dollar's bar, for the dollar's reason: see `barPen`.
+    return joined(f, c(), [{ ...bar, pen: barPen(f) }], true);
   }),
 
   dollar: outOf("S", (f, s) => {
-    // Where the s runs, worked out the way the s works it out, so the bar goes
-    // through the middle of the letter rather than near it.
+    const letter = s();
+    // Through the middle of the S as it is drawn, in whichever form: halfway
+    // across the run of its spine.
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const stroke of letter) {
+      for (const one of stroke.spine.segments) {
+        const xs =
+          one.kind === "line"
+            ? [one.from.x, one.to.x]
+            : [one.startAngle, (one.startAngle + one.endAngle) / 2, one.endAngle].map(
+                (angle) => one.centre.x + one.radius * Math.cos(angle),
+              );
+        lo = Math.min(lo, ...xs);
+        hi = Math.max(hi, ...xs);
+      }
+    }
     const radius = Math.max((f.cap + f.over * 2 - f.upright * 2) / 4, f.least);
-    const centre = f.edge + bendWidth(f, radius);
+    const centre = Number.isFinite(lo) ? (lo + hi) / 2 : f.edge + bendWidth(f, radius);
     // How far the bar stands out past the letter, kept modest: a wavy face
     // adds its own swing on top and the two together reached over the line.
     const over = f.cap * 0.075;
     return joined(
       f,
-      s(),
-      [ink(f, straight(at(centre, -over), at(centre, f.cap + over)), shortEnd(f), shortEnd(f))],
+      letter,
+      [
+        {
+          ...ink(
+            f,
+            straight(at(centre, -over), at(centre, f.cap + over)),
+            shortEnd(f),
+            shortEnd(f),
+          ),
+          pen: barPen(f),
+        },
+      ],
       true,
     );
   }),
@@ -557,29 +1008,45 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * on a different line, which is why it is not drawn again from scratch.
    */
   asciitilde: (style) => {
-    const f = frame(style);
+    // Lighter past the Black, as the s is: a Black's pen filled each hump.
+    const f = frame(stackedPen(style, 0.4));
     // Held above what the bar drawing it can turn round, which is not the same
     // number as what the stem can: a face whose bars are heavier than its stems
     // asked this arc for a radius narrower than its own pen.
     const radius = Math.max((signWidth(f) * 1.06) / 4, barHalf(f) * 1.12);
     const y = axis(f);
-    return finish(f, [
-      thin(
-        f,
-        chain(
-          turn(at(f.edge + radius, y), radius, 180, 0),
-          turn(at(f.edge + radius * 3, y), radius, 180, 360),
-        ),
-        shortEnd(f),
-        shortEnd(f),
+    const wave = thin(
+      f,
+      chain(
+        turn(at(f.edge + radius, y), radius, 180, 0),
+        turn(at(f.edge + radius * 3, y), radius, 180, 360),
       ),
-    ]);
+      shortEnd(f),
+      shortEnd(f),
+    );
+    /*
+     * With no more contrast than a turn this tight can take. A pen thin
+     * across a level run is round along its long side, and at a heavy weight
+     * the contrast it takes on made that round tighter than the crest of each
+     * hump: the inside of each folded, and the wave was pinched at both.
+     */
+    /*
+     * And no heavier than leaves each hump a round inside two fifths of it
+     * across: at a Black the pen was nearly the hump's own width, and its
+     * inside closed to a slit.
+     */
+    const weight = Math.min(wave.pen.weight, radius * 1.2);
+    const most = Math.max(0, 1 - weight / 2 / (radius * 0.97));
+    const pen = { ...wave.pen, weight, contrast: Math.min(wave.pen.contrast, most) };
+    return finish(f, [{ ...wave, pen }]);
   },
 
   /** Five spokes from one middle, which is what keeps it from reading as a star. */
   asterisk: (style) => {
     const f = frame(style);
-    const reach = Math.max(f.cap * 0.2, f.style.pen.weight * f.bar * 1.3);
+    // A text face's asterisk is a large mark hung from the cap height: Lora's
+    // is three fifths of it across.
+    const reach = Math.max(f.cap * (bookish(f) ? 0.3 : 0.2), f.style.pen.weight * f.bar * 1.3);
     const centre = at(f.edge + reach, f.cap - reach * 1.05);
     return finish(
       f,
@@ -595,9 +1062,21 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    */
   percent: (style) => {
     const f = frame(style);
-    const radius = Math.max(f.cap * 0.155, f.half * 2.05);
-    const w = Math.max(f.cap * 0.86 * f.style.metrics.width, radius * 4.3);
+    const radius = Math.max(f.cap * 0.155, f.half * 1.75);
+    /*
+     * And wide enough that the slash passes between the rings with paper on
+     * both sides of it. Held to a share of the rings' size alone, a fat
+     * face's rings were so large beside its slash that the stroke ran into
+     * both of them and the sign read as a knot.
+     */
+    let w = Math.max(f.cap * 0.86 * f.style.metrics.width, radius * 4.3);
+    // The slash's lean is the regular's, and the rings move apart round it.
     const lean = w * 0.62;
+    const length = Math.hypot(lean, f.cap);
+    const clear = (w: number): number =>
+      Math.abs((radius - w / 2) * f.cap - (f.cap / 2 - radius) * lean) / length;
+    const need = radius + f.half * 2 + f.half * 0.5;
+    for (let pass = 0; pass < 60 && clear(w) < need; pass++) w += f.half * 0.2;
     const bar = f.edge + (w - lean) / 2;
     return finish(
       f,
@@ -643,10 +1122,17 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * the same thing.
      */
     const over = bend(f, at(stem, head), hook, 20, 180);
+    const down = spineEnd(over).x;
+    /*
+     * The foot starts no further in than the stem's own left edge, so the two
+     * make one square corner: started at the sidebearing, a stem heavier than
+     * that stood out past the foot's end as a notch.
+     */
+    const heel = Math.min(f.edge, down - stemSide(f));
     return finish(f, [
       ink(f, over, f.end, BUTT),
-      ink(f, straight(spineEnd(over), at(spineEnd(over).x, f.sits(0))), BUTT, BUTT),
-      arm(f, f.edge, f.edge + w, f.sits(0, f.bar)),
+      ink(f, straight(spineEnd(over), at(down, f.sits(0))), BUTT, BUTT),
+      arm(f, heel, f.edge + w, f.sits(0, f.bar)),
       thin(
         f,
         straight(at(f.edge + w * 0.03, f.x * 0.62), at(f.edge + w * 0.72, f.x * 0.62)),
@@ -688,11 +1174,21 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * squares and waves with the rest of the font rather than beside it.
    */
   section: (style) => {
-    const f = frame(style);
+    /*
+     * And never a pen heavier than three tenths of the s it draws: each s is
+     * six tenths of a capital, and at a Black's full pen the two turned to
+     * blobs with a hairline spine each and the mark could not be read.
+     */
+    const room = style.metrics.capHeight * 0.62 * 0.3;
+    const held =
+      style.pen.weight > room ? { ...style, pen: { ...style.pen, weight: room } } : style;
+    const f = frame(held);
     const height = f.cap * 0.62;
     const step = height * 0.53;
-    const upper = spine(f, height, f.edge).stroke;
-    const lower = spine(f, height, f.edge).stroke;
+    // The text s at every weight: a Black's is wider than a section mark
+    // has room for, one tucked under the other.
+    const upper = spine(f, height, f.edge, false).stroke;
+    const lower = spine(f, height, f.edge, false).stroke;
     return {
       strokes: [
         shovedStroke(finish(f, [upper]).strokes[0], 0, f.cap - height + f.desc * 0.06),
@@ -740,7 +1236,15 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * weight as the ring around it, which is what keeps the mark even in colour.
    */
   at: (style) => {
-    const f = frame(style);
+    /*
+     * And drawn with a lighter pen where its own would grow the ring past
+     * about the height of the capitals' bowls: grown round a small a whose
+     * counter has to stay open, a Black's ring came out half as tall again as
+     * the O beside it, hanging a stem below the line, and on a condensed
+     * face the a inside it ran into the ring. A heavy face's at is lighter
+     * than its letters, as Geist Black's is.
+     */
+    const f = heldAt(frame(style));
     /*
      * The inner bowl is sized first and the ring is grown to hold it.
      *
@@ -749,14 +1253,30 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * dimple. The bowl is the part that has to stay open, so it is the part
      * that sets the size, and the mark gets larger rather than filling in.
      */
-    const inner = Math.max(f.capBowlH * 0.38, f.half * 2.35);
-    const outer = Math.max(f.capBowlH * 0.94, inner + f.style.pen.weight * 1.55);
-    const centre = at(f.edge + outer, f.cap * 0.46);
-    const stem = centre.x + bendWidth(f, inner);
+    const { inner, outer } = atSizes(f);
+    /*
+     * And the ring never narrower than it has to be to clear the a inside it,
+     * which is round whatever the face's bowls are: bent to a condensed face's
+     * width, the Technical's and the Flared's ring ran into the a's stem.
+     */
+    const wide = f.style.parts.script.on
+      ? outer
+      : Math.max(bendWidth(f, outer), inner + f.style.pen.weight * AT_ROOM);
+    // Moved over by as much as it was widened, so it starts where it did.
+    const widened = f.style.parts.script.on ? 0 : wide - bendWidth(f, outer);
+    const centre = at(f.edge + outer + widened, f.cap * (bookish(f) ? 0.4 : 0.46));
+    /*
+     * Round on a joined face, whatever its bowls are. Its `o` is a narrow oval,
+     * and the ring bent to that width stood as a tall hoop round a little `a`
+     * that is a circle -- the two collided on the right, and the a's stem, set
+     * in by the oval's width, stood inside its own bowl.
+     */
+    const round = f.style.parts.script.on;
+    const stem = centre.x + (round ? inner : bendWidth(f, inner));
     return finish(
       f,
       [
-        ink(f, bend(f, centre, outer, -38, 252), shortEnd(f), shortEnd(f)),
+        ink(f, bend(f, centre, outer, -38, 252, wide), shortEnd(f), shortEnd(f)),
         ink(f, ring(f, centre, inner, inner)),
         ink(
           f,
@@ -770,30 +1290,129 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   },
 
   /*
-   * The ampersand, which is the one mark in a font that is not a shape anybody
-   * can name. It is drawn here as what it came from: a small loop above a
-   * larger one, joined down the left, with the leg crossing out to the right.
+   * The ampersand, drawn the way a text face draws it: a small loop at the
+   * cap height, whose right side runs down and across into a larger bowl on
+   * the baseline, and a long diagonal leaving the loop's left side and
+   * crossing everything on its way down to a foot that turns out along the
+   * line. The bowl comes round and up into an arm on the right, finished with
+   * a flat bar where the face has serifs.
+   *
+   * The loop and the bowl are joined by the one straight run that is tangent
+   * to both, so the stroke passes from one into the other the way an S does.
+   * That needs the two circles clear of each other, and at a heavy weight
+   * they are not -- stacked straight up they overlap -- so the loop moves over
+   * to the right until they are, which is where a black ampersand's loop sits
+   * anyway. Every turn is drawn in a fixed number of pieces, so the letter has
+   * the same nodes at every weight.
    */
   ampersand: (style) => {
     const f = frame(style);
-    const topR = Math.max(f.cap * 0.155, f.least);
-    const botR = Math.max(f.cap * 0.245, f.least);
-    const top = at(f.edge + bendWidth(f, topR) + f.cap * 0.06, f.crest(f.cap) - topR);
-    const bottom = at(f.edge + bendWidth(f, botR), f.dip(0) + botR);
-    const loop = bend(f, top, topR, -34, 250);
-    const belly = bend(f, bottom, botR, 108, 336);
-    const leg = at(bottom.x + botR * 2.1, f.cap * 0.5);
-    return finish(
-      f,
-      [
-        ink(f, loop, f.end, BUTT),
-        ink(f, straight(spineEnd(loop), spineStart(belly)), BUTT, BUTT),
-        ink(f, belly, BUTT, BUTT),
-        ink(f, straight(spineEnd(belly), leg), BUTT, f.end),
-        ink(f, straight(spineStart(loop), at(leg.x * 0.88, f.dip(0) + botR * 0.55)), BUTT, BUTT),
-      ],
-      true,
-    );
+    const C = f.cap;
+    const pinned = (run: Spine, pieces: number): Spine => ({
+      ...run,
+      segments: run.segments.map((one) => (one.kind === "arc" ? { ...one, pieces } : one)),
+    });
+    /*
+     * The bowl and the loop, as large as the face asks and no tighter than
+     * the pen goes round -- and, between those, small enough to stand one
+     * above the other with the spine running down between them. Where even
+     * the tightest pair cannot, at the limit of the weight axis, the loop
+     * rises past the cap height rather than sliding round beside the bowl,
+     * where the spine between them turned uphill and the letter folded.
+     */
+    const span = f.crest(C) - f.dip(0);
+    const wantR = Math.max(C * 0.24, f.half * 1.75);
+    const wantr = Math.max(C * 0.14, f.half * 1.45);
+    const fits = Math.min(1, span / 2.05 / (wantR + wantr));
+    /*
+     * At a heavy weight both turn wider than the pen alone asks, or their
+     * counters are the width of what is left between two stems: the loop of
+     * a Black ampersand was a slit. And the loop moves out to the right to
+     * find the room rather than up past the cap height, as a Black's does.
+     */
+    const black = Math.min(1, blackness(f.style) / 0.6);
+    // And never so tight that a fat face's counters close: at the display
+    // face's own weight the loop's counter was a pinhole and the bowl's a slit.
+    const R = Math.max(wantR * fits, f.half * Math.max(1.5 + 0.25 * black, 1.85), f.least);
+    const r = Math.max(wantr * fits, f.half * Math.max(1.15 + 0.5 * black, 1.5), f.least);
+    const bowlAt = at(f.edge + R, f.dip(0) + R);
+    const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - 0.35 * black));
+    const rise = loopY - bowlAt.y;
+    const clear = (r + R) * 1.08;
+    const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
+    const loopAt = at(bowlAt.x + over, loopY);
+    // Where the tangent common to both circles, crossing between them, meets
+    // each: on the loop's lower right and the bowl's upper left.
+    const apart = Math.hypot(over, rise);
+    const joinAt =
+      ((Math.atan2(rise, over) + Math.PI + Math.acos(Math.min(1, (r + R) / apart))) * 180) /
+        Math.PI -
+      360;
+    const leave = pointOn(loopAt, r, joinAt);
+    const arrive = pointOn(bowlAt, R, joinAt + 180);
+    // The diagonal leaves the loop at forty-five degrees and turns out along
+    // the baseline into its foot.
+    const from = pointOn(loopAt, r, 225);
+    const foot = Math.max(C * 0.14, f.half * 1.9);
+    const line = f.sits(0);
+    const kneeY = line + foot * (1 - Math.SQRT1_2);
+    const knee = at(from.x + (from.y - kneeY), kneeY);
+    const heel = at(knee.x + foot * Math.SQRT1_2, line);
+    // The arm: up and a little to the right out of the bowl, to about half
+    // the cap height.
+    const armFrom = pointOn(bowlAt, R, 345);
+    const top = C * 0.52;
+    // Never below where the arm leaves the bowl, which at the limit of the
+    // weight axis is higher than half the cap height.
+    const head = Math.max(f.hangs(top), armFrom.y + f.half * 0.6);
+    // Leaving the bowl along its own tangent there, exactly: a heading a hair
+    // off it puts a join into the run, and the join folds.
+    const armTo = at(armFrom.x + (head - armFrom.y) * Math.tan((15 * Math.PI) / 180), head);
+    const serifed = style.parts.slab.on;
+    const reach = f.half + (f.end.projection ?? f.half * 0.6);
+    return finish(f, [
+      ink(f, pinned(turn(loopAt, r, 218, joinAt + 8), 4), BUTT, BUTT),
+      ink(
+        f,
+        chain(
+          pinned(turn(loopAt, r, 208, 225), 1),
+          straight(from, knee),
+          pinned(turn(at(heel.x, line + foot), foot, 225, 270), 1),
+          straight(heel, at(heel.x + f.half * 1.2, line)),
+        ),
+        BUTT,
+        BUTT,
+      ),
+      ink(
+        f,
+        chain(
+          pinned(turn(loopAt, r, joinAt + 18, joinAt), 1),
+          straight(leave, arrive),
+          pinned(turn(bowlAt, R, joinAt + 180, 345), 3),
+        ),
+        BUTT,
+        BUTT,
+      ),
+      // The arm on its own, run in from a little way back round the bowl: at
+      // a black weight its top comes up under the spine, and in one run with
+      // it the two edges met and the outline folded.
+      ink(
+        f,
+        chain(pinned(turn(bowlAt, R, 330, 345), 1), straight(armFrom, armTo)),
+        BUTT,
+        serifed ? BUTT : f.end,
+      ),
+      ...(serifed
+        ? [
+            ink(
+              f,
+              straight(at(armTo.x - reach, head), at(armTo.x + reach * 1.15, head)),
+              BUTT,
+              BUTT,
+            ),
+          ]
+        : []),
+    ]);
   },
 
   periodcentered: (style) => {
@@ -818,3 +1437,49 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   guillemotleft: (style) => chevrons(frame(style), -1),
   guillemotright: (style) => chevrons(frame(style), 1),
 };
+
+/** The at sign's inner bowl and ring, as radii: see `at`. */
+function atSizes(f: Frame): { inner: number; outer: number } {
+  const inner = Math.max(f.capBowlH * 0.38, f.half * 2.35);
+  // A text face's is larger, from below the line to the cap height, as Lora's is.
+  const outer = Math.max(
+    f.capBowlH * (bookish(f) ? 1.08 : 0.94),
+    inner + f.style.pen.weight * AT_ROOM,
+  );
+  return { inner, outer };
+}
+
+/** How far out from the inner bowl an at sign's ring runs, in pens. */
+const AT_ROOM = 1.55;
+
+/** How far past its own share an at sign's ring may grow for its pen: see `at`. */
+const AT_GROWTH = 1.18;
+
+/** The frame an at sign is drawn in: its own, or one with a lighter pen. */
+function heldAt(f: Frame): Frame {
+  // A text face's own share is already the larger, from below the line to
+  // the cap height, so it takes no more.
+  const most = bookish(f) ? f.capBowlH * 1.08 : f.capBowlH * 0.94 * AT_GROWTH;
+  /*
+   * What the pen asks of the ring, against this weight's own share: a lighter
+   * pen's bowls are not this one's, and measured with its own share a text
+   * face's never fitted and its at sign fell to a hairline past a Bold.
+   */
+  const asks = (g: Frame): number =>
+    Math.max(g.capBowlH * 0.38, g.half * 2.35) + g.style.pen.weight * AT_ROOM;
+  if (asks(f) <= most || f.style.parts.script.on) return f;
+  const lighter = (weight: number): Frame => frame({ ...f.style, pen: { ...f.style.pen, weight } });
+  let low = 1;
+  let high = f.style.pen.weight;
+  for (let pass = 0; pass < 30; pass++) {
+    const mid = (low + high) / 2;
+    if (asks(lighter(mid)) <= most) low = mid;
+    else high = mid;
+  }
+  // And past there still heavier as the face is, only more slowly, so that
+  // the mark never comes out lighter at a Black than at the Bold before it.
+  return lighter(low + (f.style.pen.weight - low) * AT_PAST);
+}
+
+/** How much of the weight past where an at sign's ring stops growing it still takes. */
+const AT_PAST = 0.22;

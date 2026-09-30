@@ -831,6 +831,29 @@ export function seedTiles(strokes: Stroke[], style: Style, kit: Kit): Tiles | nu
   const has = (column: number, row: number, port: Port): boolean =>
     found.get(cellKey(column, row))?.has(port) ?? false;
 
+  /*
+   * A stroke that stops just short of the one it joins.
+   *
+   * An H's bar runs to the inside of its stems, not to their centre-lines, and
+   * when a stem sits a little way into its column the bar's end falls in the
+   * cell before it: the bar points east at a cell with a stem running through
+   * it and never says so, and the letter comes apart into a stem and a bar
+   * with a stem's width of paper between them. Where an end faces straight
+   * into a cell that a stroke runs through, the two meet, so that cell gets
+   * the door the end is facing.
+   */
+  for (const [key, ports] of [...found]) {
+    const [column, row] = key.split(",").map(Number);
+    for (const [port, end] of [...ports]) {
+      if (!end || port.length !== 1) continue;
+      const [step] = MEETS[port];
+      const beside = found.get(cellKey(column + step.column, row + step.row));
+      if (!beside || beside.has(step.port)) continue;
+      const through = [...beside].filter(([, isEnd]) => !isEnd).length >= 2;
+      if (through) beside.set(step.port, false);
+    }
+  }
+
   const cells: Record<string, Cell> = {};
   for (const [key, ports] of found) {
     const [column, row] = key.split(",").map(Number);

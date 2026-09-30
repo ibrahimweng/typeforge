@@ -8,7 +8,7 @@
  * difference is far below what any rasteriser can show.
  */
 
-import { splitCubic } from "./geometry";
+import { cubicExtremeTs, splitCubic } from "./geometry";
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
 /** A single quadratic: one off-curve control point and the on-curve point it ends at. */
@@ -46,6 +46,41 @@ function bestFitControl(from: Vec2, c1: Vec2, c2: Vec2, to: Vec2): Vec2 {
 }
 
 /**
+ * How far a quadratic's control may sit past an end of its curve before the
+ * fit counts as having turned where the cubic did not.
+ *
+ * Rounding the control and both ends to whole units can push it up to a unit
+ * further, and `snapRoundedControls` pulls back anything within two, so an
+ * overshoot of one unit here is always repaired on the way out.
+ */
+const MAX_FIT_OVERSHOOT = 1;
+
+/**
+ * Whether the best-fit quadratic turns inside the curve on an axis along which
+ * the cubic never turns.
+ *
+ * The best fit keeps the ends but not the directions leaving them. A cubic that
+ * leaves an extreme dead level -- the start of a long tail running straight
+ * down off a stem -- can be fitted within tolerance by a quadratic whose
+ * control lies a few units past that end, and the file then has a turn a few
+ * percent along the curve with no point on it. Rounding cannot be told apart
+ * from that once it is in whole units, so it is caught here, while the curve
+ * can still be split instead.
+ */
+function overshootsTurn(from: Vec2, c1: Vec2, c2: Vec2, to: Vec2, control: Vec2): boolean {
+  for (const axis of ["x", "y"] as const) {
+    const low = Math.min(from[axis], to[axis]) - MAX_FIT_OVERSHOOT;
+    const high = Math.max(from[axis], to[axis]) + MAX_FIT_OVERSHOOT;
+    if (control[axis] >= low && control[axis] <= high) continue;
+    // A cubic that really does turn inside on this axis is allowed to.
+    const flat = (v: number): Vec2 => (axis === "x" ? { x: v, y: 0 } : { x: 0, y: v });
+    const turns = cubicExtremeTs(flat(from[axis]), flat(c1[axis]), flat(c2[axis]), flat(to[axis]));
+    if (!turns.some((t) => t > 1e-4 && t < 1 - 1e-4)) return true;
+  }
+  return false;
+}
+
+/**
  * Approximate one cubic with a chain of quadratics, splitting where needed.
  * `depth` caps recursion so a degenerate curve cannot spin.
  */
@@ -57,8 +92,13 @@ export function cubicToQuadratics(
   tolerance = 0.5,
   depth = 0,
 ): QuadSegment[] {
-  if (depth >= 10 || approximationError(from, c1, c2, to) <= tolerance) {
-    return [{ control: bestFitControl(from, c1, c2, to), to }];
+  const control = bestFitControl(from, c1, c2, to);
+  if (
+    depth >= 10 ||
+    (approximationError(from, c1, c2, to) <= tolerance &&
+      !overshootsTurn(from, c1, c2, to, control))
+  ) {
+    return [{ control, to }];
   }
   const [left, right] = splitCubic(from, c1, c2, to, 0.5);
   return [
@@ -238,15 +278,17 @@ function snapRoundedControls(points: GlyfPoint[]): GlyfPoint[] {
     if (!before.onCurve || !after.onCurve) continue;
 
     for (const axis of ["x", "y"] as const) {
-      // A control sitting on the far side of an endpoint from the other
-      // endpoint means the curve turns just inside, rather than on the point.
-      const pastBefore = (control[axis] - before[axis]) * (after[axis] - before[axis]) < 0;
-      const pastAfter = (control[axis] - after[axis]) * (before[axis] - after[axis]) < 0;
+      // A control outside the span of its two endpoints means the curve turns
+      // just inside, rather than on a point. That includes two ends rounded
+      // level with each other and the control a unit to one side: the turn
+      // then falls halfway along, which is no point at all.
+      const low = Math.min(before[axis], after[axis]);
+      const high = Math.max(before[axis], after[axis]);
 
-      if (pastBefore && Math.abs(control[axis] - before[axis]) <= MAX_SNAP_UNITS) {
-        control[axis] = before[axis];
-      } else if (pastAfter && Math.abs(control[axis] - after[axis]) <= MAX_SNAP_UNITS) {
-        control[axis] = after[axis];
+      if (control[axis] < low && low - control[axis] <= MAX_SNAP_UNITS) {
+        control[axis] = low;
+      } else if (control[axis] > high && control[axis] - high <= MAX_SNAP_UNITS) {
+        control[axis] = high;
       }
     }
   }

@@ -13,6 +13,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  baseAfterName,
   drawingChanged,
   drawingIs,
   drawingReadableBy,
@@ -138,5 +139,18 @@ describe("what there is to keep", () => {
   it("is nothing when the store says there is nothing worth keeping", () => {
     drawingReadableBy(() => undefined);
     expect(drawingToKeep()).toBeUndefined();
+  });
+});
+
+describe("the base after the family's name", () => {
+  it("is left off when the name already says it", () => {
+    expect(baseAfterName("My Sans", "Sans")).toBeNull();
+    expect(baseAfterName("My Serif", "Serif")).toBeNull();
+    expect(baseAfterName("Harbour", "Serif")).toBe("Serif");
+    expect(baseAfterName("Sansom", "Sans")).toBe("Sans");
+    // The bases named in two words, which a word-by-word match missed.
+    expect(baseAfterName("My Formal Script", "Formal Script")).toBeNull();
+    expect(baseAfterName("My  Monoline   Script", "Monoline Script")).toBeNull();
+    expect(baseAfterName("Formal Notes", "Formal Script")).toBe("Formal Script");
   });
 });

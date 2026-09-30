@@ -32,10 +32,12 @@
 import { ALTERNATES } from "./letters/alternates";
 import {
   beginLetter,
+  capped,
   BUTT,
   enclosing,
   frame,
   ink,
+  lighter,
   type LetterName,
   type Recipe,
 } from "./letters/common";
@@ -46,10 +48,12 @@ import {
   movedSpine,
   planJoin,
   planLoops,
+  seamHeading,
   seamsOf,
   wobbleOf,
 } from "./script";
-import { bowRuns } from "./shapes";
+import { bowRuns, spineEnd, waveBookAt } from "./shapes";
+import { blackness, scriptUnit } from "./style";
 import type { Style } from "./style";
 import { LOWERCASE_RECIPES } from "./letters/lowercase";
 import { CAPITAL_RECIPES } from "./letters/capitals";
@@ -187,12 +191,17 @@ export const JOINS = new Set<string>("abcdefghijklmnopqrstuvwxyz".split(""));
  * letter as `cmap` maps it, which is what a reader gets in any renderer that
  * applies no features at all.
  *
+ * The `T` and the `Y` for the `I`'s reason: each hands on from the foot of a
+ * stem standing on its own under the letter, and a foot going right off it is
+ * the foot of an `L` -- `The` set as `Lhe`. The reference scripts lift after
+ * both.
+ *
  * Nothing else in the alphabet does it. Drawn with and without their lead-outs
- * side by side, the other twenty carry a tail off a terminal that was already
+ * side by side, the other eighteen carry a tail off a terminal that was already
  * pointing that way -- the `E` and the `L` simply grow a longer bottom arm, and
  * the rest end in clear air.
  */
-const NEVER_HANDS_ON = new Set(["B", "D", "F", "I", "O", "P"]);
+const NEVER_HANDS_ON = new Set(["B", "D", "F", "I", "O", "P", "T", "Y"]);
 export const CAPITALS = new Set<string>("ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""));
 
 /** Which halves of the join this letter has, if any. */
@@ -314,6 +323,88 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
 }
 
 /**
+ * How heavy a join is drawn against the letters it joins.
+ *
+ * The whole pen at a text weight. Past it the joins give some of it back: a
+ * heavy script is heavy in its down-strokes, and its connecting strokes stay
+ * the up-strokes they are. Drawn at the stem's weight, a Black joined face
+ * laid a bar as heavy as its stems between every two letters and `minimum`
+ * was one black ribbon. A written letter's own lead-in is a join too and is
+ * drawn at the same weight, or the two halves of one stroke would not match.
+ */
+export function joinWeight(style: Style): number {
+  return 1 - 0.45 * Math.min(1, blackness(style));
+}
+
+/**
+ * Where a written letter's own lead-in has to cross its origin, in the
+ * letter's own drawing, and on what heading.
+ *
+ * A written letter carries its up-stroke as part of itself, and the join layer
+ * slides it until that stroke crosses the origin at the seam. It used to be
+ * struck from the writing line, which put everything below the seam to the
+ * left of the origin -- inside the letter before, where it cut straight across
+ * that letter's last stem and its lead-out: `in`, `an` and `mn` each had an X
+ * at the join, and `vn` a V with a 4 after it. So the recipe asks here instead,
+ * and starts its stroke at the seam, on the heading the letter before arrives
+ * on, carrying on past it only by the weld every join has.
+ *
+ * In the recipe's coordinates: `connected` lifts a letter off its line before
+ * the join is planned, so the seam the recipe has to hit is that much lower.
+ */
+export function writtenLead(
+  name: string,
+  style: Style,
+  /*
+   * Which end of the letter the stroke is at. A written `r` hands on from the
+   * end of its arm through a valley, and that is its lead-out: struck off the
+   * entry's seam, the `r` that arrives high after an `o` fell only to the
+   * waist, and came out 125 units narrower than the `r` it stands in for --
+   * so the letter after it started where the `r` had not finished. The exit
+   * is taken high only by the letters that hand over high, as `connected`
+   * plans the join itself.
+   */
+  end: "entry" | "exit" = "entry",
+): Lead {
+  const script = style.parts.script;
+  const f = frame(style);
+  const unit = scriptUnit(style);
+  const seams = seamsOf(script, f.x, f.half, unit);
+  const asked =
+    end === "entry"
+      ? takingHigh.entry === true
+      : takingHigh.exit === true && HANDS_OVER_HIGH.has(name);
+  const high = asked && seams.high > seams.low + 1e-9;
+  const lift = script.on ? wobbleOf(name, script, f.x).lift : 0;
+  const reach = script.reach * unit;
+  const weld = Math.max(0, script.knit) * unit + Math.max(0, Math.min(1, script.flat)) * reach;
+  const low: Lead = {
+    y: seams.low - lift,
+    way: seamHeading(script, false, f.x, f.half, unit),
+    weld,
+    high: false,
+  };
+  if (!high) return low;
+  return {
+    y: seams.high - lift,
+    way: seamHeading(script, true, f.x, f.half, unit),
+    weld,
+    high,
+    low,
+  };
+}
+
+/** Where a written lead-in crosses its seam and how; see `writtenLead`. */
+export interface Lead {
+  y: number;
+  way: { x: number; y: number };
+  weld: number;
+  high: boolean;
+  /** The same lead-in taken low, which a high one keeps the reach of. */
+  low?: Lead;
+}
+
+/**
  * The letter with its lead-in and lead-out, for a face that connects.
  *
  * Done here rather than in `finish` because `finish` does not know which letter
@@ -348,19 +439,35 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * the loops, the spacing, the promise that a boundary form is narrower than
    * the letter it stands in for -- then holds unchanged.
    */
+  /*
+   * On a book page of its own (see `WaveBook`), because it is a different
+   * drawing with different runs: read off the written letter's page, the
+   * drawn letter's bows and ends took the written one's answers, and the
+   * Monoline's `n.begin` and `r.end` had different points at every weight.
+   */
   if (recipe.entered && script.on && endsWithout?.entry === false && LETTERS[name]) {
+    waveBookAt(`${name}~drawn`);
+    recipe = LETTERS[name](style);
+  }
+  // And a letter written to hand on from the end of its last stroke, with
+  // nothing to hand on to, is the drawn one and finishes that stroke on the
+  // face's own terminal.
+  if (recipe.leaves && script.on && endsWithout?.exit === false && LETTERS[name]) {
+    waveBookAt(`${name}~drawn`);
     recipe = LETTERS[name](style);
   }
   /*
-   * The bow first, and before anything asks whether this letter joins.
+   * The bow first: the letters are bowed before their loops are found and
+   * their joins are planned, so both are struck against the letter as it
+   * really ends up rather than against a straight one it never was.
    *
-   * A written line is bowed whether or not it reaches a neighbour, so a digit,
-   * a comma and the four capitals that hand on to nothing all take it -- and
-   * the letters that do join are bowed before their loops are found and their
-   * joins are planned, so both are struck against the letter as it really ends
-   * up rather than against a straight one it never was.
+   * The lowercase only. A capital is set down deliberately at the head of a
+   * word -- the same reason it takes no bounce -- and its strokes meet at
+   * points that were solved with them straight: bowed, the stems of the
+   * Handwriting's and the Formal Script's `M`, `N` and `W` stood off their
+   * diagonals in ledges at every apex, and the `Q`'s tail knotted.
    */
-  if (script.on && script.bow > 0) {
+  if (script.on && script.bow > 0 && joinEnds(name).entry) {
     const half = style.pen.weight / 2;
     recipe = {
       ...recipe,
@@ -410,6 +517,8 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     // What the pen is certain to reach, which is what it is at its narrowest.
     narrow: f.half * Math.max(0, 1 - Math.abs(style.pen.contrast)),
     x: f.x,
+    join: f.half * joinWeight(style),
+    unit: scriptUnit(style),
     sidebearing: f.edge - f.half,
   };
   /*
@@ -443,7 +552,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * drawing that a shaper swaps in when the pair actually occurs. `o` and the
    * letter after it are both replaced, so the two that meet always agree.
    */
-  const seams = seamsOf(script, f.x, f.half);
+  const seams = seamsOf(script, f.x, f.half, room.unit);
   const crossing = {
     entry: takingHigh.entry ? seams.high : seams.low,
     exit: takingHigh.exit && HANDS_OVER_HIGH.has(name) ? seams.high : seams.low,
@@ -464,12 +573,42 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * the one thing every face here promises not to do.
    */
   const lift = ends.entry ? wobbleOf(name, script, f.x).lift : 0;
-  const body = [...recipe.strokes, ...loops.map((loop) => ink(f, loop, BUTT, BUTT))].map(
-    (stroke) => ({
-      ...stroke,
-      spine: movedSpine(stroke.spine, 0, lift),
-    }),
-  );
+  /*
+   * A loop is the up-stroke of the letter it hangs on -- the hand going up to
+   * turn round and come back down the stem -- and a pen with contrast draws its
+   * up-strokes light. Drawn at the stem's weight on a nib held at an angle, the
+   * eye of a `b` or an `l` swelled into a black crescent round a sliver of a
+   * counter, and a `y`'s closed up altogether. A monoline pen has no light
+   * stroke to give, so there it is the stem's.
+   */
+  const loopWeight = (1 - 0.45 * Math.min(1, Math.abs(style.pen.contrast))) * joinWeight(style);
+  /*
+   * And the run an eye turns off ends round where it turns. A written loop is
+   * one stroke going up, turning over and coming back down, and the turn is
+   * the pen's own round end -- cut square, the run stood up past the eye in a
+   * flag at the top of every looped ascender and in a nick at the foot of
+   * every looped descender. Pulled back by what the round end reaches, as
+   * every round end here is, so the letter still stops on its line.
+   */
+  const turned = recipe.strokes.map((stroke) => {
+    const loop = loops.find((one) => one.on === stroke.spine);
+    if (!loop) return stroke;
+    return capped(f, { ...stroke, [loop.at]: { kind: "round" } }, true);
+  });
+  const body = [
+    ...turned,
+    /*
+     * Round where the eye comes home to the end of its run. The eye and the run
+     * it turns off meet end to end at an angle, and two square cuts meeting
+     * like that leave a notch on the outside of the turn -- a white nick at the
+     * foot of every looped `g`, `j` and `y` on the Roundhand. The pen's own
+     * end fills it, and inside the run it shows nothing.
+     */
+    ...loops.map((loop) => lighter(ink(f, loop.spine, BUTT, { kind: "round" }), loopWeight)),
+  ].map((stroke) => ({
+    ...stroke,
+    spine: movedSpine(stroke.spine, 0, lift),
+  }));
   const plan = planJoin(
     body.map((stroke) => stroke.spine),
     room,
@@ -483,6 +622,7 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
     has.entry ? f.x + lift : null,
     recipe.air,
     recipe.entered === true,
+    recipe.leaves ? spineEnd(body[recipe.strokes.length - 1].spine) : null,
   );
   if (!plan) return recipe;
   /*
@@ -505,7 +645,8 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * push the two ends through each other. The buried end is square because
    * nothing can see it.
    */
-  if (plan.entry) strokes.push(ink(f, plan.entry, BUTT, BUTT));
-  if (plan.exit) strokes.push(ink(f, plan.exit, BUTT, BUTT));
+  const light = joinWeight(style);
+  if (plan.entry) strokes.push(lighter(ink(f, plan.entry, BUTT, BUTT), light));
+  if (plan.exit) strokes.push(lighter(ink(f, plan.exit, BUTT, BUTT), light));
   return { ...recipe, strokes, width: plan.width };
 }

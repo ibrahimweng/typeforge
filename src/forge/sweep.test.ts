@@ -404,3 +404,67 @@ describe("corners", () => {
     );
   });
 });
+
+describe("a curve running on into a straight on a pen with contrast", () => {
+  /*
+   * The offset of an arc drawn with contrast is an ellipse, and where the arc
+   * gives on to a straight run at a slant the ellipse's slope there is not
+   * the run's: the outline turned a corner nobody drew, down both sides of an
+   * s's spine and round the insides of its counters.
+   */
+  it("leaves no corner where the two meet", () => {
+    const heading = (-30 * Math.PI) / 180;
+    const radius = 120;
+    // A turn anticlockwise ending heading down to the right, then straight on.
+    const end = heading - Math.PI / 2;
+    const centre = { x: 0, y: 0 };
+    const from = { x: centre.x + radius * Math.cos(end), y: centre.y + radius * Math.sin(end) };
+    const direction = { x: Math.cos(heading), y: Math.sin(heading) };
+    const stroke: Stroke = {
+      spine: {
+        segments: [
+          {
+            kind: "arc",
+            centre,
+            radius,
+            startAngle: end - Math.PI / 3,
+            endAngle: end,
+            sweepPositive: true,
+          },
+          {
+            kind: "line",
+            from,
+            to: { x: from.x + direction.x * 200, y: from.y + direction.y * 200 },
+          },
+        ],
+        closed: false,
+      },
+      pen: { weight: 140, contrast: 0.55, angle: 8 },
+      start: { kind: "butt" },
+      end: { kind: "butt" },
+    };
+    const [outline] = sweep(stroke);
+    let worst = 0;
+    for (const node of outline.nodes) {
+      const along = node.handleIn ?? node.handleOut;
+      if (!along) continue;
+      const handle = {
+        x: node.handleIn ? node.point.x - along.x : along.x - node.point.x,
+        y: node.handleIn ? node.point.y - along.y : along.y - node.point.y,
+      };
+      const length = Math.hypot(handle.x, handle.y);
+      if (length < 1e-6) continue;
+      // Only the nodes where the curve gives on to a straight edge.
+      const onEdge = [-1, 1].some((side) => {
+        const normal = { x: -direction.y * side, y: direction.x * side };
+        const off = (node.point.x - from.x) * normal.x + (node.point.y - from.y) * normal.y;
+        const back = (node.point.x - from.x) * direction.x + (node.point.y - from.y) * direction.y;
+        return off > 20 && off < 80 && Math.abs(back) < 40 && !(node.handleIn && node.handleOut);
+      });
+      if (!onEdge) continue;
+      const cross = Math.abs(handle.x * direction.y - handle.y * direction.x) / length;
+      worst = Math.max(worst, cross);
+    }
+    expect(worst).toBeLessThan(Math.sin((1.5 * Math.PI) / 180));
+  });
+});

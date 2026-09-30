@@ -15,9 +15,11 @@
 import { describe, expect, it } from "vitest";
 
 import { contourArea, contoursBounds, inkRunsAt } from "@/font/geometry";
+import { unite } from "@/font/boolean";
 import { contoursIntersect } from "@/font/outline";
-import { builtFrom, drawLetter, letterNames, reachesOut } from "./build";
+import { builtFrom, drawLetter, letterNames, overhangOf, reachesOut } from "./build";
 import { startFrom, weighted } from "./document";
+import { readyToShape } from "./layers";
 import { openWaveBook, spineEnd, spineStart, waveBookAt, type WaveBook } from "./shapes";
 import { everyFormOf, recipeOf } from "./letters";
 import { mostLift, seamsOf } from "./script";
@@ -194,7 +196,9 @@ describe("the character set", () => {
               ? style.parts.script.eye * Math.abs(style.metrics.descender)
               : 0;
           expect(bounds.xMin, `${name} starts left of the origin`).toBeGreaterThan(
-            reaches ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - swing - 1 : -1,
+            reaches
+              ? Math.min(0, leaned) - style.pen.weight * 0.5 - knit - swing - 1
+              : -1 - overhangOf(name, style),
           );
           expect(bounds.xMax, `${name} runs off the right`).toBeLessThan(unitsPerEm * 1.6);
         }
@@ -217,11 +221,13 @@ describe("the character set", () => {
           if (drawn.contours.length === 0) continue;
           if (reachesOut(name, style)) continue;
           const bounds = contoursBounds(drawn.contours);
-          expect(bounds.xMin, `${name} touches its left edge`).toBeGreaterThan(0);
+          expect(bounds.xMin, `${name} touches its left edge`).toBeGreaterThan(
+            -overhangOf(name, style),
+          );
           expect(
             drawn.advanceWidth - bounds.xMax,
             `${name} touches its right edge`,
-          ).toBeGreaterThan(0);
+          ).toBeGreaterThan(-overhangOf(name, style));
         }
       });
 
@@ -248,10 +254,20 @@ describe("the character set", () => {
         }
       });
 
-      /** A column of figures only lines up if the figures are all one width. */
-      it("gives every figure the same width", () => {
+      /**
+       * A column of figures only lines up if the figures are all one width --
+       * unless the face sets them proportional, as Geist does and the Sans
+       * does after it, and then each is spaced by its own ink: the one the
+       * narrowest of them, the zero among the widest.
+       */
+      it("gives every figure the same width, or its own where the face sets them proportional", () => {
         const widths = FIGURES.map((name) => Math.round(drawLetter(name, style)!.advanceWidth));
-        expect(new Set(widths).size, `figure widths: ${widths.join(", ")}`).toBe(1);
+        if (style.metrics.figures === "proportional") {
+          expect(Math.min(...widths), `figure widths: ${widths.join(", ")}`).toBe(widths[1]);
+          expect(widths[0], `figure widths: ${widths.join(", ")}`).toBeGreaterThan(widths[1] * 1.4);
+        } else {
+          expect(new Set(widths).size, `figure widths: ${widths.join(", ")}`).toBe(1);
+        }
       });
 
       it("stands the lowercase on the baseline and the capitals with it", () => {
@@ -286,7 +302,10 @@ describe("the character set", () => {
         const heightOf = (name: string): number =>
           contoursBounds(drawLetter(name, style)!.contours).yMax;
         expect(heightOf("H")).toBeGreaterThan(heightOf("n"));
-        expect(heightOf("l")).toBeGreaterThan(heightOf("H"));
+        // No shorter than the capitals, and on most faces taller: a
+        // neo-grotesque such as the Sans stands its ascenders level with its
+        // capitals, as Geist and Helvetica do.
+        expect(heightOf("l")).toBeGreaterThanOrEqual(heightOf("H"));
         /*
          * Within a few units, because a nib held at an angle puts a slight
          * bulge on the outside of a turn: the offset of a circle swept by an
@@ -914,4 +933,151 @@ describe("an f is not a t, and a k is not a fan", () => {
     }
     expect(apart).toEqual([]);
   }, 60_000);
+});
+
+describe("a shoulder pushed past its range is still a shoulder", () => {
+  const pushed = (style: Style, spring: number, reach: number): Style => ({
+    ...style,
+    parts: { ...style.parts, shoulder: { ...style.parts.shoulder, spring, reach } },
+  });
+
+  it("keeps the corners of the arch round however high it springs", () => {
+    /*
+     * Measured just under the top of the arch, where a round shoulder has
+     * only its flat and a box has the whole width of the letter. A springing
+     * of 0.9 with a reach of 1.4 left a turn of barely half a pen at each end
+     * of the flat, and the n, m and h came out as boxes -- the run along the
+     * top was four fifths of the letter. Held to a turn of half the arch's
+     * reach, it is well under two thirds on every base.
+     */
+    const boxes: string[] = [];
+    for (const [name, style] of BASES) {
+      for (const letter of ["n", "m", "h"]) {
+        const drawn = drawLetter(letter, pushed(style, 0.95, 1.4));
+        if (!drawn) continue;
+        const box = contoursBounds(drawn.contours);
+        const runs = inkRunsAt(drawn.contours, box.yMax - 2, "y", 48);
+        const longest = Math.max(0, ...runs.map(([from, to]) => to - from));
+        const share = longest / (box.xMax - box.xMin);
+        if (share > 0.65) boxes.push(`${name} ${letter}: ${share.toFixed(2)}`);
+      }
+    }
+    expect(boxes).toEqual([]);
+  });
+
+  it("draws a reach and a springing beyond the controls as the ends of them", () => {
+    // Beyond the panel's own range nothing further happens, so the letters
+    // stay spaced for arches the face was built to hold.
+    for (const [name, style] of BASES) {
+      const past = drawLetter("m", pushed(style, 0.95, 1.6));
+      const end = drawLetter("m", pushed(style, 0.85, 1.3));
+      if (!past || !end) continue;
+      expect(past.advanceWidth, name).toBeCloseTo(end.advanceWidth, 6);
+      expect(contoursBounds(past.contours), name).toEqual(contoursBounds(end.contours));
+    }
+  });
+});
+
+describe("a crossbar pushed low and heavy stays a bar", () => {
+  it("keeps the middle of an E and the eye of an e clear of what is below", async () => {
+    await readyToShape();
+    /*
+     * Straight down through the letter, three bars of ink with paper between
+     * each: the arms of the E, and the top of the e's bowl, its eye and its
+     * bottom. At a height of 0.3 and a thickness of 1.6 the middle arm of an E
+     * landed on the bottom one and the eye of an e sank into the bottom of its
+     * bowl, and the line down the letter met two runs of ink, not three.
+     */
+    const pushed = (style: Style): Style => ({
+      ...style,
+      parts: { ...style.parts, crossbar: { height: 0.3, weight: 1.6 } },
+    });
+    /*
+     * The faces whose E and e are a stem and plain bars. The script faces
+     * draw both as a written stroke with no middle arm to speak of, and the
+     * slab-serifed ones hang serifs off the arm ends that can still meet
+     * when the arms are this crowded -- see the note on `clearBetween`.
+     */
+    const plainly = ["sans", "grotesque", "serif", "display", "geometric", "technical", "didone"];
+    const fused: string[] = [];
+    for (const [name, style] of BASES.filter(([one]) => plainly.includes(one))) {
+      for (const letter of ["E", "e"]) {
+        const drawn = drawLetter(letter, pushed(style));
+        if (!drawn) continue;
+        // Fused, so strokes that overlap read as the one run of ink they are.
+        const ink = unite(drawn.contours, "winding", "whole");
+        const box = contoursBounds(ink);
+        // Left of the middle for the e, clear of the gap its bowl ends in;
+        // for the E, halfway out along the middle arm, the shortest of three.
+        const x = box.xMin + (box.xMax - box.xMin) * (letter === "e" ? 0.38 : 0.55);
+        const runs = inkRunsAt(ink, x, "x", 48);
+        const gaps = runs.slice(1).map(([from], index) => from - runs[index][1]);
+        const least = Math.min(...gaps);
+        if (runs.length < 3 || least < style.pen.weight * 0.2) {
+          fused.push(`${name} ${letter}: ${runs.length} runs, ${least.toFixed(0)} apart`);
+        }
+      }
+    }
+    expect(fused).toEqual([]);
+  });
+});
+
+describe("a serif goes on the outside of a shallow diagonal", () => {
+  it("lays no wing along the top of a k's arm", async () => {
+    /*
+     * The arm of a k meets its x-height at well under forty-five degrees, so
+     * the wing on the inside of its serif lay above the arm with a long wedge
+     * of paper between them, and at a long projection it read as a loose bar
+     * across the middle of the letter. Level with the serif, the arm's ink
+     * should start where the arm's own edge does -- the serif may reach out to
+     * the right of it, never back along it to the left.
+     */
+    await readyToShape();
+    const long = (style: Style): Style => ({
+      ...style,
+      parts: {
+        ...style.parts,
+        slab: { ...style.parts.slab, on: true, projection: 1.2, thickness: 1 },
+      },
+    });
+    const bare = (style: Style): Style => ({
+      ...style,
+      parts: { ...style.parts, slab: { ...style.parts.slab, on: false } },
+    });
+    const loose: string[] = [];
+    for (const style of [SANS, SERIF]) {
+      const y = style.metrics.xHeight - style.pen.weight * 0.5;
+      const armAt = (drawn: Style): number => {
+        const ink = unite(drawLetter("k", drawn)!.contours, "winding", "whole");
+        const runs = inkRunsAt(ink, y, "y", 48);
+        // The run after the stem's is the arm (the serif's outer wing, where
+        // there is one, stands clear of it further right). Measured from the
+        // stem's left edge, since a serifed letter is set with more room
+        // either side and the whole drawing moves over.
+        return runs[1][0] - runs[0][0];
+      };
+      const without = armAt(bare(style));
+      const withSerif = armAt(long(style));
+      if (withSerif < without - 1)
+        loose.push(`${style.name}: ${(without - withSerif).toFixed(0)} units`);
+    }
+    expect(loose).toEqual([]);
+  });
+});
+
+describe("the fuse keeps a counter two strokes close between them", () => {
+  /*
+   * The eye of an ash is no stroke's own: it is the e's bowl shut by its bar.
+   * On the Typewriter the e's left side lies on the a's stem and the a's bowl
+   * runs flush against the same edge, three edges on one line, and the fuse
+   * handed back the eye filled in -- a union that was neither swollen nor
+   * wrong at any point inside a stroke, so nothing asked about it.
+   */
+  it("fuses the Typewriter ash with both its counters open", async () => {
+    const { ready } = await import("@/font/boolean");
+    await ready();
+    const typewriter = STARTING_POINTS.find((style) => style.name === "Typewriter")!;
+    const fused = unite(drawLetter("ae", typewriter)!.contours, "winding");
+    expect(fused.filter((contour) => contourArea(contour) < 0)).toHaveLength(2);
+  });
 });

@@ -19,6 +19,8 @@ import * as React from "react";
 import { CoachMark } from "@/components/CoachMark";
 import { Reference } from "@/components/Reference";
 import { contoursToSvgPath } from "@/font/geometry";
+import type { Contour } from "@/font/types";
+import { type Frame, inkFrame, type Placed, viewBoxOf } from "@/components/ink-frame";
 import { letterNames, skeletonOf } from "@/forge/build";
 import { cellBox, cellKey, PORTS, portAt, rowsOf, unitOf } from "@/forge/kit";
 import { anyEffect } from "@/font/effects";
@@ -45,9 +47,12 @@ import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { useLibrary } from "@/state/useLibrary";
 import { cn } from "@/cn";
 import { followPointer } from "@/components/follow-pointer";
+import { letterLabel } from "./letter-label";
 import { useNativeWheel, zoomAbout } from "./wheel";
+import { useShowing } from "@/state/surface";
 
 export function ForgeView(): React.JSX.Element {
+  useShowing("forge");
   const state = useForge();
   const { forge, letter } = state;
 
@@ -61,11 +66,27 @@ export function ForgeView(): React.JSX.Element {
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Stage letter={letter} revision={state.revision} parts={parts} />
         <Specimen revision={state.revision} />
-        <Warnings revision={state.settledRevision} />
-        {/* Both of these read the whole alphabet, so both wait for the drag to
-            end rather than following the live one: they catch up when the hand
-            comes off instead of holding it up. */}
-        <Alphabet names={names} selected={letter} />
+        {/*
+         * The warnings share the strip's part of the page, under it, and take
+         * nothing from the stage.
+         *
+         * They arrive when the walk over the font finishes, which is a moment
+         * after the font holds still and several on a busy machine. Standing
+         * between the specimen and the strip, the bar took its height out of
+         * the stage as it came and went, so the letter shrank and moved under
+         * the pointer after an edit: turning the grid on warns about the
+         * letters it lays past the ascender, and the press that followed landed
+         * a cell below the one aimed at. Under the strip, the only thing that
+         * moves is the strip's bottom edge, and nothing is aimed at there.
+         *
+         * Both of these read the whole alphabet, so both wait for the drag to
+         * end rather than following the live one: they catch up when the hand
+         * comes off instead of holding it up.
+         */}
+        <div className="flex min-h-0 flex-[2] flex-col">
+          <Alphabet names={names} selected={letter} />
+          <Warnings revision={state.settledRevision} />
+        </div>
       </div>
     </div>
   );
@@ -128,6 +149,16 @@ function Stage({
   const drawn = React.useMemo(
     () => draw(letter, state.resting ? state.forge : unshaped(state.forge)),
     [letter, state.forge, state.resting, revision],
+  );
+  /*
+   * The letter as the font last held still, which is what the stage is framed
+   * by. Framed by the live drawing instead, the stage changed size mid-drag --
+   * a cast is dropped for the length of a gesture, so the frame shrank on the
+   * first frame of the drag and grew back after it.
+   */
+  const rested = React.useMemo(
+    () => draw(letter, state.settled),
+    [letter, state.settled, revision],
   );
   /*
    * A letter that came in from outside has neither.
@@ -209,9 +240,20 @@ function Stage({
 
   if (!drawn) return <div className="flex-1" />;
 
-  const top = metrics.ascender + 60;
-  const bottom = metrics.descender - 60;
-  const width = Math.max(drawn.advanceWidth, 1) + metrics.unitsPerEm * 0.12;
+  /*
+   * The ascender and descender with room to spare, grown to take in any ink
+   * that goes further -- a shadow thrown down past the descender, the ring of
+   * an Å -- which used to run off the stage and be cut away.
+   */
+  const still = rested ?? drawn;
+  const ink = inkFrame(metrics, [{ contours: still.contours, x: 0 }], still.advanceWidth);
+  const span = within(reachOf(state.settled), ink);
+  const top = Math.max(metrics.ascender + 60, -span.y);
+  const bottom = Math.min(metrics.descender - 60, -(span.y + span.height));
+  const pad = metrics.unitsPerEm * 0.06;
+  const leftmost = Math.min(-pad, ink.x - pad / 2);
+  const width =
+    Math.max(Math.max(drawn.advanceWidth, 1) + pad, ink.x + ink.width + pad / 2) - leftmost;
   const height = top - bottom;
   const unit = metrics.unitsPerEm / 260 / view.zoom;
 
@@ -342,7 +384,7 @@ function Stage({
     });
   };
 
-  const left = -metrics.unitsPerEm * 0.06 + view.x;
+  const left = leftmost + view.x;
   const viewBox = `${left} ${-top + view.y} ${width / view.zoom} ${height / view.zoom}`;
 
   return (
@@ -591,12 +633,67 @@ function apply(handle: Handle, value: number, phase: Phase): void {
 }
 
 /** One line of the specimen, set in one weight of the family. */
+/**
+ * The letters that between them reach as far as any letter does: the tallest
+ * accents, the deepest tails, the brackets that go past both lines.
+ */
+const FRAME_SAMPLE = [
+  "Aring",
+  "Eacute",
+  "Ccedilla",
+  "Ograve",
+  "g",
+  "j",
+  "y",
+  "p",
+  "Q",
+  "f",
+  "parenleft",
+  "braceleft",
+  "dollar",
+];
+
+const reaches = new WeakMap<Forge, { revision: number; frame: Frame }>();
+
+/**
+ * How far the font's ink reaches above and below, as one frame for every
+ * letter shown on the page.
+ *
+ * Each letter used to be framed to its own ink, which kept every one whole
+ * and drew them at different sizes: an Å came out a sixth smaller than the A
+ * beside it, on the stage and in the strip, and the specimen shrank the moment
+ * an accented capital was typed. One frame for the font keeps them at one size
+ * and on one baseline; a letter that reaches further still grows its own.
+ *
+ * Kept per font rather than worked out per letter, since the strip asks for it
+ * once a cell.
+ */
+function reachOf(forge: Forge): Frame {
+  const revision = forgeStore.getSnapshot().revision;
+  const known = reaches.get(forge);
+  if (known && known.revision === revision) return known.frame;
+  const pieces = FRAME_SAMPLE.flatMap((name) => {
+    const drawn = draw(name, forge);
+    return drawn ? [{ contours: drawn.contours, x: 0 }] : [];
+  });
+  const frame = inkFrame(forge.style.metrics, pieces, 1);
+  reaches.set(forge, { revision, frame });
+  return frame;
+}
+
+/** The font's reach, grown to take in a frame of ink that goes further. */
+function within(reach: Frame, own: Frame): { y: number; height: number } {
+  const top = Math.min(reach.y, own.y);
+  const bottom = Math.max(reach.y + reach.height, own.y + own.height);
+  return { y: top, height: bottom - top };
+}
+
 function setLine(
   forge: Forge,
   text: string,
-): { pieces: Array<{ d: string; x: number }>; width: number } {
+): { pieces: Array<{ d: string; x: number; contours: Contour[] }>; width: number } {
   let x = 0;
-  const pieces: Array<{ d: string; x: number }> = [];
+  const pieces: Array<{ d: string; x: number; contours: Contour[] }> = [];
   for (const character of text) {
     const name = nameOf(character);
     const drawn = name ? draw(name, forge) : null;
@@ -612,7 +709,7 @@ function setLine(
       x += drawn.advanceWidth;
       continue;
     }
-    pieces.push({ d: contoursToSvgPath(drawn.contours), x });
+    pieces.push({ d: contoursToSvgPath(drawn.contours), x, contours: drawn.contours });
     x += drawn.advanceWidth;
   }
   return { pieces, width: x };
@@ -654,6 +751,21 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
     [shown, state.specimen, revision, weights.join()],
   );
   const { metrics } = state.forge.style;
+  // Every weight on the same height, taken from all of them, so the lines stay
+  // at one size and whatever reaches past the ascender or descender -- an
+  // accent, a heavy tail -- is shown rather than cropped.
+  const tall = React.useMemo(
+    () =>
+      within(
+        reachOf(state.settled),
+        inkFrame(
+          metrics,
+          lines.flatMap((one) => one.pieces),
+          1,
+        ),
+      ),
+    [lines, metrics, state.settled, revision],
+  );
 
   return (
     <div
@@ -691,7 +803,11 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
                 </span>
               )}
               <svg
-                viewBox={`0 ${-metrics.ascender} ${one.width} ${metrics.ascender - metrics.descender}`}
+                viewBox={viewBoxOf({
+                  ...inkFrame(metrics, one.pieces, one.width),
+                  y: tall.y,
+                  height: tall.height,
+                })}
                 className={cn("w-auto max-w-full", lines.length > 1 ? "h-7" : "h-16")}
                 role="img"
                 aria-label={lines.length > 1 ? `Specimen ${one.name}` : "Specimen"}
@@ -761,6 +877,9 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
     d: string;
     width: number;
     points: number;
+    /** The font's frame, grown for anything the tool pushed further. */
+    y: number;
+    height: number;
   } | null>(null);
   React.useEffect(() => {
     if (!anyEffect(effects) || !state.resting) return;
@@ -768,11 +887,18 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
     const waited = window.setTimeout(() => {
       if (!live) return;
       const drawn = proof(letter, state.forge);
+      const width = drawn?.advanceWidth ?? 0;
+      const own = inkFrame(
+        state.forge.style.metrics,
+        drawn ? [{ contours: drawn.contours, x: 0 }] : [],
+        width,
+      );
       setMade({
         of: state.forge,
         d: drawn ? contoursToSvgPath(drawn.contours) : "",
-        width: drawn?.advanceWidth ?? 0,
+        width,
         points: drawn ? drawn.contours.reduce((sum, one) => sum + one.nodes.length, 0) : 0,
+        ...within(reachOf(state.forge), own),
       });
     }, PROOF_WAIT);
     return () => {
@@ -782,9 +908,13 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
   }, [letter, state.forge, state.resting, effects]);
 
   if (!anyEffect(effects)) return null;
+  /*
+   * The frame the tool's drawing is shown in. It was a fixed share past the
+   * ascender and descender, and an Å came out with its ring cut off.
+   */
   const { metrics } = state.forge.style;
-  const top = metrics.ascender * 1.06;
-  const bottom = metrics.descender * 1.2;
+  const top = made ? -made.y : metrics.ascender * 1.06;
+  const bottom = made ? -(made.y + made.height) : metrics.descender * 1.2;
   const stale = made !== null && made.of !== state.forge;
 
   if (!open) {
@@ -1099,39 +1229,79 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
    * a moment after the letter is still a warning about the letter in front of
    * you -- whereas a slider that cannot be moved is not a slider.
    */
-  const [found, setFound] = React.useState<Trouble[]>([]);
+  /*
+   * Kept with the font it was worked out for. A walk is dropped whenever the
+   * font moves, so the last answer stays up until a new one arrives -- and
+   * with a cut or a cast on, that can be several changes later. Shown as if
+   * it were current, it named letters as closing up after the cut that closed
+   * them had been switched off again. So an answer about an earlier font is
+   * dimmed and said to be rechecking until the walk catches up.
+   */
+  const [checked, setFound] = React.useState<{ of: Forge | null; troubles: Trouble[] }>({
+    of: null,
+    troubles: [],
+  });
+  const found = checked.troubles;
+  const stale = checked.of !== state.settled;
   React.useEffect(() => {
     // Not while a hand is on a control. The walk below is polite about frames,
     // but a pass that is thrown away and restarted on every one of them is
     // still the whole alphabet's worth of drawing per frame.
     if (!state.resting) return;
     let live = true;
-    let asked = 0;
+    /*
+     * Picked up again as the next task rather than at the next frame.
+     *
+     * Waiting for a frame between slices left the thread idle for the rest
+     * of every frame: a slice is a few milliseconds and a frame sixteen, so
+     * the walk ran at half speed or less on a page with nothing else to do --
+     * and where a letter costs tens of milliseconds, as a cut one does, the
+     * walk took two frames a letter. Firefox, slower at the booleans, took
+     * longer than a test would wait for the warnings of a slotted font. A
+     * task posted to a channel runs as soon as the browser has done what was
+     * waiting -- input, and a frame when one is due -- so the page answers as
+     * it did and the walk takes the time it costs.
+     */
+    const channel = new MessageChannel();
     const waited = window.setTimeout(() => {
       const walking = familyWalk(state.settled);
       // A slice short enough to fit in a frame with the drawing, so the page
       // keeps answering while the font is being looked over.
-      const slice = () => {
-        asked = 0;
+      channel.port1.onmessage = () => {
+        if (!live) return;
         const until = performance.now() + SLICE;
         let step = walking.next();
         while (!step.done && performance.now() < until) step = walking.next();
         if (!live) return;
-        if (step.done) setFound(step.value);
-        else asked = window.requestAnimationFrame(slice);
+        if (step.done) setFound({ of: state.settled, troubles: step.value });
+        else channel.port2.postMessage(null);
       };
-      asked = window.requestAnimationFrame(slice);
+      channel.port2.postMessage(null);
     }, STILL);
     return () => {
       live = false;
       window.clearTimeout(waited);
-      if (asked) window.cancelAnimationFrame(asked);
+      channel.port1.onmessage = null;
+      channel.port1.close();
     };
   }, [state.settled, state.resting, revision]);
 
   if (found.length === 0) return null;
   return (
-    <div className="shrink-0 border-b border-border px-4 py-2" data-forge-warnings>
+    <div
+      className={cn(
+        "max-h-[45%] shrink-0 overflow-y-auto border-t border-border px-4 py-2 transition-opacity",
+        stale && "opacity-50",
+      )}
+      data-forge-warnings
+      data-forge-warnings-stale={stale ? "yes" : undefined}
+      aria-busy={stale}
+    >
+      {stale && (
+        <span className="float-right text-2xs text-muted-foreground" data-forge-rechecking>
+          Rechecking…
+        </span>
+      )}
       {found.map((trouble) => (
         <div key={trouble.what} className="flex flex-wrap items-baseline gap-x-2 gap-y-1 py-0.5">
           <span className="text-2xs font-medium text-[color:var(--accent)]">{trouble.what}</span>
@@ -1142,9 +1312,14 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
                 key={letter}
                 type="button"
                 onClick={() => forgeStore.select(letter)}
+                title={letter}
+                // Named with the character the button shows, so what a screen
+                // reader says is what is on screen; the glyph name is the title.
+                aria-label={`Show ${letterLabel(letter)}`}
+                data-forge-warning-letter={letter}
                 className="rounded bg-card px-1 text-2xs text-foreground transition-opacity hover:opacity-70"
               >
-                {letter}
+                {letterLabel(letter)}
               </button>
             ))}
             {trouble.letters.length > 14 && (
@@ -1247,6 +1422,13 @@ interface Cell {
   name: string;
   d: string;
   width: number;
+  /**
+   * The box the cell shows, grown past the ascender and descender for ink
+   * that goes there. It used to be those two lines exactly, and the accents
+   * of the capitals, the overshoot of an O on a face whose capitals stand at
+   * the ascender, and every shadow were cut off in the strip.
+   */
+  frame: string;
   held: boolean;
   shaped: boolean;
   outside: boolean;
@@ -1257,14 +1439,22 @@ function cellOf(name: string, near: ReadonlySet<string>, forge: Forge): Cell {
   // box the right size, which is what it had while it was off screen anyway,
   // and it fills in before it arrives.
   const drawn = near.has(name) ? draw(name, forge) : null;
+  const width = drawn?.advanceWidth ?? 0;
   return {
     name,
     d: drawn ? contoursToSvgPath(drawn.contours) : "",
-    width: drawn?.advanceWidth ?? 0,
+    width,
+    frame: framedIn(forge, drawn ? [{ contours: drawn.contours, x: 0 }] : [], width),
     held: isException(forge, name),
     shaped: Boolean(formOf(forge, name)),
     outside: isImported(forge, name),
   };
+}
+
+/** A viewBox on the font's shared frame, grown for ink that reaches further. */
+function framedIn(forge: Forge, pieces: Placed[], width: number): string {
+  const own = inkFrame(forge.style.metrics, pieces, width);
+  return viewBoxOf({ ...own, ...within(reachOf(forge), own) });
 }
 
 function cellsOf(names: string[], near: ReadonlySet<string>, forge: Forge): Cell[] {
@@ -1370,10 +1560,8 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
     });
   }, [ripe, settled, plain]);
 
-  const { metrics } = state.forge.style;
-
   return (
-    <div className="toolcraft-scrollbar min-h-0 flex-[2] overflow-y-auto p-3">
+    <div className="toolcraft-scrollbar min-h-0 flex-1 overflow-y-auto p-3">
       <div className="flex flex-wrap gap-1.5">
         {cells.map((cell) => (
           <button
@@ -1395,11 +1583,10 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
               "relative flex size-14 items-center justify-center rounded-md border",
             )}
           >
-            <svg
-              viewBox={`0 ${-metrics.ascender} ${Math.max(cell.width, 1)} ${metrics.ascender - metrics.descender}`}
-              className="h-9 w-9"
-              aria-hidden
-            >
+            {/* A size larger than it was: the frame is the whole font's reach now,
+                accents and tails included, and a cell drawn at the old size
+                showed every letter a quarter smaller. */}
+            <svg viewBox={cell.frame} className="h-11 w-11" aria-hidden>
               <g transform="scale(1,-1)">
                 <path d={cell.d} fill="var(--foreground)" fillRule="nonzero" />
               </g>

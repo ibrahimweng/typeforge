@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import { findCrossbar } from "../src/font/anatomy";
-import { contourArea, contoursBounds } from "../src/font/geometry";
+import { contourArea, contourSegments, contoursBounds, flattenContour } from "../src/font/geometry";
 import { measureGlyph } from "../src/font/measure";
 import { contoursIntersect } from "../src/font/outline";
 import { importFont } from "../src/font/parse";
@@ -94,10 +94,17 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
   });
 
   /**
-   * A bar whose ends meet curves moves too, by stretching the short curves that
-   * join it to the bowl. An exact slide is often unavailable: e's bar ends at
-   * (305,516) on a curve running down to (420,227), so there is no point on it
-   * at any greater height. Only the bar's own points move either way.
+   * A bar whose ends meet curves moves too. On e the eye is spread round the
+   * moved bar, between the top of the eye and the inside bottom of the bowl:
+   * moving only the bar's own points, as this did first, bent the bowl either
+   * side of it to meet them -- a blob on one side, a pointed eye, a bar
+   * sticking out past the bowl -- and the letter changed weight.
+   *
+   * B, P and R are different. Their bar is a waist, the flat of a bowl flowing
+   * into its curve, and stretching only the joins bent the bowls into S-waves,
+   * kinks and hooks. The bowls are redrawn around the moved waist instead, so
+   * more points move; what is checked is that the bar moved by the shift,
+   * nothing crossed, and the letter kept its height and its node count.
    */
   it("moves a bar whose ends meet curves, without disturbing the bowl", async () => {
     const typeface = await open();
@@ -113,8 +120,20 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
             return now.x !== node.point.x || now.y !== node.point.y;
           }),
         );
-        // The bar's two edges and nothing else.
-        expect(moved, `${name} moved too much at ${shift}`).toHaveLength(4);
+        if (name === "e") {
+          // The eye is spread round the moved bar, so its points move; what
+          // must not is anything above the eye or below the bowl's inside.
+          const eye = contoursBounds(before);
+          const middle = (barBefore.top + barBefore.bottom) / 2;
+          for (const node of moved)
+            expect(Math.abs(node.point.y - middle), `e moved too much at ${shift}`).toBeLessThan(
+              (eye.yMax - eye.yMin) / 2,
+            );
+        }
+        expect(after.map((contour) => contour.nodes.length)).toEqual(
+          before.map((contour) => contour.nodes.length),
+        );
+        expect(contoursIntersect(after), `${name} crosses itself at ${shift}`).toBe(false);
         expect(Math.round(findCrossbar(after)!.bottom - barBefore.bottom)).toBe(shift);
 
         // The letter keeps its height: the bowl is not dragged with the bar.
@@ -255,6 +274,83 @@ suite("controls used together", { timeout: FONT_SUITE_TIMEOUT }, () => {
         expect(stems[step], `${name} stopped growing at step ${step}`).toBeGreaterThan(
           stems[step - 1],
         );
+      }
+    }
+  });
+
+  /*
+   * What the ends of the slider made was not a lighter or a bolder cut of the
+   * letter. Every point went as far as the weight until it ran out of room,
+   * so a stem lost almost all of itself while the strokes beside it stopped at
+   * a floor, and where the two met the outline gave: upright stems leaned by
+   * up to ninety-seven units across DejaVu, and bowls took on dents and flats.
+   */
+  it("keeps upright stems upright, wherever the weight slider is put", async () => {
+    const typeface = await open();
+    const em = typeface.unitsPerEm;
+    for (const name of ALPHABET) {
+      if (!typeface.glyphIndex.has(name)) continue;
+      const rest = resolve(typeface, name, {}).map(contourSegments);
+      for (const fraction of [-1, -0.5, 0.5, 1]) {
+        const weight = em * fraction * (fraction < 0 ? -LIGHTEST : HEAVIEST);
+        resolve(typeface, name, { weight }).forEach((contour, which) => {
+          contourSegments(contour).forEach((segment, index) => {
+            const drawn = rest[which][index];
+            if (drawn.kind !== "line" || Math.abs(drawn.to.x - drawn.from.x) > 0.01) return;
+            if (Math.abs(drawn.to.y - drawn.from.y) < 100) return;
+            expect(
+              Math.abs(segment.to.x - segment.from.x),
+              `${name} at ${Math.round(weight)}, segment ${index}`,
+            ).toBeLessThan(0.5);
+          });
+        });
+      }
+    }
+  });
+
+  it("thins a stem in proportion, never below a third of it", async () => {
+    const typeface = await open();
+    for (const name of ALPHABET) {
+      if (!typeface.glyphIndex.has(name)) continue;
+      const rest = measureGlyph(resolve(typeface, name, {}), 0)?.stemWidth ?? 0;
+      if (rest <= 0) continue;
+      const light =
+        measureGlyph(resolve(typeface, name, { weight: typeface.unitsPerEm * LIGHTEST }), 0)
+          ?.stemWidth ?? 0;
+      expect(light / rest, name).toBeGreaterThanOrEqual(0.3);
+      expect(light, name).toBeLessThan(rest);
+    }
+  });
+
+  it("puts no dents or flats into a curve, wherever the weight slider is put", async () => {
+    const typeface = await open();
+    const em = typeface.unitsPerEm;
+    // How many times the outline changes which way it is turning: once more
+    // than the drawing does is a wiggle the weight put there.
+    const reversals = (contour: Contour): number => {
+      const points = flattenContour(contour, 24);
+      let count = 0;
+      let last = 0;
+      points.forEach((a, index) => {
+        const b = points[(index + 1) % points.length];
+        const c = points[(index + 2) % points.length];
+        const size = Math.hypot(b.x - a.x, b.y - a.y) * Math.hypot(c.x - b.x, c.y - b.y);
+        if (size < 1e-9) return;
+        const turn = ((b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)) / size;
+        if (Math.abs(turn) < 0.01) return;
+        if (last !== 0 && Math.sign(turn) !== last) count++;
+        last = Math.sign(turn);
+      });
+      return count;
+    };
+    for (const name of "oOeGCQ0DUc".split("")) {
+      if (!typeface.glyphIndex.has(name)) continue;
+      const drawn = resolve(typeface, name, {}).map(reversals);
+      for (const weight of [em * LIGHTEST, em * HEAVIEST]) {
+        const now = resolve(typeface, name, { weight }).map(reversals);
+        now.forEach((count, which) => {
+          expect(count, `${name} at ${Math.round(weight)}`).toBeLessThanOrEqual(drawn[which]);
+        });
       }
     }
   });

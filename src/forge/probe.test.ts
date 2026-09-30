@@ -22,6 +22,7 @@ import { describe, expect, it } from "vitest";
 import { contoursBounds, distance, flattenContour } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { canDraw, drawLetter, makeLetter } from "./build";
+import { formOf, startFrom, styleFor } from "./document";
 import { valueAfter } from "./handles";
 import { METRIC_CONTROLS, PART_SPECS, PEN_CONTROLS } from "./parts";
 import { driveId, whatGoverns, withValue } from "./probe";
@@ -79,9 +80,24 @@ describe("what governs a spot", () => {
       y: style.metrics.xHeight * 0.86,
     });
     expect(found).not.toBeNull();
-    expect(driveId(found!.handle.drive)).toBe("part:shoulder:spring");
+    // Where the shoulder springs, or how high it rises: on the Sans, whose
+    // arch is superelliptic, the height moves this part of it the most.
+    expect(["part:shoulder:spring", "part:shoulder:crest"]).toContain(driveId(found!.handle.drive));
     // And it knows which run it was: an n's arch is the shoulder's.
     expect(found!.parts).toContain("shoulder");
+  });
+
+  it("gives the springing where the Sans's own arch leaves its stem", () => {
+    // The Sans draws its n in Geist's form, its arch leaving the stem thinned
+    // and in two runs: both are the shoulder's, and the inside of the stem
+    // where the counter begins is where the arch springs.
+    const forge = startFrom(SANS);
+    const found = whatGoverns("n", styleFor("n", forge), { x: 175, y: 360 }, formOf(forge, "n"));
+    expect(found).not.toBeNull();
+    expect(driveId(found!.handle.drive)).toBe("part:shoulder:spring");
+    expect(found!.parts).toContain("shoulder");
+    const crest = whatGoverns("n", styleFor("n", forge), { x: 300, y: 540 }, formOf(forge, "n"));
+    expect(crest!.parts).toContain("shoulder");
   });
 
   it("gives the crossbar for the bar of an H", () => {
@@ -246,9 +262,13 @@ describe("whatever comes back", () => {
    * cases above say that -- but that there is never an answer the panel cannot
    * show. A handle naming a control that does not exist would drive nothing and
    * look exactly like one that works.
+   *
+   * One test a face, so each has its own time and a failure names the face.
+   * Together they press about a thousand spots, each redrawing the letter once
+   * for every control it might answer to, which is a few seconds a face.
    */
-  it("names a control the panel has, at a value the control allows", () => {
-    for (const base of BASES) {
+  describe.each(BASES.map((base) => [base.name, base] as const))("on %s", (_, base) => {
+    it("names a control the panel has, at a value the control allows", () => {
       for (const letter of ["n", "o", "H", "A", "e", "g", "s", "l"]) {
         if (!canDraw(letter)) continue;
         const edge = edgeOf(letter, base);
@@ -264,8 +284,8 @@ describe("whatever comes back", () => {
           expect(handle.perUnit).not.toBe(0);
         }
       }
-    }
-  }, 120_000);
+    }, 30_000);
+  });
 
   /*
    * The two things done to a letter after it is drawn.

@@ -133,7 +133,15 @@ export function weightedStyle(style: Style, drawnAt: number, wanted: number): St
   return {
     ...style,
     pen: { ...style.pen, weight },
-    metrics: { ...style.metrics, counterWidth: counter },
+    // The counter given back here, and the bowls widened here, so neither
+    // again as the pen is drawn: see `metrics.heavyCounter` and
+    // `metrics.lightHeld`.
+    metrics: {
+      ...style.metrics,
+      counterWidth: counter,
+      heavyCounter: undefined,
+      lightHeld: undefined,
+    },
     parts: { ...style.parts, bowl: { ...style.parts.bowl, width: bowlWidth(style, weight) } },
   };
 }

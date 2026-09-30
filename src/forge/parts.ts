@@ -81,6 +81,14 @@ export const PART_SPECS: PartSpec[] = [
         step: 0.01,
       },
       {
+        key: "superness",
+        label: "Tension",
+        hint: "Nought is a circle. Turned up, the round of every bowl gathers into its corners and runs flatter along the sides and the crown -- the firm, squarish round of a neo-grotesque o, which is a superellipse rather than a circle with its sides cut straight.",
+        min: 0,
+        max: 1,
+        step: 0.01,
+      },
+      {
         key: "aperture",
         label: "Aperture",
         hint: "How far open a c, C, S, G or e stands. Below one the two ends reach round toward each other until the letter is nearly closed, which is what a heavy display face does; it never closes further than the pen can clear.",
@@ -217,13 +225,61 @@ export const PART_SPECS: PartSpec[] = [
         max: 0.8,
         step: 0.01,
       },
+      {
+        key: "shape",
+        label: "Shape",
+        hint: "Whether the bar is as deep at its tip as where it meets the stem, or thins toward the tip the way a text serif does.",
+        min: 0,
+        max: 0,
+        step: 0,
+        options: [
+          { value: "square", label: "Square", hint: "One depth all the way out: a slab." },
+          { value: "wedge", label: "Wedge", hint: "Thinning toward the tip: a text serif." },
+        ],
+      },
+      {
+        key: "head",
+        label: "Head",
+        hint: "The serif at the top of a lowercase stem -- the i, the n, the l. Level reaches both ways as a slab does; sloped is one flag falling away to the left, which is where a pen enters the stroke.",
+        min: 0,
+        max: 0,
+        step: 0,
+        options: [
+          { value: "level", label: "Level", hint: "A bar both ways, laid along the line." },
+          { value: "sloped", label: "Sloped", hint: "One flag, sloping down to the left." },
+          {
+            value: "flag",
+            label: "Flag",
+            hint: "One level flag to the left, as a slab's l has, so it never reads as an I.",
+          },
+        ],
+      },
     ],
   },
   {
     name: "terminal",
     label: "Terminal",
-    hint: "How a stroke stops when it is not wearing a serif. Flat, rounded off, or cut at an angle as a broad nib leaves it.",
+    hint: "How a stroke stops when it is not wearing a serif: every end on a sans, and the curved ends -- the hooks of a c, an f, an r, a j -- on a serif face, since a bar across a curve reads as snapped off.",
     controls: [
+      {
+        key: "kind",
+        label: "Finish",
+        hint: "Flat, level with the lines, cut at an angle as a broad nib leaves it, rounded off, or swelling into a teardrop on the inside of the curve, which is how a text face ends its hooks. A teardrop only goes on a curved end; a straight one is cut flat.",
+        min: 0,
+        max: 0,
+        step: 0,
+        options: [
+          { value: "butt", label: "Flat", hint: "Cut square across the stroke." },
+          {
+            value: "level",
+            label: "Level",
+            hint: "Cut level with the baseline, or upright where the stroke runs across: the curved ends of a c, an s and a G finished as a neo-grotesque finishes them.",
+          },
+          { value: "angled", label: "Angled", hint: "Cut across at the angle below." },
+          { value: "round", label: "Round", hint: "Capped with the pen itself." },
+          { value: "teardrop", label: "Teardrop", hint: "Swelling on the inside of a curve." },
+        ],
+      },
       {
         key: "angle",
         label: "Cut",
@@ -684,12 +740,12 @@ function serifsForced(style: Style): Style {
     parts: {
       ...style.parts,
       slab: {
+        ...style.parts.slab,
         on: true,
         // Measured in stem widths, so a size that lands is a size that lands at
         // every weight rather than at the one this was written against.
         projection: Math.max(style.parts.slab.projection, 0.35),
         thickness: Math.max(style.parts.slab.thickness, 0.25),
-        bracket: style.parts.slab.bracket,
       },
     },
   };

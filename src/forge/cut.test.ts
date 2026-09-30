@@ -2,9 +2,19 @@ import { beforeAll, describe, expect, it } from "vitest";
 
 import { unite } from "@/font/boolean";
 import { readyToShape } from "./layers";
-import { contourArea, contoursBounds, contoursToSvgPath, inkRunsAt } from "@/font/geometry";
-import type { Contour } from "@/font/types";
+import {
+  contourArea,
+  contoursBounds,
+  contoursToSvgPath,
+  flattenContour,
+  inkRunsAt,
+} from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
+import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
+import { eroded } from "./cast";
+import { editCast, editCut, editPen, proof, startFrom } from "./document";
+import { noEffects } from "./effects";
 import { anyCut, noCuts, piecesOf, type Cuts, type MotifShape } from "./cut";
 import { weightedStyle } from "./family";
 import { BASES, type Style } from "./style";
@@ -251,6 +261,62 @@ describe("chamfer", () => {
     });
     expect(removed("E", sans, heavy)).toBeGreaterThan(removed("E", sans, light));
   });
+
+  it("leaves the corners of the counters alone", () => {
+    /*
+     * A corner of a counter is a corner of the paper, not of the ink: the ink
+     * is on the outside of the turn there, and a chamfer is a cut off a corner
+     * of ink. So the counters of an A, a B, a D and a P come out exactly the
+     * size they went in.
+     *
+     * They did not, because the test for which side the ink was on was flipped
+     * for a counter on top of the counter already running the other way -- and
+     * picked out exactly these corners, putting a nick into the stem beside
+     * each one.
+     */
+    const cuts = cutWith((one) => {
+      one.chamfer = { on: true, size: 0.6 };
+    });
+    // Counter by counter, since a point laid beside a serif can close a pocket
+    // of paper off into a counter of its own, and that is not this question.
+    const counters = (contours: Contour[]): number[] =>
+      contours
+        .filter((one) => contourArea(one) < 0)
+        .map((one) => -contourArea(one))
+        .sort((a, b) => b - a);
+    const kept = (bare: number[], now: number[]): boolean =>
+      bare.every((area) => now.some((other) => Math.abs(other - area) / area < 0.001));
+    for (const letter of ["A", "B", "D", "P"]) {
+      const bare = counters(unite(drawn(letter, sans).contours, "winding", "whole"));
+      const cut = counters(drawn(letter, sans, cuts).contours);
+      expect(bare.length, letter).toBeGreaterThan(0);
+      expect(kept(bare, cut), `${letter}: ${bare} against ${cut}`).toBe(true);
+    }
+  });
+});
+
+describe("an e cut in any face", () => {
+  it("comes out of the union without its outline folded over itself", () => {
+    /*
+     * The bar of an e used to start exactly on the inside edge of the bowl's
+     * left wall, at the one height where that wall runs upright -- a square
+     * end laid against a curve at the point it was tangent to it. Fused, the
+     * counter came back with a hair of itself folded over the bar, and a Serif
+     * `e` crossed itself under the slots, the saw, the breaks and the inline
+     * alike. The inline is asked here because it leaves the bar where it was.
+     */
+    const cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    const crossed: string[] = [];
+    for (const style of BASES) {
+      const made = drawLetter("e", style, undefined, cuts);
+      if (!made) continue;
+      const folded = made.contours.filter((contour) => contoursIntersect([contour])).length;
+      if (folded > 0) crossed.push(style.name);
+    }
+    expect(crossed).toEqual([]);
+  });
 });
 
 describe("motif", () => {
@@ -477,3 +543,342 @@ describe("measured in stems", () => {
     expect(Math.abs(thin - heavy)).toBeLessThan(0.06);
   });
 });
+
+describe("at the ends of the weight range", () => {
+  const black = weightedStyle(sans, sans.pen.weight, 200);
+  const light = weightedStyle(sans, sans.pen.weight, 30);
+
+  it("breaks an arm off flush with the stem it leaves, with no stub left on the stem", () => {
+    /*
+     * The gap used to be placed a stem's half width plus an eighth of a stem
+     * along the arm, and turned square to the arm. On a Black that eighth was
+     * a sliver twenty-five units wide left standing on the stem beside every
+     * gap, and on an n -- whose arch leaves its stem heading up and over --
+     * the gap was a slash across the shoulder with a wedge of arch left on top
+     * of the stem. The stem is what has to come out clean: at every height
+     * the arm used to join it, the ink starting at the stem's outside edge
+     * runs exactly one stem across and stops.
+     */
+    const cuts = cutWith((one) => {
+      one.split.on = true;
+    });
+    for (const [letter, heights] of [
+      ["H", [0.45, 0.5, 0.55]],
+      ["n", [0.8, 0.9]],
+    ] as const) {
+      const cut = drawn(letter, black, cuts).contours;
+      const box = contoursBounds(cut);
+      for (const share of heights) {
+        const y = box.yMin + (box.yMax - box.yMin) * share;
+        const [first] = inkRunsAt(cut, y);
+        expect(first, `${letter} at ${share}`).toBeDefined();
+        expect(first[1] - first[0], `${letter} at ${share}`).toBeCloseTo(black.pen.weight, 0);
+      }
+    }
+  });
+
+  it("keeps a Black e whole when the groove is let out through its ends", () => {
+    /*
+     * With the inset taken off, the groove used to be run a stem past both
+     * ends of every stroke, as part of the stroke's own spine. The bar of an
+     * e ends inside the wall of its bowl, and the bowl's tail comes back round
+     * under its own start -- so the groove crossed itself, the ground inside
+     * the loop came out wound as ink, and the whole lower half of a Black e
+     * was cut away with it.
+     */
+    const cuts = cutWith((one) => {
+      one.inline = { on: true, width: 0.3, inset: 0 };
+    });
+    for (const style of [black, sans, light]) {
+      expect(removed("e", style, cuts), `pen ${style.pen.weight}`).toBeLessThan(0.45);
+    }
+  });
+
+  it("chamfers every letter rather than losing some of them altogether", () => {
+    /*
+     * A union hands back points doubled up a hair apart wherever two strokes'
+     * ends met, and each read as a corner with edges a ten-thousandth long.
+     * The chamfer laid a triangle of no area on every one of them, and a
+     * knife holding a few of those took the whole letter with it: a light
+     * Serif H, a Black Grotesque E, a Flared s and a Brush r all came back as
+     * nothing.
+     */
+    const cuts = cutWith((one) => {
+      one.chamfer.on = true;
+    });
+    const face = (name: string) => BASES.find((base) => base.name === name)!;
+    for (const [letter, style] of [
+      ["H", weightedStyle(face("Serif"), face("Serif").pen.weight, 30)],
+      ["H", weightedStyle(face("Fairground"), face("Fairground").pen.weight, 200)],
+      ["k", weightedStyle(face("Fairground"), face("Fairground").pen.weight, 200)],
+      ["E", weightedStyle(face("Grotesque"), face("Grotesque").pen.weight, 200)],
+      ["s", face("Flared")],
+      ["r", face("Brush")],
+    ] as const) {
+      expect(removed(letter, style, cuts), `${style.name} ${letter}`).toBeLessThan(0.1);
+    }
+  });
+
+  it("grooves a light Slab b and g rather than filling their bowls in", () => {
+    /*
+     * The groove of a round bowl runs down the stem it is drawn against, a
+     * hair from the stem's own groove, and the knife those two made was
+     * fused so that taking it away filled the whole bowl in: counter, groove
+     * and all, a black disc on a stick.
+     */
+    const cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    const slab = BASES.find((base) => base.name === "Slab")!;
+    const light = weightedStyle(slab, slab.pen.weight, 30);
+    for (const letter of "bg") {
+      const holes = drawn(letter, light, cuts).contours.filter(
+        (contour) => contourArea(contour) < 0,
+      );
+      const hole = holes.reduce((total, contour) => total - contourArea(contour), 0);
+      const was = unite(drawn(letter, light).contours, "winding").reduce(
+        (total, contour) => total + Math.min(0, contourArea(contour)),
+        0,
+      );
+      expect(hole, letter).toBeGreaterThan(-was);
+    }
+  });
+
+  it("opens a counter out past its edge without cutting through the stroke round it", () => {
+    /*
+     * A motif larger than its counter was held to the letter's silhouette,
+     * which is the far side of the stroke: a square at 1.2 on a light o
+     * reached through the thin sides of the bowl and cut the o into pieces.
+     */
+    const cuts = cutWith((one) => {
+      one.motif = { on: true, shape: "square", size: 1.2 };
+    });
+    for (const style of [light, sans]) {
+      for (const letter of "obdpq") {
+        expect(
+          piecesOf(drawn(letter, style, cuts).contours),
+          `${letter} at ${style.pen.weight}`,
+        ).toBe(1);
+      }
+    }
+  });
+
+  it("leaves alone a counter its shape will not go into", () => {
+    /*
+     * A diamond in the triangle of a 4 has to shrink until its points clear
+     * the sloping side, which on a light face is a speck: the counter was
+     * filled in for it and the 4 came back a solid wedge with a pinhole.
+     */
+    const cuts = cutWith((one) => {
+      one.motif = { on: true, shape: "diamond", size: 1 };
+    });
+    const hole = (contours: Contour[]) =>
+      contours.reduce((total, contour) => total - Math.min(0, contourArea(contour)), 0);
+    const was = hole(unite(drawn("four", light).contours, "winding"));
+    expect(was).toBeGreaterThan(0);
+    expect(hole(drawn("four", light, cuts).contours)).toBeGreaterThan(was * 0.2);
+  });
+
+  it("leaves no chips of ink standing on their own", () => {
+    /*
+     * A band at the font's own heights passes a hair under the top of an r's
+     * terminal and the spur of an s, and what it left above itself was a
+     * speck a few units across. Nobody cut that; it is dirt.
+     */
+    const cuts = cutWith((one) => {
+      one.slot = { on: true, count: 3, width: 0.34, angle: 0, inset: 0.14 };
+    });
+    for (const style of [light, sans, black]) {
+      for (const letter of "rsaegRE") {
+        const chips = drawn(letter, style, cuts).contours.filter(
+          (contour) =>
+            contourArea(contour) > 0 && contourArea(contour) < style.pen.weight ** 2 * 0.2,
+        );
+        expect(chips.length, `${letter} at pen ${style.pen.weight}`).toBe(0);
+      }
+    }
+  });
+});
+
+describe("where strokes meet", () => {
+  const face = (name: string) => BASES.find((base) => base.name === name)!;
+  const blackOf = (name: string) => weightedStyle(face(name), face(name).pen.weight, 200);
+  const breaks = cutWith((one) => {
+    one.split.on = true;
+  });
+
+  it("breaks a Black R and e without leaving chips where three strokes meet", () => {
+    /*
+     * The bowl and the leg of an R both leave the stem at the foot of the
+     * bowl, and the leg leaves the bowl there too. Three breaks cut flush
+     * against three different sides left a chip of leg standing loose beside
+     * the stem on a Black, and the bowl of a Black e, sliced along the top of
+     * its bar, dropped a crescent of its own. What comes away is one piece.
+     */
+    for (const [name, letters] of [
+      ["Sans", "Re"],
+      ["Slab", "R"],
+    ] as const) {
+      const style = blackOf(name);
+      for (const letter of letters) {
+        const solids = drawn(letter, style, breaks).contours.filter(
+          (contour) => contourArea(contour) > 0,
+        );
+        for (const solid of solids) {
+          expect(contourArea(solid), `${name} ${letter}`).toBeGreaterThan(style.pen.weight ** 2);
+        }
+      }
+    }
+  });
+
+  it("does not slice the top off a Black e", () => {
+    // Its bowl leaves the end of the bar at a slant and runs over the counter
+    // just above the bar, so a break laid flush along the bar lay along the
+    // bowl instead and took a fifth of the letter with it.
+    // A break is a slot a gap wide, and on the Sans -- narrower since it was
+    // fitted to Geist -- the slot beside the bar is a larger share of a
+    // smaller letter. A sliced-off top was a fifth.
+    for (const name of ["Sans", "Slab"]) {
+      expect(removed("e", blackOf(name), breaks), name).toBeLessThan(0.085);
+    }
+  });
+
+  it("keeps both walls of a groove whole where a bowl or an arch runs into its stem", () => {
+    /*
+     * A bowl meets its stem along the stem's own line. Swept one stroke at a
+     * time, its groove slid into the stem's at a tangent and the wall between
+     * groove and counter thinned to a hair beside the join -- or, kept out of
+     * the stem, stopped in a stub, and the Sans a's stem, drawn twice, had its
+     * groove cut into three by bars of ink. The groove is the letter shrunk
+     * by a wall now, so a wall can be no thinner anywhere than it is down a
+     * straight stem: shrunk by a little under half of one, every piece of the
+     * cut letter is still there and still one piece, and no groove has run
+     * into the counter beside it.
+     */
+    const cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    for (const name of ["Geometric", "Sans", "Slab"]) {
+      const style = face(name);
+      const wall = (style.pen.weight * (1 - cuts.inline.width)) / 2;
+      for (const letter of "abdgpqnmhR") {
+        const cut = unite(drawn(letter, style, cuts).contours, "winding", "whole");
+        const solids = (contours: Contour[]) =>
+          contours.filter((contour) => contourArea(contour) > 0).length;
+        const holes = (contours: Contour[]) =>
+          contours.filter((contour) => contourArea(contour) < 0).length;
+        const shrunk = eroded(cut, wall * 0.4);
+        expect(solids(shrunk), `${name} ${letter}`).toBe(solids(cut));
+        // And no groove run into a counter through a wall worn to nothing.
+        expect(holes(shrunk), `${name} ${letter}`).toBe(holes(cut));
+      }
+    }
+  });
+
+  it("fuses a letter into an outline that never runs back over itself", () => {
+    /*
+     * Where two strokes' edges meet at the hair the fuse nudges them apart
+     * by, the union came back with nodes a millionth of a unit apart stepping
+     * forward, back and forward again: invisible, but a fold that every cut
+     * and cast after it was handed. A Flared H at Black had one on top of
+     * each serif.
+     */
+    const cases: Array<[string, number, string]> = [
+      ["Flared", 200, "HMWXY"],
+      ["Flared", 30, "GTWYd"],
+      ["Brush", 30, "BDHIKR"],
+    ];
+    for (const [name, weight, letters] of cases) {
+      const style = weightedStyle(face(name), face(name).pen.weight, weight);
+      for (const letter of letters) {
+        const fused = unite(drawn(letter, style).contours, "winding", "whole");
+        for (const contour of fused) {
+          expect(foldsBack(contour), `${name} ${letter} at ${weight}`).toBe(false);
+        }
+      }
+    }
+  });
+});
+
+describe("the settings the Draw panel offers, at its lightest and its Black pen", () => {
+  const face = (name: string) => BASES.find((base) => base.name === name)!;
+  /** A face as the panel sets it: the pen's own weight, with no effects. */
+  const at = (name: string, weight: number) => {
+    const forge = startFrom(face(name));
+    return editPen({ ...forge, effects: noEffects() }, { weight });
+  };
+
+  it("fuses letters under counters and fillets without folding them", () => {
+    /*
+     * The letters themselves were clean, but fused they kept a fold a
+     * millionth of a unit wide on top of a serif or at the foot of a stem, and
+     * the counters and the fillets were handed that fold: a Brush H, n, m and
+     * r at 200, a Flared E and N at 30, and a Didone k and a Slab K at 30 all
+     * came back with an outline running back over itself.
+     */
+    const cases: Array<[string, number, string]> = [
+      ["Brush", 200, "Hnmr"],
+      ["Flared", 30, "HEnN"],
+      ["Didone", 30, "k"],
+      ["Slab", 30, "kKV"],
+    ];
+    for (const [name, weight, letters] of cases) {
+      const plain = at(name, weight);
+      for (const forge of [
+        editCut(plain, "motif", { on: true }),
+        editCast(plain, "weld", { on: true, size: 1 }),
+      ]) {
+        for (const letter of letters) {
+          for (const contour of proof(letter, forge)?.contours ?? []) {
+            expect(foldsBack(contour), `${name} ${letter} at ${weight}`).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it("breaks a script without leaving slivers across the breaks", () => {
+    /*
+     * Where two strokes come away from a third together, the ground both
+     * their knives cross is cut as well. That piece could come back from the
+     * subtraction wound the wrong way round, and fused with the rest of the
+     * knife under the non-zero rule the two cancelled: a sliver stood across
+     * the break at the foot of a Roundhand L, and the outline of a Formal y
+     * or a Casual g ran over itself.
+     */
+    const cases: Array<[string, number | null, string]> = [
+      ["Roundhand", null, "Lr"],
+      ["Roundhand", 30, "r"],
+      ["Formal Script", null, "y"],
+      ["Casual Script", null, "g"],
+      ["Handwriting", 200, "k"],
+    ];
+    for (const [name, weight, letters] of cases) {
+      const plain = weight === null ? at(name, face(name).pen.weight) : at(name, weight);
+      const forge = editCut(plain, "split", { on: true });
+      for (const letter of letters) {
+        for (const contour of proof(letter, forge)?.contours ?? []) {
+          expect(foldsBack(contour), `${name} ${letter}`).toBe(false);
+        }
+      }
+    }
+  });
+});
+
+/** Whether any two edges of a flattened contour cross, strictly. */
+function foldsBack(contour: Contour): boolean {
+  const points = flattenContour(contour, 12);
+  const count = points.length;
+  const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  for (let i = 0; i < count; i++) {
+    const [a, b] = [points[i], points[(i + 1) % count]];
+    for (let j = i + 2; j < count; j++) {
+      if (i === 0 && j === count - 1) continue;
+      const [c, d] = [points[j], points[(j + 1) % count]];
+      const one = side(a, b, c) * side(a, b, d);
+      const two = side(c, d, a) * side(c, d, b);
+      if (one < 0 && two < 0) return true;
+    }
+  }
+  return false;
+}

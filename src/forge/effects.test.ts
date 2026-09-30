@@ -11,7 +11,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { ready } from "@/font/boolean";
 import { contourArea, contoursBounds } from "@/font/geometry";
 import { recipeOf } from "./letters";
-import { scaleOf } from "./cut";
+import { piecesOf, scaleOf } from "./cut";
 import { effectInk, noEffects, pointsIn, reachesEffects, type Effects } from "./effects";
 import { drawLetter } from "./build";
 import { BASES, type Style } from "./style";
@@ -198,8 +198,11 @@ describe("pressure", () => {
       }),
     );
     // Even at eight tenths, which is far past anything anybody would set, the
-    // letter stays in one piece.
-    expect(marked.contours.length).toBeLessThan(6);
+    // letter stays in one piece. (The slits the pressure leaves where the bowl
+    // meets the stem are holes, not pieces; how many there are depends on the
+    // bowl's shape, so what is counted is the pieces of ink.)
+    expect(piecesOf(marked.contours)).toBe(1);
+    expect(marked.contours.filter((one) => contourArea(one) > 0).length).toBe(1);
   });
 
   it("leaves a letter drawn as one closed ring alone", () => {

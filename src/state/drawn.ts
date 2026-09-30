@@ -113,6 +113,19 @@ export function subscribeToDrawings(listener: () => void): () => void {
 
 export const drawingSoFar = (): Drawing => drawing;
 
+/**
+ * What the top bar says after the family's name: the base it was drawn from,
+ * unless the name already says so. Picking a base names the font "My Sans",
+ * and the bar read "My Sans Sans".
+ */
+export function baseAfterName(familyName: string, base: string): string | null {
+  if (!base) return null;
+  // Matched as a run of whole words, so a base of two words -- "Formal
+  // Script" -- is found in "My Formal Script", and "Sans" is not in "Sansom".
+  const words = (text: string) => ` ${text.trim().toLowerCase().split(/\s+/).join(" ")} `;
+  return words(familyName).includes(words(base)) ? null : base;
+}
+
 /** For a component that has to re-render when the drawing changes. */
 export function useDrawing(): Drawing {
   return useSyncExternalStore(subscribeToDrawings, drawingSoFar, drawingSoFar);

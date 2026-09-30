@@ -14,17 +14,31 @@
  * doubling on a hairline, and a family cast from one description has to stay
  * cast the same way at every weight.
  *
- * The two that move the whole letter -- the shadow and the rim -- are done by
- * copying it and fusing the copies, which is exactly what those shapes are.
- * All the copies go into a single union rather than being added one at a time,
- * so a shadow twenty copies long costs one boolean and not twenty.
+ * The two that move the whole letter -- the shadow and the rim -- are the
+ * ground the letter covers as a line or a small round figure is dragged over
+ * every point of it. Both are built the same exact way, as the one loop each
+ * outline makes while that happens, resolved once (`swept`).
  */
 
-import { loaded, unite, type Roles } from "@/font/boolean";
-import { contourArea, reverseContour, splitCubic } from "@/font/geometry";
+import { filled, intersect, loaded, pieces, subtract, unite, type Roles } from "@/font/boolean";
+import {
+  contourArea,
+  contourContainsPoint,
+  contoursBounds,
+  cubicAt,
+  FINE_STEPS,
+  flattenContour,
+  type Bounds,
+  rayHitDistance,
+  reverseContour,
+  splitCubic,
+  crossesItself,
+} from "@/font/geometry";
+import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import type { CutScale } from "./cut";
 import { alongSpine } from "./shapes";
+import { penReach, reachAlong } from "./sweep";
 import type { Stroke } from "./types";
 
 /*
@@ -77,6 +91,41 @@ export function reachesCast(cast: Cast | undefined, strokes: Stroke[]): boolean 
 }
 
 /**
+ * Where the inline cut its groove, for the contours the cut handed on.
+ *
+ * Kept against the very list the cut returns, which is what the cast is given
+ * when it goes second, since the shape of a hole cannot tell a groove from a
+ * counter: the narrow eye of a Formal Script e is as thin as a groove, and the
+ * counter of a Serif A lies as close to the paper all round.
+ */
+export const groovesOf = new WeakMap<Contour[], Contour[]>();
+
+/**
+ * Everything the cut took away, for the same list: a fillet grown at a join
+ * a slot has cut through reached into the band and stood in it as a bump.
+ */
+export const knivesOf = new WeakMap<Contour[], Contour[]>();
+
+/**
+ * The figures the counter motif set in the letter, for the same list: see
+ * `slit` in the effects, which took a roughened one for a crack.
+ */
+export const figuresOf = new WeakMap<Contour[], Contour[]>();
+
+/**
+ * The points and fillets the cast grew on the letter, for the same list: see
+ * the crumbs in the effects, which a point on a thin terminal can become.
+ */
+export const addedOf = new WeakMap<Contour[], Contour[]>();
+
+/** Whether a hole lies mostly in an inline's groove (`groovesOf`). */
+export function inGroove(hole: Contour, grooves: Contour[]): boolean {
+  if (grooves.length === 0) return false;
+  const shared = intersect([reverseContour(hole)], grooves, "winding");
+  return shared.reduce((total, one) => total + contourArea(one), 0) > -contourArea(hole) * 0.5;
+}
+
+/**
  * The letter with the cast put on it.
  *
  * The order inside the layer is not a preference. The spur and the weld are
@@ -91,21 +140,133 @@ export function castInk(
   scale: CutScale,
   cast: Cast,
   roles: Roles = "winding",
+  /*
+   * Where the breaks are cut, when they are. A weld does not fill a join the
+   * split has taken apart: see `weldTool`.
+   */
+  breaks?: Breaks,
+  // Where a chamfer has just cut corners off: see `spurTool`.
+  chamfered: Vec2[] = [],
 ): Contour[] {
-  if (!reachesCast(cast, strokes) || ink.length === 0 || !loaded()) return ink;
+  if (ink.length === 0 || !loaded()) return ink;
+  /*
+   * With nothing it can do -- a weld on a letter from a font file, which has
+   * no skeleton to find joins on -- the letter is still handed on the way
+   * the cast hands on everything, fused and wound as ink is. Handed back as
+   * it came, in the file's own winding, a cut after it read every counter
+   * inside out: the chamfer cut the inside corners off a Lora H, and the
+   * motif took its n away altogether.
+   */
+  if (!reachesCast(cast, strokes)) return roles === "winding" ? ink : unite(ink, roles, "whole");
 
   let shape = unite(ink, roles, "whole");
   const stem = Math.max(scale.stem, 1);
+  // The smallest counter the letter really has. Not a pinhole the union of
+  // its overlapping strokes tied off -- a light Serif g has one of six units
+  // where its link meets the bowl -- which would hold every speck to its size.
+  // A small counter the letter does draw, the triangle under a Serif t's
+  // flag, is forty times that and still counts.
+  //
+  // Nor an inline's groove, which is paper the cut took rather than a counter:
+  // counted, it held the floor so low that what the rim left of the groove's
+  // ends beside the terminals of a Serif s stayed as ragged pockets.
+  const grooves = groovesOf.get(ink) ?? [];
+  const grooved = (hole: Contour): boolean => inGroove(hole, grooves);
+  const smallest = Math.min(
+    Infinity,
+    ...shape
+      .filter((contour) => -contourArea(contour) > stem * stem * 0.02 && !grooved(contour))
+      .map((contour) => -contourArea(contour)),
+  );
 
   const local: Contour[] = [];
-  if (cast.spur.on) local.push(...spurTool(shape, cast.spur, stem));
-  if (cast.weld.on) local.push(...weldTool(strokes, cast.weld, stem));
-  if (local.length > 0) shape = unite([...shape, ...local], "winding", "whole");
+  const grown: Contour[] = [];
+  if (cast.spur.on) {
+    local.push(...spurTool(shape, cast.spur, stem, chamfered, knivesOf.get(ink) ?? []));
+  }
+  if (cast.weld.on) {
+    local.push(
+      ...weldTool(strokes, cast.weld, stem, shape, breaks, grooves, knivesOf.get(ink) ?? []),
+    );
+  }
+  if (local.length > 0) {
+    /*
+     * Nothing a fillet or a point adds stands on its own. One grown at a join
+     * the letter's own strokes only nearly make -- where the link of a Serif
+     * g leaves its bowl -- came away beside it as a speck of ink. Never as
+     * large as the smallest piece the letter went in with, so the dot of an
+     * i is never taken for one.
+     */
+    const least = Math.min(
+      stem * stem * 0.1,
+      ...shape
+        .map((contour) => contourArea(contour))
+        .filter((area) => area > 0)
+        .map((area) => area * 0.5),
+    );
+    // Not one folded over on itself. A fillet grown into a corner too tight
+    // for it crosses itself, and the lobe wound the other way cancelled the
+    // ink it lay on: it cut a slit into the link of a Serif g where it was
+    // meant to fill the corner beside it. Fused alone it filled that as a
+    // jagged tooth instead, and the corner is better left as it was drawn.
+    const added = local
+      .filter((one) => !contoursIntersect([one]))
+      .map((one) => (contourArea(one) < 0 ? reverseContour(one) : one));
+    grown.push(...added);
+    shape = unite([...shape, ...added], "winding", "whole").filter(
+      (contour) => contourArea(contour) <= 0 || contourArea(contour) >= least,
+    );
+  }
 
   if (cast.extrude.on) shape = extruded(shape, cast.extrude, stem);
   if (cast.outline.on) shape = outlined(shape, cast.outline.width * stem);
+  /*
+   * Nor scraps of the inline's groove. A shadow or a rim grown over the
+   * groove shut most of it and left slivers of it standing in the ink, each
+   * a few units across; what is left of the groove smaller than a tenth of a
+   * stem square is filled. (The effects do the same after the roughening.)
+   */
+  if (grooves.length > 0 && (cast.extrude.on || cast.outline.on)) {
+    shape = shape.filter(
+      (contour) =>
+        contourArea(contour) >= 0 ||
+        -contourArea(contour) >= stem * stem * 0.1 ||
+        !grooved(contour),
+    );
+  }
+  const done = withoutSpecks(shape, stem, smallest);
+  // No outline left crossing itself, upright or leaned: see the same step in
+  // `cutInk`. And swept again after it, which can tie off a pinhole of its own.
+  const result = withoutSpecks(untangled(done, scale.slant ?? 0), stem, smallest);
+  // Handed on with the groove still known, for the effects that follow.
+  if (grooves.length > 0) groovesOf.set(result, grooves);
+  const figures = figuresOf.get(ink);
+  if (figures) figuresOf.set(result, figures);
+  if (grown.length > 0) addedOf.set(result, grown);
+  return result;
+}
 
-  return shape;
+/**
+ * The letter with the pinholes the cast closed off filled back in.
+ *
+ * Growing a letter shuts every notch narrower than twice what it grew by, and
+ * a notch deeper than it is wide is shut at its mouth and left as a pocket of
+ * paper inside the ink: the rim round a Brush face left a white speck in the
+ * foot of every stem, where the brush had left a nick. A shadow does the same
+ * where it runs across a narrow gap. None of them is a counter anybody drew,
+ * and at text size each is a fault in the print.
+ *
+ * So a hole smaller than a tenth of a stem square goes -- and never one as
+ * large as a sixth or so of the smallest counter the letter went in with, so
+ * a small eye the letter really has, grown in by the rim, is never taken for
+ * one.
+ */
+function withoutSpecks(shape: Contour[], stem: number, smallest: number): Contour[] {
+  const floor = Math.min(stem * stem * 0.1, smallest * 0.15);
+  return shape.filter((contour) => {
+    const area = contourArea(contour);
+    return area >= 0 || -area >= floor;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -115,27 +276,24 @@ export function castInk(
 /**
  * The letter thrown along a line, with everything it passes through filled.
  *
- * Done by halving. Sweeping a shape along a line is a Minkowski sum, and a
- * Minkowski sum is associative -- sweeping by half the line and then sweeping
- * the answer by half the line again covers exactly the same ground as sweeping
- * by the whole of it. So the throw is halved until the step is shorter than a
- * unit and a half, at which point the shape and the shape moved by that step
- * are touching everywhere and their union is the swept ground; then the answer
- * is doubled back up. A throw of any length costs about eight unions, because
- * the count follows the logarithm of the distance and not the distance.
+ * Sweeping a shape along a line is a Minkowski sum with a segment, and it is
+ * done exactly, by `sweptAlong`, rather than approximated.
  *
- * Two other ways were tried and are worth knowing about.
+ * Three other ways were tried and are worth knowing about.
  *
  * Stamping copies along the line leaves a staircase on every edge not parallel
  * to the throw, as deep as the gap between copies: a shadow two and a half
  * stems long came back with a serrated A. Closing it needs a copy every unit,
  * which is hundreds of them.
  *
- * Laying a band along each piece of the outline is exact on paper and wrong in
- * practice. The bands round a counter should fuse into a ring and they fuse
- * into a disc, so an O lost its counter at a throw of half a stem. Halving
- * uses nothing but the union of a shape with a copy of itself, which is the
- * one operation here already known to keep its counters.
+ * Halving -- sweep by half the line, then sweep the answer by half again, down
+ * to a step short enough that a shape and its copy touch everywhere -- is
+ * about eight unions of a shape with a copy of itself, and every one of them
+ * leaves a notch at every corner for the next one to double.
+ *
+ * Laying a band along each piece of the outline and fusing all of them with
+ * the letter is exact on paper and wrong in practice, and was what this did
+ * until recently: `sweptAlong` has what it got wrong.
  */
 function extruded(shape: Contour[], extrude: Cast["extrude"], stem: number): Contour[] {
   const reach = extrude.distance * stem;
@@ -146,96 +304,414 @@ function extruded(shape: Contour[], extrude: Cast["extrude"], stem: number): Con
 }
 
 /**
- * A shape and the same shape moved, fused into one, and tidied after.
- *
- * The approximate sweep, and it is the right one where the move is short
- * against the shape being moved. Two copies of a stem five units apart overlap
- * along almost their whole length, so their union is the ground between them
- * to within the width of a hair -- which is what the rim is built out of, eight
- * short moves that add up to a sixteen-sided figure.
- *
- * The exact sweep below is not used here, and was tried. Its bands are laid
- * along every edge of the shape, and the rim lays one move on top of the last
- * eight times over, so by the fourth the shape it is banding has hundreds of
- * curved edges and paper runs out of stack resolving their crossings. The
- * shadow makes one move against the letter as drawn and has no such trouble.
- *
- * Tidied because every union leaves the straight runs chopped into collinear
- * pieces, and the next one would carry all of them.
- *
- * Refitting the curves as well was tried and is not here. It takes the point
- * count down by two thirds and takes the shape apart while doing it -- a
- * letter that was eleven contours came back as two hundred and eleven, because
- * an outline moved even a tenth of a unit no longer touches the copy of itself
- * it is supposed to be fusing with. The union has to be handed exactly what it
- * was given, and only the points that change nothing can go.
- */
-function grownBy(shape: Contour[], dx: number, dy: number): Contour[] {
-  return tidied(unite([...shape, ...moved(shape, dx, dy)], "winding", "whole"));
-}
-
-/**
  * The ground a shape covers as it travels along one line, exactly.
  *
- * The shape, the shape moved, and a band laid along every edge between them.
- * That is the whole of the swept region -- it is what a Minkowski sum with a
- * segment is -- with nothing sampled and nothing approximated.
+ * What a Minkowski sum with a segment is, with nothing sampled and nothing
+ * approximated -- and built so that no boolean in it is ever asked to decide
+ * which side of a counter is inside while thirty other shapes lie across it.
  *
- * Folded in two at a time rather than handed over all at once, which is the
- * one thing this cannot do. A union of a letter's strokes is a handful of
- * shapes overlapping a little, and paper resolves that in one go. This is
- * thirty bands overlapping enormously -- every one meets its neighbour along a
- * whole edge and most of them lie inside the letter -- and handed all of them
- * together paper answers with the counter of an o filled in, at every throw
- * and every angle. Folded, it is right at every one of them, and the counter
- * shrinks as the throw lengthens, which is what a shadow does.
+ * Each solid is swept on its own, as its convolution: the one loop that runs
+ * round the ground its outline covers as it travels (`convolved` has the
+ * construction). The ground is everything that loop winds round, which is a
+ * single outline resolved against itself -- no counters in it, nothing to
+ * mistake for one.
  *
- * Paired up rather than added one after another, so the shapes stay small for
- * as long as possible: a band against a band is a cheap boolean and a band
- * against the whole accumulated shadow is not. Same number of unions, a good
- * deal less work in them.
+ * Each counter is then worked out on its own and taken back out. A point in a
+ * counter stays paper after the throw exactly when the whole run behind it,
+ * back along the throw, stays inside the counter too. The same convolution
+ * taken round the counter, which runs the other way, is the loop round the
+ * paper that survives -- plus, where the counter is concave, small loops of
+ * its own that lie outside the counter altogether, which is why what it winds
+ * round is cut back to the counter before it is used.
+ *
+ * It used to be the shape, the shape moved and a band along every edge, all
+ * fused together with the counters stated as holes, folded in pairs to keep
+ * paper out of trouble -- and it was right or wrong depending on where each
+ * outline happened to start. Every band shares an edge with the next and with
+ * the letter, and paper resolves shared edges by judgement. The same `b` came
+ * back open from Geist and solid from Lora, whose outlines are wound the other
+ * way round and so arrive starting from a different point; the Lora `o`, `a`,
+ * `8` and `B` filled one way and a Geist `B` came back holding twice the ink
+ * it could possibly cover. Nothing about the geometry differed, only the
+ * bookkeeping. Checked against the definition -- a point is shadow when some
+ * point behind it along the throw is ink -- on twenty letters of both fonts at
+ * five angles, this disagrees on under one sample in a hundred, all of them on
+ * an edge.
+ *
+ * A solid standing inside a counter -- an island, which a font can draw and
+ * the letters here do not -- would be taken out along with the counter it
+ * sits in, so its own sweep is laid back on afterwards.
  */
 function sweptAlong(shape: Contour[], dx: number, dy: number): Contour[] {
   if (Math.hypot(dx, dy) < 1e-9) return shape;
-  const bands: Contour[][] = [];
-  for (const contour of shape) {
-    const nodes = contour.nodes;
-    if (nodes.length < 2) continue;
-    for (let index = 0; index < nodes.length; index++) {
-      for (const piece of facingOneWay(nodes[index], nodes[(index + 1) % nodes.length], dx, dy)) {
-        const band = bandAlong(piece, dx, dy);
-        if (band) bands.push([band]);
+  return sweptClean(shape, (contour) => convolved(contour, dx, dy));
+}
+
+/**
+ * The ground a shape covers as a figure is dragged over every point of it,
+ * given the one loop each outline makes as that happens.
+ *
+ * The part of the shadow's sweep that is not about the shadow, so the rim can
+ * be made the same way: each solid's loop resolved on its own, each counter's
+ * paper worked out on its own and taken back out, islands laid back on.
+ */
+function swept(
+  shape: Contour[],
+  convolve: (contour: Contour) => Contour,
+  // How far the figure reaches from a counter's edge, where it is a figure
+  // grown round rather than a line thrown: what `shrunk` checks an answer by.
+  reachOf?: (contour: Contour) => number,
+): Contour[] {
+  const solids = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) >= 0);
+  const counters = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) < 0);
+  if (solids.length === 0) return shape;
+
+  const islands = solids.filter((solid) =>
+    counters.some((counter) => contourContainsPoint(counter, solid.nodes[0].point)),
+  );
+  const sweep = (some: Contour[]): Contour[] => {
+    const each = some.map((solid) => groundOf(convolve(solid), solid));
+    return each.length === 1 ? each[0] : unite(each.flat(), "winding", "whole");
+  };
+  const ground = sweep(solids);
+
+  /*
+   * A counter's paper survives where the counter's loop winds round it once
+   * the wrong way -- exactly once, which a fill rule cannot be asked for. So
+   * the loop is laid inside a frame wound the right way round, where the
+   * paper that survives is exactly the ground wound round no times at all,
+   * and it is the frame less everything filled.
+   *
+   * It used to be the loop reversed and filled on its own, which fills
+   * everything the loop winds round either way: the small loops a counter's
+   * corners tie off, wound backwards, came back as paper too. Under the
+   * shadow they landed outside the counter and were cut away; under the rim
+   * they land in its corners, and every square counter came back with a speck
+   * of paper standing in each corner, and a Black A whose counter should have
+   * closed kept a star of them.
+   */
+  const kept = counters.flatMap((counter) => {
+    const loop = convolve(counter);
+    const box = contoursBounds([loop, counter]);
+    const frame = poly([
+      { x: box.xMin - 10, y: box.yMin - 10 },
+      { x: box.xMax + 10, y: box.yMin - 10 },
+      { x: box.xMax + 10, y: box.yMax + 10 },
+      { x: box.xMin - 10, y: box.yMax + 10 },
+    ]);
+    /*
+     * Checked, where there is a reach to check it by. The groove of an inline
+     * round the eye of an e is a counter with the eye's wall standing in it,
+     * and paper lost the loop round it: what survived came back as eight
+     * square units, and the rim filled the groove in solid.
+     */
+    const paper = reverseContour(counter);
+    const checked = reachOf ? shrunk(paper, loop, frame, reachOf(counter)) : null;
+    return checked ?? subtract([paper], filled([frame, loop]), "winding");
+  });
+  let result = kept.length > 0 ? subtract(ground, kept, "winding") : ground;
+  /*
+   * An island is laid back on with its own counters in it.
+   *
+   * The groove of an inline round the bowl of an o is a counter, and the
+   * inner wall of the bowl stands inside it as an island with the o's real
+   * counter inside that. Laid back on as a solid alone, the island came back
+   * filled -- counter and all -- and a rim grown after an inline turned every
+   * o into a black disc. So the island is grown the way the whole letter is,
+   * nested counters and all, which is the same question one level down.
+   */
+  if (islands.length > 0) {
+    const inner = counters.filter((counter) =>
+      islands.some((island) => contourContainsPoint(island, counter.nodes[0].point)),
+    );
+    /*
+     * One level down only while it is one level down. A counter pinched
+     * shut at a point by a slot touches the piece beside it there, and each
+     * takes the other's first point for inside: on a slotted heavy Display m
+     * the same piece and counter came back as island and counter for ever,
+     * and the letter threw.
+     */
+    const deeper = islands.length + inner.length < solids.length + counters.length;
+    const again =
+      inner.length > 0 && deeper
+        ? swept([...islands, ...inner], convolve, reachOf)
+        : sweep(islands);
+    result = unite([...result, ...again], "winding", "whole");
+  }
+  return tidied(result);
+}
+
+/**
+ * What a solid's loop winds round, checked against the one thing it has to
+ * be: something at least as large as the solid it was made from, since the
+ * ground a shape covers as anything is dragged over it includes the shape.
+ *
+ * Paper resolves a loop that crosses itself by finding where it crosses, and
+ * two crossings a hair apart along a nearly tangent pair of curves are ones it
+ * can lose track of. A light Handwriting e grown by a rim came back as five
+ * specks, then as nothing at all. The same loop with its coordinates set to a
+ * hundredth of a unit -- far below anything a font file records -- resolves
+ * cleanly. So a thousandth is the second try, a hundredth the third, a tenth
+ * the fourth, and the solid as it was is the last answer rather than nothing.
+ */
+function groundOf(loop: Contour, solid: Contour): Contour[] {
+  const least = contourArea(solid) * 0.999;
+  /*
+   * And that does not cross itself. The same lost crossing can leave a loop
+   * tied in the answer instead of taking area out of it, of the right size
+   * so nothing above noticed: the rim round Lora's a came back with a tiny
+   * figure-eight in its bowl. The next grid resolves it; failing all of
+   * them, the first answer of the right size stands.
+   */
+  let sized: Contour[] | null = null;
+  for (const grid of [0, 1000, 100, 10]) {
+    const ground = filled([grid === 0 ? loop : onGrid(loop, grid)]);
+    const area = ground.reduce((total, one) => total + contourArea(one), 0);
+    if (area < least) continue;
+    if (!ground.some(looped)) return ground;
+    sized ??= ground;
+  }
+  return sized ?? [solid];
+}
+
+const looped = (contour: Contour): boolean => crossesItself(contour, FINE_STEPS);
+
+/**
+ * The swept ground, checked once more for a loop tied in it.
+ *
+ * Each solid's ground is checked as it is made, in `groundOf`; the unions
+ * and cuts after it -- counters taken out, islands laid back on -- can lose
+ * a crossing too. So the finished ground is asked once, and where it crosses
+ * itself the whole sweep is made again from the shape set to a thousandth of
+ * a unit, then a hundredth, then a tenth, each coarser than the last and all
+ * far below anything a font file records. The grids `groundOf` tries are of
+ * each solid's loop; these are for the cuts and unions after it, and a loop
+ * is rare enough that trying them costs nothing in the usual case. Failing
+ * all of them the first answer stands.
+ */
+function sweptClean(
+  shape: Contour[],
+  /*
+   * Handed the outline to sweep and the one it was drawn as, which is the
+   * same outline except on a retry, where it has been set to a grid: what is
+   * known about an outline (the rim's reach into each counter) is known by
+   * the outline as drawn.
+   */
+  convolve: (contour: Contour, drawn: Contour) => Contour,
+  // As `swept` takes it: how far a grown figure reaches from a counter's edge.
+  reachOf?: (drawn: Contour) => number,
+): Contour[] {
+  const first = swept(shape, (contour) => convolve(contour, contour), reachOf);
+  if (!first.some(looped)) return first;
+  /*
+   * And covering the shape, as the ground a shape covers must: a retry whose
+   * unions lost a piece comes back without its loop and without the ink
+   * round it, the dot of an i and its rim. Its size says too little. The
+   * first answer's is the one known to be wrong -- a counter's paper left
+   * in it as a loop rather than taken out makes it larger than the right
+   * answer -- and a rim adds so much to a shape that one without a dot is
+   * still larger than the shape. Asked of the shape set to the same grid, so
+   * that the edges the two share line up.
+   */
+  for (const grid of [1000, 100, 10]) {
+    const snapped = shape.map((contour) => onGrid(contour, grid));
+    const drawnAs = new Map(snapped.map((one, at) => [one, shape[at]]));
+    const drawn = (contour: Contour): Contour => drawnAs.get(contour) ?? contour;
+    const again = swept(
+      snapped,
+      (contour) => convolve(contour, drawn(contour)),
+      reachOf && ((contour) => reachOf(drawn(contour))),
+    );
+    if (again.some(looped)) continue;
+    const bare = subtract(snapped, again, "winding");
+    const size = snapped.reduce((total, one) => total + contourArea(one), 0);
+    // Signed, so that a sliver of ring left round a counter counts as the
+    // ring, not as the ring and its hole both.
+    if (Math.abs(bare.reduce((total, one) => total + contourArea(one), 0)) <= size * 1e-3)
+      return again;
+  }
+  return first;
+}
+
+/**
+ * A letter with no outline crossing itself.
+ *
+ * One union resolves nearly every loop a cut or a cast ties -- but not all:
+ * where two edges meet at a point that agrees to fifteen digits and not to
+ * sixteen, the boolean library can hand back the same loop of a unit or so it
+ * was given, on the foot of a heavy Serif B under the saw or the join of a
+ * Formal Script h under a shadow. So a loop that survives the union is tried
+ * once more on a fine grid, which is nothing on the page and makes the
+ * meeting point one point. Given back as it came if that fails too.
+ */
+export function untangled(shape: Contour[], slant = 0): Contour[] {
+  /*
+   * And as it will stand once leaned. The lean is a shear and cannot cross
+   * an outline that did not cross, but where two edges all but touch it can
+   * tip the test that says so -- a Formal Script n under the breaks came out
+   * of the pressure clean and crossed once it leaned 22 degrees. Such a
+   * letter is untangled leaned, and stood back up.
+   */
+  if (slant) {
+    const tilt = (contours: Contour[], by: number) =>
+      contours.map((contour) => ({
+        ...contour,
+        nodes: contour.nodes.map((node) => {
+          const move = (point: Vec2 | null): Vec2 | null =>
+            point && { x: point.x + point.y * by, y: point.y };
+          return {
+            ...node,
+            point: move(node.point) as Vec2,
+            handleIn: move(node.handleIn),
+            handleOut: move(node.handleOut),
+          };
+        }),
+      }));
+    /*
+     * And a few degrees either way: a letter of an unsteady hand leans a
+     * little further over or back than the face, by its own amount, and the
+     * y of a Formal Script under the inline and fillets crossed at one of them.
+     */
+    for (const by of [0, 1, -1, 2, -2, 3, -3, 4, -4]) {
+      const at = Math.tan(((slant + by) * Math.PI) / 180);
+      const leaned = tilt(shape, at);
+      if (leaned.some((contour) => contoursIntersect([contour]))) {
+        const fixed = untangled(leaned);
+        // Where the leaned letter will not come untangled, the upright one
+        // may: the hairline e of a Formal Script under the inline did.
+        if (fixed.every((contour) => !crossesItself(contour))) {
+          return tilt(withoutCrumbs(fixed), -at);
+        }
+        break;
       }
     }
   }
   /*
-   * The bands first and the letter last, which is not arbitrary. Paired up in
-   * that order the bands meet each other -- shapes of the same size, each
-   * touching the next along one edge -- and only the fused ring of them meets
-   * the letter. The letter first, and the first union is a whole letter
-   * against one small band, which is the arrangement paper is worst at: an o
-   * thrown two stems at a hundred and fifty degrees came back solid that way
-   * and open this way, and nothing else about it changed.
+   * Answered by the exact test. The quick one samples curves in six and is
+   * wrong either way: on a hairline Formal Script e under the inline and the
+   * pressure it saw no crossing in the outline that had one, and once the
+   * union had put that right it still saw one, and laid the letter on a grid
+   * that crossed it again.
    */
-  return tidied(pairedUp([...bands, moved(shape, dx, dy), shape]));
+  const clean = (contours: Contour[]) => !contours.some((contour) => crossesItself(contour));
+  if (!shape.some((contour) => contoursIntersect([contour])) && clean(shape)) {
+    return withoutCrumbs(shape);
+  }
+  const quiet = (contours: Contour[]) => !contours.some((contour) => contoursIntersect([contour]));
+  const once = withoutCrumbs(unite(shape, "winding", "whole"));
+  if (clean(once) && quiet(once)) return once;
+  const tried = [once];
+  for (const per of [8, 2, 1]) {
+    const again = withoutCrumbs(
+      unite(
+        once.map((contour) => onGrid(contour, per)),
+        "winding",
+        "whole",
+      ),
+    );
+    if (clean(again) && quiet(again)) return again;
+    tried.push(again);
+  }
+  // Where no answer satisfies both, the exact test's word is the one taken.
+  return tried.find(clean) ?? once;
 }
 
-/** Everything fused, two at a time, up a tree rather than along a line. */
-function pairedUp(shapes: Contour[][]): Contour[] {
-  let round = shapes;
-  while (round.length > 1) {
-    const next: Contour[][] = [];
-    for (let index = 0; index < round.length; index += 2) {
-      next.push(
-        index + 1 < round.length
-          ? unite([...round[index], ...round[index + 1]], "winding", "whole")
-          : round[index],
-      );
-    }
-    round = next;
-  }
-  return round[0] ?? [];
+/**
+ * Less the crumbs a union tied off in resolving a loop: a sliver of a few
+ * units, solid or hole, under a thousandth of the letter's ink. The smallest
+ * thing a letter draws on purpose, the counter under a Serif t's flag, is
+ * eight times that.
+ */
+function withoutCrumbs(shape: Contour[]): Contour[] {
+  const ink = shape.reduce((total, contour) => total + Math.max(contourArea(contour), 0), 0);
+  return shape.filter((contour) => Math.abs(contourArea(contour)) >= ink * 0.001);
 }
+
+/** An outline with every point and handle set to the nearest step of `1 / per`. */
+export function onGrid(contour: Contour, per: number): Contour {
+  const snap = (point: Vec2 | null): Vec2 | null =>
+    point && { x: Math.round(point.x * per) / per, y: Math.round(point.y * per) / per };
+  return {
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: snap(node.point) as Vec2,
+      handleIn: snap(node.handleIn),
+      handleOut: snap(node.handleOut),
+    })),
+  };
+}
+
+/**
+ * One outline's path as it is dragged along the throw: its convolution.
+ *
+ * Every piece of the outline either faces the way the shadow is thrown or
+ * faces away from it. A piece facing the throw leads the shape as it moves, so
+ * where it ends up is the far edge of the swept ground; a piece facing away
+ * trails, so where it started is the near edge. Walk the outline, take each
+ * piece from wherever it belongs, and where the outline turns from facing one
+ * way to the other join the two with a straight run along the throw -- which
+ * is where the side of the shadow is. That one loop is the boundary of the
+ * swept ground, crossing itself wherever the letter's own concave parts make
+ * the ground fold, and the ground is everything it winds round.
+ *
+ * Which way a piece faces is judged against the side the ink is on, so the
+ * same rule taken round a counter -- which runs the other way -- gives the
+ * loop round the ground the counter's paper is swept over, in reverse.
+ *
+ * A piece running along the throw faces neither way, sweeps nothing, and
+ * takes the side of the piece before it: it is then a straight run in line
+ * with the join beside it, and the two read as one.
+ */
+function convolved(contour: Contour, dx: number, dy: number): Contour {
+  const pieces: Array<{ edge: Edge; leads: boolean | null }> = [];
+  const nodes = contour.nodes;
+  for (let index = 0; index < nodes.length; index++) {
+    for (const edge of facingOneWay(nodes[index], nodes[(index + 1) % nodes.length], dx, dy)) {
+      // Outward is to the right of the way a solid is walked. Judged on the
+      // chord, which on a piece that faces one way throughout has the sign
+      // the tangent has everywhere along it.
+      const across = (edge.to.y - edge.from.y) * dx - (edge.to.x - edge.from.x) * dy;
+      const size =
+        Math.hypot(edge.to.x - edge.from.x, edge.to.y - edge.from.y) * Math.hypot(dx, dy);
+      pieces.push({ edge, leads: Math.abs(across) <= size * 1e-9 ? null : across > 0 });
+    }
+  }
+  const first = pieces.findIndex((piece) => piece.leads !== null);
+  if (first < 0) return contour;
+  let last = pieces[first].leads as boolean;
+  for (let step = 0; step < pieces.length; step++) {
+    const piece = pieces[(first + step) % pieces.length];
+    if (piece.leads === null) piece.leads = last;
+    else last = piece.leads;
+  }
+
+  const out: GlyphNode[] = [];
+  const at = (point: Vec2, leads: boolean): Vec2 =>
+    leads ? { x: point.x + dx, y: point.y + dy } : { x: point.x, y: point.y };
+  for (const { edge, leads } of pieces) {
+    const from = at(edge.from, leads === true);
+    const previous = out[out.length - 1];
+    const handleOut = edge.c1 && at(edge.c1, leads === true);
+    if (previous && same(previous.point, from)) previous.handleOut = handleOut;
+    else out.push({ point: from, handleIn: null, handleOut, type: "corner" });
+    out.push({
+      point: at(edge.to, leads === true),
+      handleIn: edge.c2 && at(edge.c2, leads === true),
+      handleOut: null,
+      type: "corner",
+    });
+  }
+  const tail = out[out.length - 1];
+  if (out.length > 1 && same(tail.point, out[0].point)) {
+    out[0].handleIn = tail.handleIn;
+    out.pop();
+  }
+  return { closed: true, nodes: out };
+}
+
+const same = (a: Vec2, b: Vec2): boolean =>
+  Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
 
 /** One piece of the outline: where it starts and ends, and how it curves. */
 interface Edge {
@@ -248,16 +724,17 @@ interface Edge {
 /**
  * One edge cut wherever it turns through the direction of the throw.
  *
- * A band is the edge, the edge moved, and the two ends joined -- and that is a
- * simple shape only while the edge faces one way relative to the throw. Where
- * it turns through it, the edge and its own moved copy cross each other, the
- * band folds over itself, and the union resolves the fold into a crescent: the
- * counter of an o came back as a swirl and the bowl of a B as a comma.
+ * The convolution takes each piece of the outline either where it started or
+ * where the throw leaves it, depending on which way it faces -- and a piece
+ * that turns through the throw faces both ways. Left whole, half of it would
+ * be drawn in the wrong place; when the sweep was made of bands, the same
+ * piece folded its band over itself and the counter of an o came back as a
+ * swirl and the bowl of a B as a comma.
  *
  * A curve turns through the throw where its tangent runs parallel to it, which
  * for a cubic is the root of a quadratic and so is exactly two places at most.
- * Cut there, every piece faces one way and every band is simple. A straight
- * edge faces one way all along by definition.
+ * Cut there, every piece faces one way. A straight edge faces one way all
+ * along by definition.
  */
 function facingOneWay(from: GlyphNode, to: GlyphNode, dx: number, dy: number): Edge[] {
   const start = from.point;
@@ -303,40 +780,6 @@ function facingOneWay(from: GlyphNode, to: GlyphNode, dx: number, dy: number): E
   }
   pieces.push({ from: piece[0], c1: piece[1], c2: piece[2], to: piece[3] });
   return pieces;
-}
-
-/**
- * The ground one edge of the outline passes over, as a shape.
- *
- * The edge, the edge moved, and the two straight runs joining their ends. A
- * curved edge gives a curved band: the far side is the same curve moved, so
- * its handles are the near side's handles moved, taken in the other order
- * because that side is walked backwards.
- *
- * Wound solid whichever way the edge happened to run, because the union is
- * told to read the roles off the winding and a band that came out running the
- * other way would be read as a hole and punched out of the shadow it is part
- * of.
- */
-function bandAlong(edge: Edge, dx: number, dy: number): Contour | null {
-  const at = (point: Vec2): Vec2 => ({ x: point.x + dx, y: point.y + dy });
-  const band: Contour = {
-    closed: true,
-    nodes: [
-      { point: { ...edge.from }, handleIn: null, handleOut: edge.c1, type: "corner" },
-      { point: { ...edge.to }, handleIn: edge.c2, handleOut: null, type: "corner" },
-      { point: at(edge.to), handleIn: null, handleOut: edge.c2 && at(edge.c2), type: "corner" },
-      { point: at(edge.from), handleIn: edge.c1 && at(edge.c1), handleOut: null, type: "corner" },
-    ],
-  };
-  /*
-   * An edge running along the throw sweeps no ground, and a band of no area is
-   * a shape the union has to resolve for nothing. Judged on the area rather
-   * than on the direction, so a curve that happens to sweep nothing is caught
-   * as well as a straight run that does.
-   */
-  if (Math.abs(contourArea(band)) < 1e-9) return null;
-  return contourArea(band) < 0 ? reverseContour(band) : band;
 }
 
 /**
@@ -428,80 +871,459 @@ function offLine(from: Vec2, point: Vec2, to: Vec2): number {
 /**
  * The letter grown outwards all round.
  *
- * Grown by a sixteen-sided figure rather than by a circle, which is the same
- * thing to look at -- at sixteen sides the flats are a fiftieth of the rim's
- * own width -- and a very different thing to compute. A figure with a centre
- * of symmetry is the sum of segments through that centre, and a regular
- * sixteen-gon is the sum of eight of them. So growing by it is growing by one
- * segment eight times over, and every one of those is the union of a shape
- * with a copy of itself: the same cheap operation the shadow is built from.
+ * Grown by a regular figure of `SIDES` sides rather than by a circle, which is
+ * the same thing to look at -- at that many sides the flats are a hundredth of
+ * the rim's own width -- and is a shape with corners the construction below
+ * can name one at a time.
  *
- * Done instead as sixteen copies laid round a circle and fused in one go, it
- * took a seventh of a second a letter on its own, and three seconds a letter
- * on top of a shadow -- a union of seventeen copies of an already complicated
- * shape is not seventeen times the work of a union of two, it is very much
- * worse. Eight unions of two shapes each is the same answer in a fraction of
- * the time.
+ * Done exactly, the way the shadow is: each outline walked once, every piece
+ * of it carried out to the corner of the figure that faces the way the piece
+ * faces, and a run round the figure's own corners put in wherever the outline
+ * turns (`convolvedRound` has it). One loop an outline, resolved once, and the
+ * counters worked out on their own exactly as the shadow's are.
  *
- * This grows the counters closed as well as the outside out, which is what
- * growing a shape does and is worth knowing before turning it up: on a light
- * face a rim of half a stem will fill the eye of an e.
+ * It used to be eight unions of the shape with a copy of itself, each copy
+ * moved a short way along one of eight directions, which sums to a sixteen-
+ * sided figure. Every one of those unions left a notch at every convex corner
+ * for the next one to double, and that was the whole of the trouble with it.
+ * A Flared `k` went into the first round at 42 points and came out of the
+ * eighth at 348. On a letter that already had corners to spare it ran away: a
+ * Brush letter with points on went into the rim at a few hundred points and
+ * took four to twenty seconds a letter to come out, fringed with the notches
+ * as fine hair, and one `m` came out as nothing at all. A Sans with breaks,
+ * the rim and points took eight seconds over a Black `R`.
  *
- * It is still the expensive one, and the reason is worth writing down because
- * four ways of making it cheaper have been tried and none of them worked.
- *
- * Each round leaves a notch at every convex corner -- that is exactly what the
- * approximate sweep gets wrong -- and every notch is points the next round
- * doubles. A Flared `k` goes into the first round at 42 points and comes out of
- * the eighth at 348, and the last two rounds cost more than the first six
- * together. The rim alone is about 90ms on that letter and all four operations
- * together about 185ms, which is the worst of the letters measured.
- *
- * What does not help. The exact sweep below cannot be used, because it lays a
- * band along every edge and by the fourth round the shape it is banding has
- * hundreds of curved edges: paper runs out of stack. Splitting each round into
- * four shorter moves, which should converge on the exact answer, runs out of
- * stack the same way and where it survives it disagrees with itself -- one
- * letter grew 35% more, another 12% less. Rejoining curves in the tidy recovers
- * nothing: a union cuts a curve where two boundaries cross, and a crossing is a
- * real corner, so the pieces are not two halves of one curve and the point
- * count comes back the same to the point. Taking the eight directions in a
- * spread order rather than in a fan is worse by more than a factor of ten,
- * because consecutive near-parallel moves are what keeps the shape simple.
- *
- * What would work is not a tuning: it is `S + P = S union (every edge + P)`,
- * where each edge's own region is built directly from the sixteen-gon's
- * supporting vertex as the tangent turns, and the pieces are folded the way the
- * shadow folds its bands. That is exact, and the shape it hands back is the
- * shape rather than the shape with notches in it. It is a piece of work rather
- * than an edit, and the test below holds the point count still until somebody
- * does it.
+ * This grows the counters in as well as the outside out, which is what
+ * growing a shape does -- but never more than half shut, however far the rim
+ * reaches, so a heavy face keeps the eye of its e.
  */
-function outlined(shape: Contour[], width: number): Contour[] {
+export function outlined(shape: Contour[], width: number): Contour[] {
   if (width <= 0) return shape;
-
-  const SIDES = 8;
+  const figure = (reach: number): Vec2[] =>
+    Array.from({ length: SIDES }, (_, index) => {
+      const angle = ((index + 0.5) / SIDES) * Math.PI * 2;
+      return { x: Math.cos(angle) * reach, y: Math.sin(angle) * reach };
+    });
+  const corners = figure(width);
   /*
-   * How long each segment has to be for the eight of them to sum to a figure
-   * reaching `width` all round. The sum of their supports in any direction is
-   * `half` times the sum of |cos| over the eight angles, which comes to very
-   * nearly eight times two-over-pi whichever direction is asked -- that near
-   * constancy is the same fact as the figure being nearly a circle.
+   * A counter is never grown shut.
+   *
+   * The rim grows the outside of the letter and closes its counters by the
+   * same amount, and on a heavy face the counters are small: the default rim
+   * on a Black Sans shut the eye of the e, the bowl of the a and both of the
+   * s's, and left three blots beside an o that still had its hole. So each
+   * counter is grown in by at most three tenths of how deep it is -- twice its area
+   * over its length round, which is the radius of a round one and half the
+   * width of a slot -- and the outside keeps the rim that was asked for.
    */
-  const half = width / ((2 / Math.PI) * SIDES);
-
-  let grown = shape;
-  let back = { x: 0, y: 0 };
-  for (let side = 0; side < SIDES; side++) {
-    const angle = (side / SIDES) * Math.PI;
-    const dx = Math.cos(angle) * half * 2;
-    const dy = Math.sin(angle) * half * 2;
-    grown = grownBy(grown, dx, dy);
-    // Every segment runs one way only, so the shape creeps as it grows. The
-    // creep is exactly half of what it grew by, and is taken back at the end.
-    back = { x: back.x - dx / 2, y: back.y - dy / 2 };
+  /*
+   * Measured by the paper that is really there. A counter can hold ink of
+   * its own -- the inner wall an inline leaves round the counter of an o
+   * stands in the groove as an island -- and read as a disc, the groove was
+   * as deep as the whole bowl, so it was grown shut from the outside while
+   * the island grew into it from the inside: every letter with a counter
+   * came back from an inline and a rim as a solid blob. So the depth is the
+   * paper between the counter's edge and the islands in it, and the islands
+   * grow into it no further than the counter's own edge does.
+   */
+  const solids = shape.filter((contour) => contour.nodes.length >= 2 && contourArea(contour) >= 0);
+  const reaches = new Map<Contour, number>();
+  for (const hole of shape) {
+    const area = contourArea(hole);
+    if (hole.nodes.length < 2 || area >= 0) continue;
+    const islands = solids.filter((solid) => contourContainsPoint(hole, solid.nodes[0].point));
+    const paper = -area - islands.reduce((sum, one) => sum + contourArea(one), 0);
+    const around = lengthRound(hole) + islands.reduce((sum, one) => sum + lengthRound(one), 0);
+    const reach = Math.min(width, (Math.max(paper, 0) * 2 * 0.3) / Math.max(around, 1e-9));
+    reaches.set(hole, reach);
+    for (const island of islands)
+      reaches.set(island, Math.min(reaches.get(island) ?? width, reach));
   }
-  return moved(grown, back.x, back.y);
+  const grow = (): Contour[] =>
+    sweptClean(
+      shape,
+      (contour, drawn) => {
+        const reach = reaches.get(drawn) ?? width;
+        return reach >= width
+          ? convolvedRound(contour, corners)
+          : convolvedRound(contour, figure(reach));
+      },
+      (contour) => reaches.get(contour) ?? width,
+    );
+  /*
+   * Nor pinched in two. The reach is the counter's depth on average, and a
+   * counter narrower in one place than that -- the groove of an inline where
+   * the Sans's a's bowl leaves its bar -- was grown shut there and came back
+   * as two counters. Grown in less, as often as it takes, until it is one.
+   */
+  const holes = [...reaches.keys()].filter((one) => contourArea(one) < 0);
+  const islandsIn = (hole: Contour): Contour[] =>
+    solids.filter((solid) => contourContainsPoint(hole, solid.nodes[0].point));
+  let result = grow();
+  for (let pass = 0; pass < 4; pass++) {
+    const pinched = holes.filter((hole) => {
+      const islands = islandsIn(hole);
+      // The counters of the islands standing in it are theirs, not its.
+      return (
+        result.filter((one) => {
+          if (one.nodes.length < 2 || contourArea(one) >= 0) return false;
+          const at = one.nodes[0].point;
+          return (
+            contourContainsPoint(hole, at) &&
+            !islands.some((island) => contourContainsPoint(island, at))
+          );
+        }).length > 1
+      );
+    });
+    if (pinched.length === 0) break;
+    for (const hole of pinched) {
+      const reach = (reaches.get(hole) ?? width) * 0.6;
+      reaches.set(hole, reach);
+      for (const island of solids.filter((solid) =>
+        contourContainsPoint(hole, solid.nodes[0].point),
+      ))
+        reaches.set(island, Math.min(reaches.get(island) ?? width, reach));
+    }
+    result = grow();
+  }
+  return result;
+}
+
+/**
+ * The letter shrunk inwards all round: every point of ink further than
+ * `reach` from the paper.
+ *
+ * The rim's exact construction turned the other way. A solid shrinks to the
+ * paper that survives inside the loop its outline makes as the figure is
+ * dragged round it backwards -- which is how the rim already works out what
+ * is left of a counter -- and each counter it holds grows out into the ink by
+ * the same figure and is taken back out. A solid standing in a counter, and
+ * the counters in that, are the same question one level down.
+ *
+ * For the inline, whose groove is exactly this: the ground a wall's thickness
+ * in from every edge, so the walls are the same thickness everywhere --
+ * beside a join, round a counter, past a bowl running into its stem -- where
+ * a groove swept down each stroke on its own thinned them to a pinch.
+ */
+export function eroded(shape: Contour[], reach: number): Contour[] {
+  if (reach <= 0) return shape;
+  const figure = (phase: number): Vec2[] =>
+    Array.from({ length: SIDES }, (_, index) => {
+      const angle = ((index + phase) / SIDES) * Math.PI * 2;
+      return { x: Math.cos(angle) * reach, y: Math.sin(angle) * reach };
+    });
+  const corners = figure(0.5);
+  const usable = shape.filter((contour) => contour.nodes.length >= 2);
+  const solids = usable.filter((contour) => contourArea(contour) >= 0);
+  const holes = usable.filter((contour) => contourArea(contour) < 0);
+  const inside = (inner: Contour, outer: Contour): boolean =>
+    inner !== outer && contourContainsPoint(outer, inner.nodes[0].point);
+  // How deep each contour is nested, read off how many others hold it.
+  const depth = new Map(usable.map((one) => [one, usable.filter((o) => inside(one, o)).length]));
+
+  const pieces = solids.flatMap((solid) => {
+    /*
+     * Tried with the figure turned a little, where paper cannot resolve the
+     * loop at any grid: turning it moves every crossing, and a quarter of one
+     * of its twenty-four sides is nothing anybody could see.
+     */
+    let left: Contour[] | null = null;
+    for (const phase of [0.5, 0.25, 0.75]) {
+      const loop = convolvedRound(reverseContour(solid), figure(phase));
+      const box = contoursBounds([loop, solid]);
+      const frame = poly([
+        { x: box.xMin - 10, y: box.yMin - 10 },
+        { x: box.xMax + 10, y: box.yMin - 10 },
+        { x: box.xMax + 10, y: box.yMax + 10 },
+        { x: box.xMin - 10, y: box.yMax + 10 },
+      ]);
+      left = shrunk(solid, loop, frame, reach);
+      if (left) break;
+    }
+    if (!left) return [solid];
+    if (left.length === 0) return [];
+    // Only the counters this solid holds directly: one inside an island in
+    // it belongs to the island.
+    const own = holes.filter(
+      (hole) => inside(hole, solid) && depth.get(hole) === (depth.get(solid) ?? 0) + 1,
+    );
+    if (own.length === 0) return left;
+    const grown = own.flatMap((hole) => {
+      const paper = reverseContour(hole);
+      return groundOf(convolvedRound(paper, corners), paper);
+    });
+    return subtract(left, grown, "winding");
+  });
+  return pieces.length <= 1 ? pieces : unite(pieces, "winding", "whole");
+}
+
+/**
+ * What is left of a solid inside the loop its outline makes as a figure is
+ * dragged round it backwards, checked against what shrinking a shape can do.
+ *
+ * Shrinking takes away at most a strip the reach wide along the outline, so
+ * what is left is never less than the area less the outline's length times
+ * the reach, and never more than the area. Paper can lose track of a loop
+ * that crosses itself at two places a hair apart, and a Sans e came back with
+ * nothing left of it at all; the same loop set to a thousandth, a hundredth or
+ * a tenth of a unit resolves, as `groundOf` found for the rim.
+ */
+function shrunk(solid: Contour, loop: Contour, frame: Contour, reach: number): Contour[] | null {
+  const area = contourArea(solid);
+  const least = area - lengthRound(solid) * reach * 1.02;
+  for (const grid of [0, 1000, 100, 10]) {
+    const fill = filled([frame, grid === 0 ? loop : onGrid(loop, grid)]);
+    const left = facingOut(subtract([solid], fill, "winding"));
+    const kept = left.reduce((total, one) => total + contourArea(one), 0);
+    if (kept <= area * 1.0001 && kept >= least) return left;
+  }
+  // Nothing left is a right answer when the shape was thinner than twice the
+  // reach everywhere, which the bound cannot tell from a lost loop.
+  return least > 0 ? null : [];
+}
+
+/** Contours wound so the ink comes out positive. */
+function facingOut(contours: Contour[]): Contour[] {
+  const total = contours.reduce((sum, one) => sum + contourArea(one), 0);
+  return total < 0 ? contours.map(reverseContour) : contours;
+}
+
+/** How long an outline is, all the way round. */
+function lengthRound(contour: Contour): number {
+  const path = flattenContour(contour, 12);
+  let total = 0;
+  for (let index = 0; index < path.length; index++) {
+    total += distance(path[index], path[(index + 1) % path.length]);
+  }
+  return total;
+}
+
+/** How many sides the figure a rim is grown by has. */
+const SIDES = 24;
+
+/**
+ * One outline's path as a convex figure is dragged all the way round it: its
+ * convolution with the figure.
+ *
+ * The shadow's construction with a polygon in place of a line. Each piece of
+ * the outline faces one way, out to its right, and the figure's corner that
+ * reaches furthest that way is the one the piece is carried out to. Where the
+ * outline turns, the corner that reaches furthest changes, and the loop runs
+ * round the figure's own corners from the one to the other -- the way the
+ * outline turned, which at a convex corner of the ink is the rounded corner of
+ * the rim, and at a concave one is a small loop back on itself that the fill
+ * rule then ignores.
+ *
+ * A curve that turns through one of the figure's edge directions faces two
+ * corners, one either side of that place, so it is cut there first; after
+ * that every piece has one corner of its own.
+ */
+function convolvedRound(contour: Contour, corners: Vec2[]): Contour {
+  const count = corners.length;
+  // The figure's edge directions. Opposite edges are parallel, so half of them.
+  const turns: Vec2[] = [];
+  for (let index = 0; index < count / 2; index++) {
+    const a = corners[index];
+    const b = corners[(index + 1) % count];
+    turns.push({ x: b.x - a.x, y: b.y - a.y });
+  }
+  const facing = (direction: Vec2): number => {
+    // Out to the right of the way the outline runs.
+    const out = { x: direction.y, y: -direction.x };
+    let best = 0;
+    let most = -Infinity;
+    corners.forEach((corner, index) => {
+      const reach = corner.x * out.x + corner.y * out.y;
+      if (reach > most) {
+        most = reach;
+        best = index;
+      }
+    });
+    return best;
+  };
+
+  const pieces: Array<{ edge: Edge; corner: number; enter: Vec2; leave: Vec2 }> = [];
+  const nodes = contour.nodes;
+  for (let index = 0; index < nodes.length; index++) {
+    const from = nodes[index];
+    const to = nodes[(index + 1) % nodes.length];
+    for (const edge of cutAtAll(from, to, turns)) {
+      const enter = headingOf(edge, "start");
+      const leave = headingOf(edge, "end");
+      if (!enter || !leave) continue;
+      const middle = headingOf(edge, "middle") ?? enter;
+      pieces.push({ edge, corner: facing(middle), enter, leave });
+    }
+  }
+  if (pieces.length === 0) return contour;
+
+  const out: GlyphNode[] = [];
+  const shift = (point: Vec2, corner: number): Vec2 => ({
+    x: point.x + corners[corner].x,
+    y: point.y + corners[corner].y,
+  });
+  const push = (point: Vec2) => {
+    const last = out[out.length - 1];
+    if (last && same(last.point, point)) return;
+    out.push({ point, handleIn: null, handleOut: null, type: "corner" });
+  };
+  for (let index = 0; index < pieces.length; index++) {
+    const before = pieces[(index - 1 + pieces.length) % pieces.length];
+    const piece = pieces[index];
+    const at = piece.edge.from;
+    // Round the figure from the corner the last piece used to this one's, the
+    // way the outline turns here.
+    if (before.corner !== piece.corner) {
+      let cross = before.leave.x * piece.enter.y - before.leave.y * piece.enter.x;
+      const dot = before.leave.x * piece.enter.x + before.leave.y * piece.enter.y;
+      /*
+       * Where the outline all but doubles back -- the sharp tip of a brushed
+       * foot -- the two headings are nearly opposite, and which side of
+       * straight back they fall on is a question about a handle a unit long.
+       * Read the wrong way, the loop went round the inside of the tip and a
+       * Black Brush H came back with a round bite out of every foot. The
+       * chords of the two pieces say which way the outline really turned.
+       */
+      if (dot < -0.85) {
+        const a = {
+          x: before.edge.to.x - before.edge.from.x,
+          y: before.edge.to.y - before.edge.from.y,
+        };
+        const b = {
+          x: piece.edge.to.x - piece.edge.from.x,
+          y: piece.edge.to.y - piece.edge.from.y,
+        };
+        const chords = a.x * b.y - a.y * b.x;
+        cross = Math.abs(chords) > 1e-9 ? chords : 1;
+      }
+      const forward = (piece.corner - before.corner + count) % count;
+      const way = Math.abs(cross) > 1e-9 ? (cross > 0 ? 1 : -1) : forward <= count / 2 ? 1 : -1;
+      let corner = before.corner;
+      for (let step = 0; step < count && corner !== piece.corner; step++) {
+        corner = (corner + way + count) % count;
+        push(shift(at, corner));
+      }
+    }
+    const { edge, corner } = piece;
+    const start = shift(edge.from, corner);
+    push(start);
+    const last = out[out.length - 1];
+    last.handleOut = edge.c1 && shift(edge.c1, corner);
+    out.push({
+      point: shift(edge.to, corner),
+      handleIn: edge.c2 && shift(edge.c2, corner),
+      handleOut: null,
+      type: "corner",
+    });
+  }
+  /*
+   * Without the pieces too short to be anything.
+   *
+   * A curve cut at every one of the figure's directions can leave a piece a
+   * hundredth of a unit long between two cuts that fall almost together, and
+   * a loop carrying a few of those is one paper cannot resolve: a light
+   * Handwriting e grown by a rim came back as five specks and then as
+   * nothing. The piece's two ends are one point for any purpose a font has.
+   */
+  const kept: GlyphNode[] = [];
+  for (const node of out) {
+    const last = kept[kept.length - 1];
+    if (last && distance(last.point, node.point) < 0.05) {
+      last.handleOut = node.handleOut;
+      continue;
+    }
+    kept.push(node);
+  }
+  while (kept.length > 2 && distance(kept[kept.length - 1].point, kept[0].point) < 0.05) {
+    kept[0].handleIn = kept[kept.length - 1].handleIn;
+    kept.pop();
+  }
+  return { closed: true, nodes: kept };
+}
+
+/** One edge of an outline, cut wherever it turns through any of these directions. */
+function cutAtAll(from: GlyphNode, to: GlyphNode, directions: Vec2[]): Edge[] {
+  const start = from.point;
+  const finish = to.point;
+  if (from.handleOut === null && to.handleIn === null) {
+    return same(start, finish) ? [] : [{ from: start, c1: null, c2: null, to: finish }];
+  }
+  const one = from.handleOut ?? start;
+  const other = to.handleIn ?? finish;
+  const at: number[] = [];
+  for (const { x: dx, y: dy } of directions) {
+    const cross = (a: Vec2, b: Vec2): number => (b.x - a.x) * dy - (b.y - a.y) * dx;
+    const a = cross(start, one);
+    const b = cross(one, other);
+    const c = cross(other, finish);
+    const square = a - 2 * b + c;
+    const linear = -2 * a + 2 * b;
+    if (Math.abs(square) < 1e-12) {
+      if (Math.abs(linear) > 1e-12) at.push(-a / linear);
+    } else {
+      const under = linear * linear - 4 * square * a;
+      if (under >= 0) {
+        const root = Math.sqrt(under);
+        at.push((-linear + root) / (2 * square), (-linear - root) / (2 * square));
+      }
+    }
+  }
+  const cuts = [...new Set(at.filter((value) => value > 1e-6 && value < 1 - 1e-6))].sort(
+    (x, y) => x - y,
+  );
+  const pieces: Edge[] = [];
+  let piece: [Vec2, Vec2, Vec2, Vec2] = [start, one, other, finish];
+  let eaten = 0;
+  for (const cut of cuts) {
+    const where = (cut - eaten) / (1 - eaten);
+    if (where <= 1e-9 || where >= 1 - 1e-9) continue;
+    const [before, after] = splitCubic(piece[0], piece[1], piece[2], piece[3], where);
+    pieces.push({ from: before[0], c1: before[1], c2: before[2], to: before[3] });
+    piece = after;
+    eaten = cut;
+  }
+  pieces.push({ from: piece[0], c1: piece[1], c2: piece[2], to: piece[3] });
+  return pieces;
+}
+
+/** Which way a piece of outline is heading at its start, its end or half way. */
+function headingOf(edge: Edge, where: "start" | "end" | "middle"): Vec2 | null {
+  if (edge.c1 === null && edge.c2 === null) return away(edge.from, edge.to);
+  const c1 = edge.c1 ?? edge.from;
+  const c2 = edge.c2 ?? edge.to;
+  if (where === "start")
+    return away(edge.from, c1) ?? away(edge.from, c2) ?? away(edge.from, edge.to);
+  if (where === "end") return away(c2, edge.to) ?? away(c1, edge.to) ?? away(edge.from, edge.to);
+  // The derivative of the cubic at a half, which is a multiple of this.
+  const x = edge.to.x + c2.x - c1.x - edge.from.x;
+  const y = edge.to.y + c2.y - c1.y - edge.from.y;
+  return away({ x: 0, y: 0 }, { x, y }) ?? away(edge.from, edge.to);
+}
+
+/**
+ * The point on one edge of an outline a distance from one of its ends,
+ * following the curve: back from the end of the edge, or forward from its
+ * start. Past the far end of the edge, the far end.
+ */
+function onEdge(from: GlyphNode, to: GlyphNode, by: number, way: "back" | "forward"): Vec2 {
+  const c1 = from.handleOut ?? from.point;
+  const c2 = to.handleIn ?? to.point;
+  const STEPS = 32;
+  let walked = 0;
+  let last = way === "back" ? to.point : from.point;
+  for (let step = 1; step <= STEPS; step++) {
+    const t = way === "back" ? 1 - step / STEPS : step / STEPS;
+    const point = cubicAt(from.point, c1, c2, to.point, t);
+    const run = distance(last, point);
+    if (walked + run >= by) {
+      const share = run > 0 ? (by - walked) / run : 0;
+      const along = (step - 1 + share) / STEPS;
+      return cubicAt(from.point, c1, c2, to.point, way === "back" ? 1 - along : along);
+    }
+    walked += run;
+    last = point;
+  }
+  return last;
 }
 
 /**
@@ -517,56 +1339,282 @@ function outlined(shape: Contour[], width: number): Contour[] {
  * the corner itself, so what is added is a wedge with a width to it instead of
  * a hair standing on a single point.
  */
-function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[] {
+function spurTool(
+  shape: Contour[],
+  spur: Cast["spur"],
+  stem: number,
+  chamfered: Vec2[] = [],
+  knives: Contour[] = [],
+): Contour[] {
   const size = spur.size * stem;
   if (size <= 0) return [];
+  /*
+   * Not at a corner a cut made. A slot laid across a curve leaves each piece
+   * with sharp corners where the band's edge meets the curve, and a point
+   * grown at every one of them gave a slotted e and s a star of spikes at
+   * each band. The points are the letter's own corners, chamfered or not.
+   */
+  const cutEdges = knives.map((knife) => flattenContour(knife, 8));
+  const cut = (point: Vec2): boolean =>
+    cutEdges.some((line) =>
+      line.some((a, at) => {
+        const b = line[(at + 1) % line.length];
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const run = dx * dx + dy * dy;
+        const t =
+          run > 0
+            ? Math.max(0, Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / run))
+            : 0;
+        return Math.hypot(point.x - a.x - dx * t, point.y - a.y - dy * t) < 1;
+      }),
+    );
 
   /** Below this the outline is carrying on rather than turning. */
   const SHARP = (25 * Math.PI) / 180;
+  /** Above this it is going back the way it came. */
+  const REVERSED = (165 * Math.PI) / 180;
 
+  const outline = shape.map((contour) => flattenContour(contour, 16));
   const added: Contour[] = [];
   for (const contour of shape) {
     const nodes = contour.nodes;
-    if (nodes.length < 3) continue;
-    const ink = contourArea(contour) >= 0 ? 1 : -1;
+    const count = nodes.length;
+    if (count < 3) continue;
 
-    for (let index = 0; index < nodes.length; index++) {
-      const previous = nodes[(index - 1 + nodes.length) % nodes.length];
-      const here = nodes[index];
-      const next = nodes[(index + 1) % nodes.length];
-
-      // Handles say which way the outline is really going: a node between two
-      // curves is not a corner however far apart its neighbours sit.
+    /*
+     * Every corner first: where it is, which way the outline arrives and
+     * leaves, and how far it turns. Handles say which way the outline is
+     * really going: a node between two curves is not a corner however far
+     * apart its neighbours sit.
+     */
+    const corners = nodes.map((here, index) => {
+      const previous = nodes[(index - 1 + count) % count];
+      const next = nodes[(index + 1) % count];
       const arriving = away(here.handleIn ?? previous.point, here.point);
       const leaving = away(here.point, here.handleOut ?? next.point);
-      if (!arriving || !leaving) continue;
+      const turn = arriving && leaving ? angleBetween(arriving, leaving) : 0;
+      return { here, previous, next, arriving, leaving, turn };
+    });
+    const straight = (from: GlyphNode, to: GlyphNode) =>
+      from.handleOut === null && to.handleIn === null;
 
+    const used = new Set<number>();
+    for (let index = 0; index < count; index++) {
+      if (used.has(index)) continue;
+      const first = corners[index];
+      if (!first.arriving || !first.leaving || first.turn <= 0) continue;
+      if (cutEdges.length > 0 && cut(first.here.point)) continue;
+
+      /*
+       * A corner that has been cut off is still one corner.
+       *
+       * A chamfer turns every corner into two, a short flat between them,
+       * and a point grown out of each of the two gave every terminal a crown
+       * of spikes and the crotch of a k a cluster of thorns. Where a convex
+       * corner is followed, across a flat shorter than the point is long, by
+       * another turning the same way, the two are read as the one corner they
+       * were cut from: the point stands on the flat, out along the line the
+       * corner would have had, and the flat is its base.
+       */
+      let last = first;
+      let lastIndex = index;
+      if (chamfered.length > 0 && Math.abs(first.turn) < SHARP * 2.4) {
+        // Along the flat, past any points on it that do not turn, to the
+        // next corner -- if it comes soon enough.
+        let walked = 0;
+        let at = index;
+        for (let step = 1; step < count; step++) {
+          const onward = (index + step) % count;
+          const previousNode = corners[at].here;
+          const candidate = corners[onward];
+          if (!straight(previousNode, candidate.here)) break;
+          walked += distance(previousNode.point, candidate.here.point);
+          if (walked >= stem * 2) break;
+          if (Math.abs(candidate.turn) < (5 * Math.PI) / 180) {
+            at = onward;
+            continue;
+          }
+          // Only a pair the chamfer made: the two lines they leave along
+          // cross where a corner was cut off.
+          const was =
+            candidate.arriving && candidate.leaving
+              ? meeting(first.here.point, first.arriving, candidate.here.point, candidate.leaving)
+              : null;
+          if (
+            was &&
+            candidate.turn > 0 &&
+            candidate.turn < SHARP * 2.4 &&
+            chamfered.some((corner) => distance(corner, was) < Math.max(1, stem * 0.02))
+          ) {
+            last = candidate;
+            lastIndex = onward;
+          }
+          break;
+        }
+      }
+      const arriving = first.arriving;
+      const leaving = last.leaving as Vec2;
       const turn = angleBetween(arriving, leaving);
       if (Math.abs(turn) < SHARP) continue;
-      // Ink on the inside of the turn, whichever way this contour runs.
-      if (turn * ink <= 0) continue;
+      /*
+       * Nor on a corner so sharp the outline all but doubles back on itself.
+       * The point laid there lies along the edge rather than out of the
+       * corner, and fused with the letter it left a hair of no width
+       * standing along the baseline of a Flared n -- which a chamfer after it
+       * read as a corner of no size and took the whole letter away with.
+       */
+      if (Math.abs(turn) > REVERSED) continue;
+      /*
+       * Ink on the inside of the turn, which is a turn to the left whichever
+       * contour this is. The shape has come out of a union, so its outlines
+       * run with the ink on their left -- anticlockwise round the outside,
+       * clockwise round a counter -- and a turn to the left has the ink inside
+       * it on both. (It used to flip the test for a counter, and every square
+       * counter got a spike at each of its corners, aimed into the stem.)
+       */
+      if (turn <= 0) continue;
+      if (last !== first) {
+        for (let step = index; step !== lastIndex; step = (step + 1) % count) used.add(step);
+        used.add(lastIndex);
+      }
+
+      // The corner the point grows from: the one there was before any cut.
+      const start = first.here.point;
+      const finish = last.here.point;
+      const apex =
+        last === first
+          ? start
+          : (meeting(start, arriving, finish, leaving) ?? midway(start, finish));
 
       // Never more of the edge than there is edge to take, or the base of one
       // spike reaches the next corner and the two run together.
-      const room = Math.min(distance(here.point, previous.point), distance(here.point, next.point));
+      const room = Math.min(
+        distance(start, first.previous.point),
+        distance(finish, last.next.point),
+      );
+      /*
+       * Nor on a step: the notch where the shoulder of a Sans r leaves the
+       * top of its stem is a corner a few units across, and a point stood on
+       * it read as a nick in the shoulder. A corner has to have edges at least
+       * a good part of the point's length to carry one.
+       */
+      if (last === first && room < size * 0.45) continue;
+      /*
+       * Nor on a corner the chamfer made that was not read as half of one it
+       * cut. A cut through an acute corner -- the end of the arm of a k, the
+       * lower terminal of an e -- leaves more corners than two, and each
+       * that was not paired grew a thorn of its own beside the point.
+       */
+      if (last === first && chamfered.some((corner) => distance(corner, start) < stem * 0.75)) {
+        continue;
+      }
       const base = Math.min(size * 0.7, room * 0.45);
-      if (base <= 0) continue;
+      /*
+       * And never longer than its base can hold up.
+       *
+       * A brushed outline turns sharply now and then over a unit or two -- a
+       * kink in the side of a stem, the step of a serif -- and a full-length
+       * point stood on a base that narrow is a hair: a Brush face with points
+       * on came back with whiskers standing off the middle of every stem, and
+       * a rim grown over them turned each into a tuft of fur. Held to a
+       * little over twice its base, a point on a short edge is a short point,
+       * and one too small to see is not drawn.
+       */
+      let reach = Math.min(
+        size,
+        // A corner the chamfer cut stands on the whole of the flat it left.
+        Math.max(base * 2.4, last === first ? 0 : distance(start, finish) * 1.5),
+      );
 
       // Out of the corner is against the turn, along `arriving - leaving`.
       // The other sign points into the letter and buries the spike.
       const out = away({ x: leaving.x, y: leaving.y }, { x: arriving.x, y: arriving.y });
       if (!out) continue;
+      /*
+       * And never into the letter's own space.
+       *
+       * A corner can be convex and still face another part of the letter
+       * across a gap: the end of the tail of an e faces its crossbar across
+       * the aperture, the top of an r's stem sits under its shoulder, the
+       * inner corners of a k's arm and leg face the crotch. A point grown
+       * there ran across the gap and left a hairline of paper between itself
+       * and the stroke it nearly touched. So the point is held about its own
+       * length short of any ink it is aimed at, and where that leaves too
+       * little of it, it is not grown.
+       */
+      const clear = size * 0.9;
+      for (const spread of [0, 0.35, -0.35, 0.7, -0.7]) {
+        const cos = Math.cos(spread);
+        const sin = Math.sin(spread);
+        const way = { x: out.x * cos - out.y * sin, y: out.x * sin + out.y * cos };
+        const hit = rayHitDistance(outline, { x: apex.x + way.x, y: apex.y + way.y }, way);
+        if (Number.isFinite(hit)) reach = Math.min(reach, (hit + 1) * Math.cos(spread) - clear);
+      }
+      if (reach < size * 0.35) continue;
+      /*
+       * The base stands on the outline either side, along the edges and not
+       * along their tangents. Off a curve, a point a base back along the
+       * tangent stands out in the paper beside it, and the point's side ran
+       * from there across the curve: a notch where the point met the bowl of
+       * a chamfered Black a, once the chamfer left that terminal cut clean.
+       */
       added.push(
         poly([
-          { x: here.point.x - arriving.x * base, y: here.point.y - arriving.y * base },
-          { x: here.point.x + out.x * size, y: here.point.y + out.y * size },
-          { x: here.point.x + leaving.x * base, y: here.point.y + leaving.y * base },
+          onEdge(first.previous, first.here, base, "back"),
+          ...(last === first ? [] : [start]),
+          { x: apex.x + out.x * reach, y: apex.y + out.y * reach },
+          ...(last === first ? [] : [finish]),
+          onEdge(last.here, last.next, base, "forward"),
         ]),
       );
     }
   }
-  return added;
+  /*
+   * And two points that run into each other are neither drawn. Two corners
+   * close together on a heavy letter -- the end of the bar of an e and the
+   * tail beneath it -- each grew a point across the gap between them, and the
+   * two crossed as a star.
+   */
+  const boxes = added.map((one) => contoursBounds([one]));
+  const polygons = added.map((one) => one.nodes.map((node) => node.point));
+  return added.filter((_, index) =>
+    added.every(
+      (__, other) =>
+        other === index ||
+        !overlapping(boxes[index], boxes[other]) ||
+        !polygonsCross(polygons[index], polygons[other]),
+    ),
+  );
 }
+
+const overlapping = (a: Bounds, b: Bounds): boolean =>
+  a.xMin < b.xMax && b.xMin < a.xMax && a.yMin < b.yMax && b.yMin < a.yMax;
+
+/** Whether two simple polygons share any ground: an edge of each crossing. */
+function polygonsCross(one: Vec2[], other: Vec2[]): boolean {
+  const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  for (let i = 0; i < one.length; i++) {
+    const a = one[i];
+    const b = one[(i + 1) % one.length];
+    for (let j = 0; j < other.length; j++) {
+      const c = other[j];
+      const d = other[(j + 1) % other.length];
+      if (side(a, b, c) * side(a, b, d) < 0 && side(c, d, a) * side(c, d, b) < 0) return true;
+    }
+  }
+  return false;
+}
+
+/** Where two lines cross, each given by a point and a direction. */
+function meeting(a: Vec2, u: Vec2, b: Vec2, v: Vec2): Vec2 | null {
+  const cross = u.x * v.y - u.y * v.x;
+  if (Math.abs(cross) < 1e-9) return null;
+  const t = ((b.x - a.x) * v.y - (b.y - a.y) * v.x) / cross;
+  return { x: a.x + u.x * t, y: a.y + u.y * t };
+}
+
+const midway = (a: Vec2, b: Vec2): Vec2 => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 /**
  * Ink piled into the corner wherever two strokes run into each other.
@@ -575,58 +1623,534 @@ function spurTool(shape: Contour[], spur: Cast["spur"], stem: number): Contour[]
  * same test the break uses to find the same places -- so a face with both on
  * fills exactly the corners the other would have cut.
  *
- * What goes there is a disc rather than a fitted fillet. A real fillet is two
- * tangents and an arc and has to know which way both strokes are running; a
- * disc at the meeting point covers the same corner, is buried in ink on all
- * the sides that are already ink, and shows only where there was a notch. The
- * difference between the two is smaller than the difference between weights.
+ * What goes there is a fillet: in every corner between two of the strokes
+ * leaving the join, the arc of the given radius that touches both of their
+ * edges, and the ground between it and the join. That is what a brush leaves
+ * when it changes direction without lifting, and it only ever lies in a
+ * corner -- the arc is tangent to both edges, so the fill stops exactly where
+ * the strokes' own sides carry on.
+ *
+ * It was a disc at the meeting point, on the argument that a disc is buried in
+ * ink on every side that is already ink and shows only where there was a
+ * notch. That holds while the disc is smaller than the strokes are wide, and
+ * nowhere else: the crossbar of an H meets its stems at their centre-lines, so
+ * a disc a stem across stood half a stem out of the outside of both stems, and
+ * the arms of an E wore a ball on the back of the E at every join. A fillet
+ * cannot do that, because it is built between the edges it fills and never
+ * reaches past either of them.
  */
-function weldTool(strokes: Stroke[], weld: Cast["weld"], stem: number): Contour[] {
+function weldTool(
+  strokes: Stroke[],
+  weld: Cast["weld"],
+  stem: number,
+  shape: Contour[] = [],
+  breaks?: Breaks,
+  grooves: Contour[] = [],
+  knives: Contour[] = [],
+): Contour[] {
   const size = weld.size * stem;
   if (size <= 0 || strokes.length < 2) return [];
 
   const near = stem * 1.15;
   const samples = strokes.map((stroke) => alongSpine(stroke.spine, SAMPLES));
 
+  // Whether a point is ink: inside an odd number of the fused outlines.
+  const ink =
+    shape.length === 0
+      ? undefined
+      : (point: Vec2): boolean =>
+          shape.filter((contour) => contourContainsPoint(contour, point)).length % 2 === 1;
+
+  // How far from a point inside the ink its edge lies, looking one way.
+  const outline = shape.map((contour) => flattenContour(contour, 16));
+  const edge =
+    shape.length === 0
+      ? undefined
+      : (point: Vec2, way: Vec2): number => rayHitDistance(outline, point, way);
+
+  // Every stroke but the two meeting, as somewhere an arm can run into.
+  const thirds = (one: number, other: number): Array<{ line: Vec2[]; stroke: Stroke }> =>
+    strokes
+      .map((stroke, index) => ({ line: samples[index], stroke, index }))
+      .filter(({ index }) => index !== one && index !== other);
+
+  /*
+   * Nor one that ties two of the letter's pieces together. A fillet fills the
+   * corner of one piece. After slots, the corner a band leaves beside a join
+   * can be closer to the next piece than a fillet is long: on nearly every
+   * face the weld tied a stem back to the bar a slot had cut it from, and
+   * two fillets from either side of a band that only touched tied it too.
+   * Counted on the letter as it stands with the fillets kept so far.
+   */
+  let kept = shape;
+  let count = pieces(shape);
+  const ties = (fillet: Contour): boolean => {
+    if (count < 2) return false;
+    const next = unite([...kept, fillet], "winding", "whole");
+    const now = pieces(next);
+    if (now < count) return true;
+    kept = next;
+    count = now;
+    return false;
+  };
+  /*
+   * Nor into an inline's groove. At a join the letter's corner is now the
+   * groove's, and a fillet grown there stood in the groove as a stub on its
+   * outer wall, or tied the island to it.
+   */
+  const intoGroove = (fillet: Contour): boolean =>
+    grooves.length > 0 &&
+    intersect([fillet], grooves, "winding").reduce((total, one) => total + contourArea(one), 0) > 1;
+  /*
+   * Nor one that fills in a small counter the letter draws. The triangle
+   * under a Serif t's flag, drawn with Lora's head, is a few stems' corner
+   * across, and the fillet at the flag's join covered two thirds of it; what
+   * was left went as a speck. A fillet may take no counter below half the
+   * paper it had, counting what the fillets before it took. Only counters a
+   * few stems square are asked about: a fillet is a corner's worth of ink,
+   * and a bowl's counter is never in reach of losing half.
+   */
+  const small = shape
+    .filter((contour) => {
+      const area = -contourArea(contour);
+      return area > stem * stem * 0.02 && area < stem * stem * 4 && !inGroove(contour, grooves);
+    })
+    .map((contour) => {
+      const paper = reverseContour(contour);
+      const whole = contourArea(paper);
+      return { paper, box: contoursBounds([paper]), whole, left: whole };
+    });
+  const fillsCounter = (fillet: Contour): boolean => {
+    if (small.length === 0) return false;
+    const box = contoursBounds([fillet]);
+    const taken = small.map((counter) => {
+      const other = counter.box;
+      if (
+        other.xMin > box.xMax ||
+        other.xMax < box.xMin ||
+        other.yMin > box.yMax ||
+        other.yMax < box.yMin
+      ) {
+        return 0;
+      }
+      return intersect([fillet], [counter.paper], "winding").reduce(
+        (total, one) => total + Math.abs(contourArea(one)),
+        0,
+      );
+    });
+    if (small.some((counter, index) => counter.left - taken[index] < counter.whole * 0.5)) {
+      return true;
+    }
+    small.forEach((counter, index) => {
+      counter.left -= taken[index];
+    });
+    return false;
+  };
+
   const added: Contour[] = [];
   for (let one = 0; one < samples.length; one++) {
     for (let other = one + 1; other < samples.length; other++) {
       let closest = Infinity;
       let where: Vec2 | null = null;
-      for (const a of samples[one]) {
-        for (const b of samples[other]) {
+      let at: [number, number] = [0, 0];
+      for (let i = 0; i < samples[one].length; i++) {
+        for (let j = 0; j < samples[other].length; j++) {
+          const a = samples[one][i];
+          const b = samples[other][j];
           const between = Math.hypot(a.x - b.x, a.y - b.y);
           if (between < closest) {
             closest = between;
             where = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+            at = [i, j];
           }
         }
       }
       if (closest >= near || where === null) continue;
-      added.push(disc(where, size));
+      /*
+       * Nor a join the split has opened. The two find the same joins, and
+       * with both on a fillet was still grown where the split had just cut:
+       * whichever went second, it stood beside the gap as a round hook or a
+       * notched sliver -- either side of the crossbar gap of an A, on the
+       * stem where the arm of a k came off. The break wins, since it is the
+       * one that changes what the letter is.
+       */
+      if (breaks?.parted.has(`${one}:${other}`)) continue;
+      /*
+       * Nor a vertex: two strokes meeting tip to tip at a sharp angle, the apex
+       * of a Serif A where the thin leg runs up past the thick one. There is
+       * no corner between them to fill, only the point they make, and a
+       * fillet laid there stood off the apex as a flag.
+       */
+      if (isVertex(samples[one], samples[other], at)) continue;
+      const arms = [
+        ...armsOf(strokes[one], samples[one], at[0], where, strokes[other], 0, thirds(one, other)),
+        ...armsOf(
+          strokes[other],
+          samples[other],
+          at[1],
+          where,
+          strokes[one],
+          1,
+          thirds(one, other),
+        ),
+      ].sort((a, b) => a.angle - b.angle);
+      for (let index = 0; index < arms.length; index++) {
+        const from = arms[index];
+        const to = arms[(index + 1) % arms.length];
+        // Only the corners between the two strokes. A stroke that bends at the
+        // join has a corner of its own there, and it is not a join.
+        if (from.stroke === to.stroke) continue;
+        const grown = filletBetween(where, from, to, size, ink, edge);
+        if (!grown || (breaks && acrossBreak(grown, breaks.knives)) || intoGroove(grown)) continue;
+        // Kept out of whatever the cut took away, and never across it.
+        const kept = knives.length === 0 ? [grown] : clipped(grown, knives);
+        for (const fillet of kept) {
+          if (!fillsCounter(fillet) && !ties(fillet)) added.push(fillet);
+        }
+      }
     }
   }
   return added;
 }
 
+/** A fillet less what lies in a cut, in the pieces that are worth keeping. */
+function clipped(fillet: Contour, knives: Contour[]): Contour[] {
+  const box = contoursBounds([fillet]);
+  const near = knives.filter((knife) => {
+    const other = contoursBounds([knife]);
+    return !(
+      other.xMin > box.xMax ||
+      other.xMax < box.xMin ||
+      other.yMin > box.yMax ||
+      other.yMax < box.yMin
+    );
+  });
+  if (near.length === 0) return [fillet];
+  const left = subtract([fillet], near, "winding");
+  const whole = Math.abs(contourArea(fillet));
+  // A sliver of a fillet left beside a cut is not a fillet.
+  return left.filter((one) => contourArea(one) > whole * 0.2);
+}
+
+/** Where the split cuts, and which pairs of strokes it parts (`pairKey`). */
+export interface Breaks {
+  knives: Contour[];
+  parted: Set<string>;
+}
+
+/**
+ * Whether a fillet reaches into a gap the split has cut, even at a join the
+ * split left whole: where the arm and leg of a k come away from the stem
+ * together, the fillet between them stood out into the gap as a wedge.
+ */
+function acrossBreak(fillet: Contour, knives: Contour[]): boolean {
+  if (knives.length === 0) return false;
+  const box = contoursBounds([fillet]);
+  const near = knives.filter((knife) => {
+    const other = contoursBounds([knife]);
+    return (
+      other.xMin < box.xMax &&
+      other.xMax > box.xMin &&
+      other.yMin < box.yMax &&
+      other.yMax > box.yMin
+    );
+  });
+  if (near.length === 0) return false;
+  const shared = intersect([fillet], near, "winding");
+  const area = shared.reduce((total, one) => total + Math.abs(contourArea(one)), 0);
+  return area > Math.abs(contourArea(fillet)) * 0.02;
+}
+
+/** Whether two sampled spines meet tip to tip at a sharp angle. */
+function isVertex(one: Vec2[], other: Vec2[], at: [number, number]): boolean {
+  const tip = (line: Vec2[], index: number): Vec2 | null => {
+    const last = line.length - 1;
+    const near = Math.ceil(last * 0.1);
+    if (index > near && index < last - near) return null;
+    const end = index <= near ? 0 : last;
+    const step = near + 2;
+    return away(line[end], line[end === 0 ? Math.min(last, step) : Math.max(0, last - step)]);
+  };
+  const a = tip(one, at[0]);
+  const b = tip(other, at[1]);
+  if (!a || !b) return false;
+  return a.x * b.x + a.y * b.y > Math.cos((70 * Math.PI) / 180);
+}
+
+/** One stroke leaving a join: which way, how wide, and how far it runs. */
+interface Arm {
+  stroke: number;
+  /** The way the stroke leaves the join. */
+  direction: Vec2;
+  angle: number;
+  /** How far its edge stands from its spine, on either side. */
+  half: number;
+  /** How much of the stroke there is beyond the join. */
+  length: number;
+  /** The spine beyond the join, in order, for asking where it bends away. */
+  path: Vec2[];
+}
+
+/**
+ * The ways a stroke leaves a join: forward along its spine, and back.
+ *
+ * A stroke that ends at the join leaves it one way only, and one passing
+ * through leaves it both -- but only if it comes out the other side. The stem
+ * of an R carries on half a pen above where the bowl leaves it, and all of
+ * that half pen is inside the bowl's own stroke: there is no corner there, and
+ * reading the stub as an arm put a fillet on the outside of the letter, above
+ * the bowl. So a way out counts only where it runs clear of the other stroke.
+ *
+ * The direction is the tangent at the join rather than a chord further out.
+ * A chord cuts across the inside of a curve, and where two curves leave a join
+ * side by side -- the two arches of an m, both rising from the middle stem --
+ * the chords spread apart while the strokes themselves rise together, and the
+ * fillet between the chords stood up out of the valley between the arches as
+ * a spike. Taken off the tangent the two arches leave the same way, and there
+ * is no corner to fill.
+ *
+ * How wide the stroke stands is the pen's reach across that direction, which
+ * with contrast differs from stroke to stroke: the hairline arm of a Serif
+ * `k` is thinner than the stem it leaves.
+ */
+function armsOf(
+  stroke: Stroke,
+  spine: Vec2[],
+  index: number,
+  join: Vec2,
+  meeting: Stroke,
+  which: number,
+  thirds: Array<{ line: Vec2[]; stroke: Stroke }> = [],
+): Arm[] {
+  const reach = penReach(stroke.pen);
+  const clear = penReach(meeting.pen).across * 1.2 + 1;
+  const arms: Arm[] = [];
+  const closed = stroke.spine.closed;
+  const last = spine.length - 1;
+  for (const step of [1, -1]) {
+    let length = 0;
+    let at = index;
+    let toward: Vec2 | null = null;
+    const path: Vec2[] = [];
+    for (let walked = 0; walked < last; walked++) {
+      let next = at + step;
+      if (closed) next = (next + last) % last;
+      else if (next < 0 || next > last) break;
+      length += distance(spine[at], spine[next]);
+      at = next;
+      /*
+       * Stopped where it runs into another stroke.
+       *
+       * The crossbar of an H runs from one stem to the other, and a fillet
+       * sized against the whole crossbar -- the part buried in the far stem
+       * and out the other side of it -- reached past the far stem's inside
+       * edge. What is there to fill against is the run between the two.
+       */
+      const blocked = thirds.some(({ line, stroke: third }) => {
+        const near = Math.min(...line.map((point) => distance(point, spine[at])));
+        return near < penReach(third.pen).across;
+      });
+      if (blocked) break;
+      path.push(spine[at]);
+      // Far enough along for a direction to be read off, and no further.
+      toward ??= length >= reach.across * 0.25 ? spine[at] : null;
+    }
+    if (length < clear || !toward) continue;
+    const direction = away(join, toward);
+    if (!direction) continue;
+    const normal = { x: -direction.y, y: direction.x };
+    const shift = reachAlong(normal, reach);
+    arms.push({
+      stroke: which,
+      direction,
+      angle: Math.atan2(direction.y, direction.x),
+      half: Math.abs(shift.x * normal.x + shift.y * normal.y),
+      length,
+      path,
+    });
+  }
+  return arms;
+}
+
+/**
+ * How far along an arm its edge on one side still runs where the fillet
+ * thinks it does.
+ *
+ * The fillet is built against the straight line the arm leaves the join
+ * along, and a stroke that curves is only on that line for a while. Curving
+ * into the corner does no harm -- the ink comes over the fillet and buries it
+ * -- but curving away leaves the fillet's side standing in the air: the leg of
+ * an R leaves the join beside the bottom of the bowl, the bowl turns up and
+ * away from it, and a fillet run along the bowl's first heading came back as a
+ * flag standing out past the bowl. So the length that counts stops where the
+ * spine has fallen away from that line by more than a unit or a twentieth of
+ * the pen, whichever is more, and ends where the stroke does otherwise.
+ */
+function straightFor(join: Vec2, arm: Arm, side: Vec2): number {
+  const slack = Math.max(1, arm.half * 0.1);
+  for (const point of arm.path) {
+    const off = (point.x - join.x) * side.x + (point.y - join.y) * side.y;
+    if (off < -slack) {
+      return (point.x - join.x) * arm.direction.x + (point.y - join.y) * arm.direction.y;
+    }
+  }
+  return arm.length;
+}
+
+/**
+ * The fillet in the corner between two arms, turning anticlockwise from one to
+ * the other; or nothing, where they meet too square-on to have a corner.
+ *
+ * The edges that face into the corner are the left side of the first arm and
+ * the right side of the second. The arc touches both, and the shape is the
+ * join, out along each spine to where the arc touches, across to the edge, and
+ * round the arc -- so it overlaps the ink of both strokes instead of lying
+ * exactly along their edges, which is the arrangement a union handles well.
+ *
+ * The radius is taken down where the arms are too short for it, so a fillet
+ * never runs past the end of the stroke it is filling against.
+ */
+function filletBetween(
+  join: Vec2,
+  from: Arm,
+  to: Arm,
+  radius: number,
+  ink?: (point: Vec2) => boolean,
+  edge?: (from: Vec2, way: Vec2) => number,
+): Contour | null {
+  let opening = to.angle - from.angle;
+  if (opening <= 0) opening += Math.PI * 2;
+  // Nearly straight on is a stroke carrying on through, and nearly shut is two
+  // strokes lying along each other; neither has a corner to fill.
+  if (opening > (170 * Math.PI) / 180 || opening < (20 * Math.PI) / 180) return null;
+
+  const u1 = from.direction;
+  const u2 = to.direction;
+  const n1 = { x: -u1.y, y: u1.x };
+  const n2 = { x: u2.y, y: -u2.x };
+  const sin = Math.sin(opening);
+  const cos = Math.cos(opening);
+  const reachFromCorner = 1 / Math.tan(opening / 2);
+  /*
+   * How far each edge really stands from the line the arm leaves along,
+   * measured off the ink where the arc will touch it.
+   *
+   * The pen says how wide a stroke is swept, and a face drawn to match
+   * another is not always as wide as its pen where two strokes meet: the
+   * crossbar of a Sans A and the foot of the bowl of its R are drawn thinner
+   * than the stem. A fillet built against the pen's width touched a line a few
+   * units inside the paper, and where it met the real edge it left a step --
+   * a notch under each end of the arc. Read off the letter, the arc lands on
+   * the edge it is meant to meet.
+   */
+  let half1 = from.half;
+  let half2 = to.half;
+  if (edge) {
+    for (let pass = 0; pass < 2; pass++) {
+      const along1 = (half2 + half1 * cos) / sin + radius * reachFromCorner;
+      const along2 = (half1 + half2 * cos) / sin + radius * reachFromCorner;
+      const one = edge({ x: join.x + u1.x * along1, y: join.y + u1.y * along1 }, n1);
+      const two = edge({ x: join.x + u2.x * along2, y: join.y + u2.y * along2 }, n2);
+      if (one > from.half * 0.5 && one < from.half * 1.3) half1 = one;
+      if (two > to.half * 0.5 && two < to.half * 1.3) half2 = two;
+    }
+  }
+  // Where the two inner edges cross, as a distance along each arm.
+  const cornerAlong1 = (half2 + half1 * cos) / sin;
+  const cornerAlong2 = (half1 + half2 * cos) / sin;
+  const room = Math.min(
+    straightFor(join, from, n1) - cornerAlong1,
+    straightFor(join, to, n2) - cornerAlong2,
+  );
+  /*
+   * And never more than a little under half the room, so the fillets at the
+   * two ends of a short stroke do not meet in its middle: the crossbar of a
+   * Serif A welded at a stem's radius turned the counter above it into a
+   * round hole.
+   */
+  let r = Math.min(radius, (room * 0.45) / reachFromCorner);
+  /*
+   * Held to where both edges really are.
+   *
+   * The fillet is built against the straight lines the two arms leave along,
+   * and the letter's ink does not always run along them as far as that: a
+   * leg cut off square at the baseline, a bowl on a Black face whose inside
+   * turns away sooner than its spine does. Where the arc would touch an edge
+   * that is not there, the fillet stood out of the letter -- a lump hanging
+   * under the crossbar of a Black A, a flag on the top of a Black e. So the
+   * ink is looked for just inside each touching point -- part way in from the
+   * edge, since the heading an arm is read off leans a unit or two over its
+   * length -- and the radius halved until both are found, or the corner left
+   * alone.
+   */
+  if (ink) {
+    let found = false;
+    for (let tries = 0; tries < 4 && r > 0.5; tries++) {
+      const reach = r * reachFromCorner;
+      const lean = (u: Vec2, n: Vec2, half: number, along: number): Vec2 => ({
+        x: join.x + u.x * (along + reach) + n.x * half * 0.6,
+        y: join.y + u.y * (along + reach) + n.y * half * 0.6,
+      });
+      if (ink(lean(u1, n1, half1, cornerAlong1)) && ink(lean(u2, n2, half2, cornerAlong2))) {
+        found = true;
+        break;
+      }
+      r /= 2;
+    }
+    if (!found) return null;
+  }
+  /*
+   * A fillet cut down to a sliver of what was asked for is not one: an arc a
+   * few units round, in a corner that turns away from it, printed as a nick
+   * -- at the waist of a Serif B, where the arm of a k meets its leg.
+   */
+  if (!(r > 0.5) || r < radius * 0.25) return null;
+
+  const along1 = cornerAlong1 + r * reachFromCorner;
+  const along2 = cornerAlong2 + r * reachFromCorner;
+  const on = (u: Vec2, n: Vec2, half: number, along: number, off: number): Vec2 => ({
+    x: join.x + u.x * along + n.x * half * off,
+    y: join.y + u.y * along + n.y * half * off,
+  });
+  const spine1 = on(u1, n1, half1, along1, 0);
+  const touch1 = on(u1, n1, half1, along1, 1);
+  const touch2 = on(u2, n2, half2, along2, 1);
+  const spine2 = on(u2, n2, half2, along2, 0);
+  // The arc turns through what the corner does not, and a quarter of that
+  // sets how far its handles reach.
+  const pull = (4 / 3) * Math.tan((Math.PI - opening) / 4) * r;
+  const corner = (point: Vec2): GlyphNode => ({
+    point,
+    handleIn: null,
+    handleOut: null,
+    type: "corner",
+  });
+  const shape: Contour = {
+    closed: true,
+    nodes: [
+      corner({ ...join }),
+      corner(spine1),
+      {
+        point: touch1,
+        handleIn: null,
+        handleOut: { x: touch1.x - u1.x * pull, y: touch1.y - u1.y * pull },
+        type: "corner",
+      },
+      {
+        point: touch2,
+        handleIn: { x: touch2.x - u2.x * pull, y: touch2.y - u2.y * pull },
+        handleOut: null,
+        type: "corner",
+      },
+      corner(spine2),
+    ],
+  };
+  return contourArea(shape) < 0 ? reverseContour(shape) : shape;
+}
+
 // ---------------------------------------------------------------------------
 // Shapes and small arithmetic
 // ---------------------------------------------------------------------------
-
-/** The same contours, every point of them moved. */
-function moved(contours: Contour[], dx: number, dy: number): Contour[] {
-  const shift = (point: Vec2 | null): Vec2 | null =>
-    point === null ? null : { x: point.x + dx, y: point.y + dy };
-  return contours.map((contour) => ({
-    ...contour,
-    nodes: contour.nodes.map((node) => ({
-      ...node,
-      point: { x: node.point.x + dx, y: node.point.y + dy },
-      handleIn: shift(node.handleIn),
-      handleOut: shift(node.handleOut),
-    })),
-  }));
-}
 
 /** A closed polygon of corners. */
 function poly(points: Vec2[]): Contour {
@@ -637,48 +2161,6 @@ function poly(points: Vec2[]): Contour {
     type: "corner",
   }));
   return { nodes, closed: true };
-}
-
-/**
- * A circle, as four points with the handles that make a circle out of them.
- *
- * Drawn rather than approximated by a polygon because this one is added to
- * every join in the letter, and a polygon of enough sides to look round is
- * more points at every one of them than the whole rest of the letter has.
- */
-function disc(centre: Vec2, radius: number): Contour {
-  const pull = radius * 0.5522847498;
-  const around: Array<[Vec2, Vec2, Vec2]> = [
-    [
-      { x: centre.x + radius, y: centre.y },
-      { x: 0, y: -pull },
-      { x: 0, y: pull },
-    ],
-    [
-      { x: centre.x, y: centre.y + radius },
-      { x: pull, y: 0 },
-      { x: -pull, y: 0 },
-    ],
-    [
-      { x: centre.x - radius, y: centre.y },
-      { x: 0, y: pull },
-      { x: 0, y: -pull },
-    ],
-    [
-      { x: centre.x, y: centre.y - radius },
-      { x: -pull, y: 0 },
-      { x: pull, y: 0 },
-    ],
-  ];
-  return {
-    closed: true,
-    nodes: around.map(([point, into, outOf]) => ({
-      point,
-      handleIn: { x: point.x + into.x, y: point.y + into.y },
-      handleOut: { x: point.x + outOf.x, y: point.y + outOf.y },
-      type: "tangent" as const,
-    })),
-  };
 }
 
 const distance = (a: Vec2, b: Vec2): number => Math.hypot(b.x - a.x, b.y - a.y);

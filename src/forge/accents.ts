@@ -28,7 +28,20 @@ export interface Parts {
   base: string;
   /** Marks in the order they apply, outward from the base. */
   marks: string[];
+  /**
+   * Whether the one mark stands beside the top of the letter rather than over
+   * its middle: the caron of a Czech and Slovak ď, ľ, ť and Ľ, which every
+   * font draws as an apostrophe to the right of the stem.
+   */
+  beside?: boolean;
 }
+
+/**
+ * The four letters whose caron is the vertical one: an ascender or a capital
+ * stem has no room over it for a chevron, which sat on the d's and the l's
+ * stem and cut into the t's.
+ */
+const BESIDE = new Set([0x010f, 0x013d, 0x013e, 0x0165]);
 
 /**
  * How far the mark stands off the letter, as a share of the em.
@@ -221,6 +234,10 @@ export function accentsFor(drawable: ReadonlySet<string>): Map<string, Parts> {
 
     const name = accentedNameFor(code);
     if (!name || drawable.has(name)) continue;
+    if (BESIDE.has(code) && drawable.has("apostrophemod")) {
+      recipes.set(name, { base, marks: ["apostrophemod"], beside: true });
+      continue;
+    }
     recipes.set(name, { base, marks: marks as string[] });
   }
 
@@ -379,8 +396,12 @@ export function hangsBelow(markName: string): boolean {
   return false;
 }
 
-/** How far above the letter a mark should stand, in font units. */
-export function gapFor(unitsPerEm: number, capital: boolean): number {
+/**
+ * How far above the letter a mark should stand, in font units: the face's
+ * own where it gives one (`metrics.accents`).
+ */
+export function gapFor(unitsPerEm: number, capital: boolean, own?: [number, number]): number {
+  if (own) return unitsPerEm * own[capital ? 1 : 0];
   return unitsPerEm * GAP * (capital ? CAPITAL_SHARE : 1);
 }
 

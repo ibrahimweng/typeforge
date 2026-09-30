@@ -279,31 +279,35 @@ describe("cutting a pile of drawings", () => {
     expect(cutHeldBy(changed, "H", "slot")).toBe(false);
   });
 
-  it("does nothing with the two that are made out of a skeleton", () => {
+  it("does nothing with the breaks, which are made out of a skeleton", () => {
     const plain = pile();
     const cut = editCuts(
       plain,
       cutWith((one) => {
-        one.inline.on = true;
         one.split.on = true;
       }),
     );
-    // A drawing that arrived as an outline has no spine to sweep again and no
-    // join to find, so the honest answer is the drawing unchanged.
+    // A drawing that arrived as an outline has no join to find, so the honest
+    // answer is the drawing unchanged.
     expect(inkOf(cut, "H")).toBeCloseTo(inkOf(plain, "H"), 6);
     // And the same pile with a cut that does reach an outline is changed, so
-    // what is being shown is these two declining rather than nothing working.
-    expect(
-      inkOf(
-        editCuts(
-          plain,
-          cutWith((one) => {
-            one.slot.on = true;
-          }),
+    // what is being shown is the breaks declining rather than nothing working.
+    // The inline is one of those now: its groove is the letter shrunk by a
+    // wall, which needs no skeleton.
+    for (const on of ["slot", "inline"] as const) {
+      expect(
+        inkOf(
+          editCuts(
+            plain,
+            cutWith((one) => {
+              one[on].on = true;
+            }),
+          ),
+          "H",
         ),
-        "H",
-      ),
-    ).toBeLessThan(inkOf(plain, "H"));
+        on,
+      ).toBeLessThan(inkOf(plain, "H"));
+    }
   });
 });
 
@@ -816,8 +820,26 @@ describe("the pile itself", () => {
 describe("assembling a real alphabet", () => {
   const alphabet = "HxpobcenAOEVWmTLi";
 
+  /*
+   * The Sans spaced with a constant sidebearing, and the assembler's own white
+   * (`DEFAULT_SPACING`, calibrated on the Sans as it was): the comparisons
+   * below are made against a font that gives every letter the same white
+   * whatever its shape. The Sans itself now fits its sides optically, gives
+   * its capitals more room and spaces a stem at Geist's 80, which is the
+   * assembler's own job done twice.
+   */
+  const CONSTANT = {
+    ...SANS,
+    metrics: {
+      ...SANS.metrics,
+      fit: 0,
+      capitalSpacing: 1,
+      sidebearing: DEFAULT_SPACING.white * 1000,
+    },
+  };
+
   const sheets = () => {
-    const forge = startFrom(SANS);
+    const forge = startFrom(CONSTANT);
     return alphabet.split("").map((letter) => {
       const svg = letterSvg(letter, forge)!;
       return pieceFrom(`${letter}.svg`, svg)!;
@@ -825,7 +847,7 @@ describe("assembling a real alphabet", () => {
   };
 
   const source = () => {
-    const forge = startFrom(SANS);
+    const forge = startFrom(CONSTANT);
     return { forge, metrics: forge.style.metrics };
   };
 

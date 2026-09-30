@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { watchDeviceRatio } from "./glyph-render";
+import { placeOutline, watchDeviceRatio } from "./glyph-render";
 
 function fakeWindow(ratio: number) {
   const queries: Array<{ media: string; listeners: Set<() => void> }> = [];
@@ -65,5 +65,24 @@ describe("watching the device pixel ratio", () => {
     const off = watchDeviceRatio(null)(() => {});
     expect(off).toBeTypeOf("function");
     off();
+  });
+});
+
+describe("placeOutline", () => {
+  const view = { scale: 0.1, originX: 50, originY: 80 };
+
+  it("centres a letter in its cell rather than starting it at the middle", () => {
+    const placed = placeOutline(view, 100, 500, { centre: true });
+    // The outline's middle, 300 units in, lands where the origin was.
+    expect(placed.originX + 300 * placed.scale).toBeCloseTo(50, 9);
+    expect(placed.scale).toBe(0.1);
+  });
+
+  it("draws a letter too wide for its cell smaller, on the same baseline", () => {
+    // Lora's m at width 1.25 is wider than a cell sized for the em.
+    const placed = placeOutline(view, 0, 1400, { centre: true, maxWidth: 86 });
+    expect(1400 * placed.scale).toBeCloseTo(86, 9);
+    expect(placed.originX + 700 * placed.scale).toBeCloseTo(50, 9);
+    expect(placed.originY).toBe(80);
   });
 });

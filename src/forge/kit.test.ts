@@ -19,7 +19,7 @@ import {
   type Tiles,
 } from "./kit";
 import { recipeOf } from "./letters";
-import { SANS } from "./style";
+import { proportioned, SANS } from "./style";
 import { sweep } from "./sweep";
 
 const kitWith = (patch: Partial<Kit> = {}): Kit => ({ ...emptyKit(), ...patch });
@@ -248,7 +248,8 @@ describe("laying an alphabet on the grid", () => {
   const seed = (letter: string): Tiles => {
     const recipe = recipeOf(letter);
     expect(recipe, letter).toBeDefined();
-    const tiles = seedTiles(recipe!(SANS).strokes, SANS, kit);
+    // At the letter's own width, as the document lays it out.
+    const tiles = seedTiles(recipe!(proportioned(SANS, letter)).strokes, SANS, kit);
     expect(tiles, letter).not.toBeNull();
     return tiles!;
   };

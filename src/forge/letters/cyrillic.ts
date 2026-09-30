@@ -7,9 +7,10 @@
  */
 
 import type { Style } from "../style";
+import { essAcross, stackedPen } from "./grotesque";
 import {
   at,
-  bendWidth,
+  turn,
   BUTT,
   chain,
   cyrBe,
@@ -73,7 +74,11 @@ export const CYRILLIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u0411": (style) => finish(frame(style), cyrBe(frame(style), frame(style).cap)),
   "\u0414": (style) => finish(frame(style), cyrDe(frame(style), frame(style).cap)),
   "\u0416": (style) => finish(frame(style), cyrZhe(frame(style), frame(style).cap)),
-  "\u0417": (style) => finish(frame(style), cyrZe(frame(style), frame(style).cap), true),
+  // Held lighter past the Black, as the S is: two bowls stacked in the height.
+  "\u0417": (style) => {
+    const f = frame(essAcross(stackedPen(style, 0.5)));
+    return finish(f, cyrZe(f, f.cap), true);
+  },
   "\u0418": (style) => finish(frame(style), cyrI(frame(style), frame(style).cap)),
   "\u041b": (style) => finish(frame(style), cyrEl(frame(style), frame(style).cap)),
   "\u0423": (style) => finish(frame(style), cyrU(frame(style), frame(style).cap)),
@@ -88,30 +93,34 @@ export const CYRILLIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u042e": (style) => finish(frame(style), cyrYu(frame(style), frame(style).cap), true),
   "\u042f": (style) => finish(frame(style), cyrYa(frame(style), frame(style).cap), true),
 
-  /** A bowl with a curl over the top of it, which is not a small hard sign. */
+  /**
+   * An o with a stroke rising out of its left side and turning over into a
+   * flag: the be, which is not a small Be.
+   *
+   * The rise leaves the bowl where its left side stands upright, so the two
+   * are one wall, and turns over at the top into an arm reaching right. Drawn
+   * as a separate slanted bar laid over the bowl, it crossed into the counter
+   * and the letter read as a garbled hook.
+   */
   "\u0431": (style) => {
     const f = frame(style);
-    const radius = Math.max(f.x * 0.37, f.least);
-    const wide = bendWidth(f, radius);
-    const centre = at(f.edge + wide, radius);
+    const centre = at(f.edge + f.bowl, f.x / 2);
+    const wall = centre.x - f.bowl;
+    const top = f.hangs(Math.min(f.asc, f.cap * 1.04));
+    const radius = Math.max(Math.min(f.bowl * 0.62, (top - centre.y) * 0.5), f.least);
     return finish(
       f,
       [
-        ink(f, ring(f, centre, wide, radius)),
+        ink(f, ring(f, centre, f.bowl, f.bowlH)),
         ink(
           f,
           chain(
-            straight(
-              at(centre.x - wide * 0.15, f.crest(f.asc)),
-              at(centre.x + wide * 0.3, f.crest(f.asc)),
-            ),
-            straight(
-              at(centre.x + wide * 0.3, f.crest(f.asc)),
-              at(centre.x - wide * 0.55, radius * 1.5),
-            ),
+            straight(at(wall, centre.y), at(wall, top - radius)),
+            turn(at(wall + radius, top - radius), radius, 180, 90),
+            straight(at(wall + radius, top), at(centre.x + f.bowl * 0.92, top)),
           ),
-          f.end,
           BUTT,
+          f.end,
         ),
       ],
       true,
@@ -122,7 +131,10 @@ export const CYRILLIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u0433": (style) => finish(frame(style), cyrGe(frame(style), frame(style).x)),
   "\u0434": (style) => finish(frame(style), cyrDe(frame(style), frame(style).x)),
   "\u0436": (style) => finish(frame(style), cyrZhe(frame(style), frame(style).x)),
-  "\u0437": (style) => finish(frame(style), cyrZe(frame(style), frame(style).x), true),
+  "\u0437": (style) => {
+    const f = frame(essAcross(stackedPen(style, 0.4)));
+    return finish(f, cyrZe(f, f.x), true);
+  },
   "\u0438": (style) => finish(frame(style), cyrI(frame(style), frame(style).x)),
   "\u043b": (style) => finish(frame(style), cyrEl(frame(style), frame(style).x)),
   "\u043c": (style) => finish(frame(style), cyrEm(frame(style), frame(style).x)),

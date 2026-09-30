@@ -37,7 +37,7 @@ import type { Ends } from "./script";
 import type { Imported } from "./exchange";
 import { weightClassOf, weightedStyle, type Family } from "./family";
 import { partsUsedBy, type PartName } from "./parts";
-import { BASES, SANS, type Parts, type Style } from "./style";
+import { BASES, proportioned, SANS, type Parts, type Style } from "./style";
 
 /** A letter that has been told to differ, and in what. */
 export type Overrides = Partial<{ [K in keyof Parts]: Partial<Parts[K]> }>;
@@ -696,7 +696,9 @@ export function layOut(forge: Forge, letters?: string[]): Forge {
   for (const letter of letters ?? letterNames()) {
     const recipe = recipeOf(letter, formOf(forge, letter));
     if (!recipe) continue;
-    const tiles = seedTiles(recipe(styleFor(letter, forge)).strokes, styleFor(letter, forge), kit);
+    const style = styleFor(letter, forge);
+    // Laid out at the letter's own width, as it is drawn: see `proportioned`.
+    const tiles = seedTiles(recipe(proportioned(style, letter)).strokes, style, kit);
     if (tiles) glyphs[letter] = tiles;
     else delete glyphs[letter];
   }
@@ -837,8 +839,13 @@ export function unshaped(forge: Forge): Forge {
  * letter, because an alternate that missed the font's own slots would show as
  * one solid letter in the middle of a word full of cut ones.
  */
-export function drawnHigh(letter: string, which: "entry" | "exit", forge: Forge): Drawn | null {
-  return remembered(highs, forge, `${letter}.${which}`, () =>
+export function drawnHigh(
+  letter: string,
+  which: "entry" | "exit",
+  forge: Forge,
+  effects = false,
+): Drawn | null {
+  return remembered(highs, forge, `${letter}.${which}${effects ? ".fx" : ""}`, () =>
     joiningHigh({ [which]: true }, () =>
       drawLetter(
         letter,
@@ -847,6 +854,7 @@ export function drawnHigh(letter: string, which: "entry" | "exit", forge: Forge)
         cutsFor(letter, forge),
         forge.kit,
         castFor(letter, forge),
+        effects ? effectsOf(forge) : undefined,
       ),
     ),
   );
@@ -871,8 +879,13 @@ const WITHOUT: Record<Without, Partial<Ends>> = {
   alone: { entry: false, exit: false },
 };
 
-export function drawnEnds(letter: string, which: Without, forge: Forge): Drawn | null {
-  return remembered(edges, forge, `${letter}.${which}`, () =>
+export function drawnEnds(
+  letter: string,
+  which: Without,
+  forge: Forge,
+  effects = false,
+): Drawn | null {
+  return remembered(edges, forge, `${letter}.${which}${effects ? ".fx" : ""}`, () =>
     joiningWithout(WITHOUT[which], () =>
       drawLetter(
         letter,
@@ -881,6 +894,41 @@ export function drawnEnds(letter: string, which: Without, forge: Forge): Drawn |
         cutsFor(letter, forge),
         forge.kit,
         castFor(letter, forge),
+        effects ? effectsOf(forge) : undefined,
+      ),
+    ),
+  );
+}
+
+/**
+ * A letter taken high on one side and with nothing on the other.
+ *
+ * The two kinds of second drawing have to compose. A word ending `on` needs its
+ * `n` to arrive at the waist *and* to have no lead-out into the space after
+ * it; given only one of the two, the shaper chose the word end and dropped the
+ * hand-over, and the `o` then left from low down its own flank as a rule struck
+ * through the join. So the pair gets a drawing of its own: `n.init.end`, and
+ * `o.medi.begin` for the `o` that starts a word.
+ */
+export function drawnHighWithout(
+  letter: string,
+  which: "entry" | "exit",
+  without: Without,
+  forge: Forge,
+  effects = false,
+): Drawn | null {
+  return remembered(edges, forge, `${letter}.${which}.${without}${effects ? ".fx" : ""}`, () =>
+    joiningHigh({ [which]: true }, () =>
+      joiningWithout(WITHOUT[without], () =>
+        drawLetter(
+          letter,
+          styleFor(letter, forge),
+          formOf(forge, letter),
+          cutsFor(letter, forge),
+          forge.kit,
+          castFor(letter, forge),
+          effects ? effectsOf(forge) : undefined,
+        ),
       ),
     ),
   );

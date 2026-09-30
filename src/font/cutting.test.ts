@@ -11,7 +11,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { readyToShape } from "@/forge/layers";
+import { noCast } from "./cast";
 import { noCuts, type Cuts } from "./cuts";
+import { unite } from "./boolean";
 import { contourArea, contoursBounds } from "./geometry";
 import { measuredStem, stemFrom } from "./stem";
 import { cutScaleOf, effectiveCuts, resolveGlyphContours } from "./transform";
@@ -162,18 +164,33 @@ describe("cuts in the parameter stack", () => {
     expect(ink(stem)).toBeCloseTo(90 * 700, 6);
   });
 
-  it("does nothing with the two that are made out of a skeleton", () => {
+  it("does nothing with the breaks, which are made out of a skeleton", () => {
     const face = font();
     face.cuts = cutWith((one) => {
-      one.inline.on = true;
       one.split.on = true;
     });
-    // Not an approximation: a letter out of a file has no spine to sweep again
-    // and no join to find, so the honest answer is the letter unchanged.
+    // Not an approximation: a letter out of a file has no join to find, so
+    // the honest answer is the letter unchanged.
     expect(ink(resolveGlyphContours(named(face, "H"), face))).toBeCloseTo(
       ink(resolveGlyphContours(named(face, "H"), font())),
       6,
     );
+  });
+
+  it("grooves a letter out of a file, a wall in from every edge", () => {
+    // The groove is the letter shrunk by a wall, which needs no skeleton: the
+    // H's stems and bar each get one, as one groove, closed at every end.
+    const face = font();
+    face.cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    const cut = resolveGlyphContours(named(face, "H"), face);
+    const plain = ink(resolveGlyphContours(named(face, "H"), font()));
+    expect(ink(cut)).toBeLessThan(plain * 0.85);
+    expect(cut.filter((contour) => contourArea(contour) < 0)).toHaveLength(1);
+    const box = contoursBounds(cut);
+    expect(box.xMin).toBeCloseTo(100, 0);
+    expect(box.xMax).toBeCloseTo(500, 0);
   });
 
   it("cuts before the letter is sheared, so the bands lean with it", () => {
@@ -229,5 +246,83 @@ describe("cuts in the parameter stack", () => {
     // The same objects, not merely the same shape: an untouched letter should
     // not be rebuilt, which is what keeps a whole font's grid cheap to draw.
     expect(contours).toBe(named(face, "H").contours);
+  });
+});
+
+describe("a letter from a file with the cast put on first", () => {
+  /*
+   * With the fillets cast first and nothing for them to do -- a letter from a
+   * file has no skeleton -- the cast handed the letter back in the file's own
+   * winding, and the cut after it read every counter inside out: the chamfer
+   * cut the inside corners off a Lora H, and the motif took its n away.
+   */
+  // An H drawn as one outline, clockwise, the way a font file draws it.
+  const H = (): Contour => {
+    const corners = [
+      { x: 100, y: 0 },
+      { x: 100, y: 700 },
+      { x: 190, y: 700 },
+      { x: 190, y: 390 },
+      { x: 410, y: 390 },
+      { x: 410, y: 700 },
+      { x: 500, y: 700 },
+      { x: 500, y: 0 },
+      { x: 410, y: 0 },
+      { x: 410, y: 300 },
+      { x: 190, y: 300 },
+      { x: 190, y: 0 },
+    ];
+    return {
+      nodes: corners.map((point) => ({
+        point,
+        handleIn: null,
+        handleOut: null,
+        type: "corner" as const,
+      })),
+      closed: true,
+    };
+  };
+  const drawn = (
+    patch: (cuts: Cuts) => void,
+    first: boolean,
+    contours: Contour[] = [H()],
+  ): Contour[] => {
+    const face = font();
+    face.glyphs.push(glyph("Hfile", contours));
+    face.glyphIndex.set("Hfile", face.glyphs.length - 1);
+    face.cuts = cutWith(patch);
+    if (first) {
+      const cast = noCast();
+      cast.weld.on = true;
+      cast.order = "before";
+      face.cast = cast;
+    }
+    return resolveGlyphContours(named(face, "Hfile"), face);
+  };
+
+  it("chamfers the outside corners, not the inside ones", () => {
+    const chamfer = (one: Cuts) => {
+      one.chamfer.on = true;
+    };
+    const first = drawn(chamfer, true);
+    expect(unite(first, "nesting").filter((one) => contourArea(one) > 0).length).toBe(1);
+    expect(ink(first)).toBeCloseTo(ink(drawn(chamfer, false)), 0);
+  });
+});
+
+describe("the inline on a letter from a file", () => {
+  it("leaves no fleck of groove shorter than it is wide", () => {
+    // A nub a little thicker than two walls leaves a speck of groove in it, as
+    // the serifs of a Lora E did: a groove shorter than it is wide.
+    const face = font();
+    const nub = glyph("J", [rect(100, 0, 90, 700), rect(300, 0, 85, 85)]);
+    face.glyphs.push(nub);
+    face.glyphIndex.set("J", face.glyphs.length - 1);
+    face.cuts = cutWith((one) => {
+      one.inline.on = true;
+    });
+    const grooved = resolveGlyphContours(named(face, "J"), face);
+    const holes = unite(grooved, "nesting").filter((one) => contourArea(one) < 0);
+    expect(holes.length).toBe(1);
   });
 });

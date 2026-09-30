@@ -28,7 +28,7 @@ import type { Roles } from "@/font/boolean";
 import { anyCast, type Cast } from "@/font/cast";
 import { anyCut, type Cuts } from "@/font/cuts";
 import { castInk } from "./cast";
-import { cutInk, type CutScale, type Cutting } from "./cut";
+import { breaksIn, cutInk, type CutScale, type Cutting } from "./cut";
 import type { Stroke } from "./types";
 
 export function shaped(
@@ -49,15 +49,36 @@ export function shaped(
    * of the two is told to read the roles the caller asked for -- which in the
    * imported half is `nesting`, because nothing there has promised anything.
    */
+  // Where the split opens a join, the weld leaves it open, in either order.
+  const breaks = cutting && casting && cast!.weld.on ? breaksIn(strokes, scale, cuts) : undefined;
   if (casting && cast!.order === "before") {
-    const shadowed = castInk(ink, strokes, scale, cast!, roles);
-    return cutting ? cutInk(shadowed, strokes, scale, cuts!, "winding") : { contours: shadowed };
+    const shadowed = castInk(ink, strokes, scale, cast!, roles, breaks);
+    if (!cutting) return { contours: shadowed };
+    // How far a rim grew the letter, for the breaks, which are found on the
+    // skeleton and have to be told the letter is no longer the one it drew.
+    return cutInk(shadowed, strokes, scale, cuts!, "winding", {
+      grown: cast!.outline.on ? cast!.outline.width * Math.max(scale.stem, 1) : 0,
+    });
   }
 
   const carved = cutting ? cutInk(ink, strokes, scale, cuts!, roles) : { contours: ink };
   if (!casting) return carved;
   return {
     ...carved,
-    contours: castInk(carved.contours, strokes, scale, cast!, cutting ? "winding" : roles),
+    /*
+     * Only if the cut actually ran. The breaks follow a letter's
+     * strokes, and a letter brought in from a font has none, so they hand its
+     * ink back as it came -- read as wound, the rim lost every letter without
+     * a counter and doubled on the rest.
+     */
+    contours: castInk(
+      carved.contours,
+      strokes,
+      scale,
+      cast!,
+      carved.contours === ink ? roles : "winding",
+      breaks,
+      carved.chamfered,
+    ),
   };
 }

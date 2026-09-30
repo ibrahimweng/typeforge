@@ -173,10 +173,22 @@ export function joinSides(names: string[]): { noExit: string[]; noEntry: string[
  * worth having anyway: it says what they mean, instead of leaning on a subtle
  * property of how lookups are applied.
  */
-export function boundaryRules(wanted: Array<[string, Without]>, names: string[]): NamedRule[] {
+export function boundaryRules(
+  wanted: Array<[string, Without]>,
+  names: string[],
+  composed: Array<[string, Without]> = [],
+): NamedRule[] {
   const { noExit, noEntry } = joinSides(names);
-  const named = (which: Without) =>
-    wanted.filter(([, one]) => one === which).map(([letter]) => letter);
+  /*
+   * The hand-over drawings are in these too, and these rules run after the
+   * hand-over: a word ending `on` is `o.medi n.init` by now, and its `n` still
+   * has a lead-out to lose. `composed` names each of those with the side it
+   * loses, and its drawing is called what `boundaryName` calls it.
+   */
+  const named = (which: Without) => [
+    ...wanted.filter(([, one]) => one === which).map(([letter]) => letter),
+    ...composed.filter(([, one]) => one === which).map(([letter]) => letter),
+  ];
   const beginning = named("begin");
   const ending = named("end");
   const alone = named("alone");

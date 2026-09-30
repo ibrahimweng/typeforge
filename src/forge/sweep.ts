@@ -154,6 +154,7 @@ function tangents(segment: SpineSegment): { start: Vec2; end: Vec2 } {
 
 /** A quarter turn anticlockwise: the left of the direction travelled. */
 const leftOf = (direction: Vec2): Vec2 => ({ x: -direction.y, y: direction.x });
+const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
 
 function pointOnArc(arc: SpineArc, angle: number): Vec2 {
   return {
@@ -355,8 +356,9 @@ function reverseOffset(segment: OffsetSegment): OffsetSegment {
  * Stitch a run of offset segments into nodes, dropping the duplicate point
  * where one ends and the next begins and keeping whichever handles exist.
  */
-function stitch(segments: OffsetSegment[]): GlyphNode[] {
+function stitch(segments: OffsetSegment[], reach?: PenReach): GlyphNode[] {
   const nodes: GlyphNode[] = [];
+  let before: OffsetSegment | null = null;
   for (const segment of segments) {
     const piece = offsetNodes(segment);
     if (nodes.length > 0) {
@@ -371,14 +373,136 @@ function stitch(segments: OffsetSegment[]): GlyphNode[] {
       if (together < 1e-6) {
         previous.handleOut = joining.handleOut;
         previous.type = previous.handleIn && joining.handleOut ? "smooth" : previous.type;
+        if (moving(before) && moving(segment)) alignAt(previous, before, segment, reach);
         nodes.push(...piece.slice(1));
+        before = segment;
         continue;
       }
       // A genuine corner between two runs: both points stay.
     }
     nodes.push(...piece);
+    before = segment;
   }
   return nodes;
+}
+
+/**
+ * Whether an offset piece travels: not a corner's stall, a wedge of no size,
+ * nor a straight run of no length.
+ */
+function moving(segment: OffsetSegment | null): segment is OffsetSegment {
+  if (!segment) return false;
+  if (segment.kind === "line") {
+    return Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-6;
+  }
+  return (
+    Math.abs(segment.to - segment.from) > 1e-9 &&
+    (Math.abs(segment.rx) > 1e-9 || Math.abs(segment.ry) > 1e-9)
+  );
+}
+
+/** The unit direction an offset piece leaves its start or arrives at its end. */
+function offsetHeading(segment: OffsetSegment, atEnd: boolean): Vec2 | null {
+  let d: Vec2;
+  if (segment.kind === "line") {
+    d = { x: segment.to.x - segment.from.x, y: segment.to.y - segment.from.y };
+  } else {
+    const slope = ellipseSlope(segment, atEnd ? segment.to : segment.from);
+    const way = segment.to >= segment.from ? 1 : -1;
+    d = { x: slope.x * way, y: slope.y * way };
+  }
+  const length = Math.hypot(d.x, d.y);
+  return length > 1e-9 ? { x: d.x / length, y: d.y / length } : null;
+}
+
+/**
+ * The most two pieces of one side may disagree about their direction where
+ * they meet and still be one smooth run: see `alignAt`.
+ */
+const SMOOTH_UP_TO = (30 * Math.PI) / 180;
+
+/** How round an ellipse offset must stay, its lesser radius against its greater, to be smoothed. */
+const ROUND_ENOUGH = 0.3;
+
+/**
+ * Where two offset pieces meet on a run the spine takes without a corner,
+ * one direction on both sides of the node.
+ *
+ * The offset of an arc drawn with contrast is an ellipse about the arc's own
+ * centre, and it meets the next piece on the right spot but not in the right
+ * direction: the ellipse's slope there leans off the spine's by more the
+ * tighter the arc turns against the pen, and a straight run's offset keeps the
+ * spine's exactly. Anywhere the join is not level or upright the two differ --
+ * by six degrees down the outside of an s where its bowl gives on to the
+ * spine, and by nineteen round the inside -- and the outline turned a corner
+ * there that nothing in the letter asked for: a spine drawn as a straight band
+ * with a facet at each end, the same at the join of a 2's bowl and its
+ * diagonal, and at every change of radius round a Serif oval.
+ *
+ * A pen's true edge runs parallel to the spine, so the node is turned to the
+ * straight piece's direction where one of the two is straight, and to the
+ * middle of the two where both are curves. Only the handles turn: the points
+ * stay, the pieces stay, and so do the nodes at every weight.
+ */
+function alignAt(
+  node: GlyphNode,
+  before: OffsetSegment,
+  after: OffsetSegment,
+  reach?: PenReach,
+): void {
+  if (!reach) return;
+  // Never on an offset that has nearly closed on its own centre, or turned
+  // through it: the inside of a turn as tight as the pen. Its slope there is
+  // the fold's, and turning a handle into it drew a loop.
+  for (const one of [before, after]) {
+    if (one.kind !== "ellipse") continue;
+    const least = Math.min(Math.abs(one.rx), Math.abs(one.ry));
+    const most = Math.max(Math.abs(one.rx), Math.abs(one.ry));
+    if (one.rx * one.ry <= 0 || least < most * ROUND_ENOUGH) return;
+  }
+  const arriving = offsetHeading(before, true);
+  const leaving = offsetHeading(after, false);
+  if (!arriving || !leaving) return;
+  const cross = arriving.x * leaving.y - arriving.y * leaving.x;
+  const along = arriving.x * leaving.x + arriving.y * leaving.y;
+  if (along <= 0 || Math.abs(Math.atan2(cross, along)) > SMOOTH_UP_TO) return;
+  if (Math.abs(cross) < 1e-9) return;
+  let way: Vec2;
+  if (before.kind === "line" && after.kind === "line") return;
+  if (before.kind === "line") way = arriving;
+  else if (after.kind === "line") way = leaving;
+  else {
+    const sum = { x: arriving.x + leaving.x, y: arriving.y + leaving.y };
+    const length = Math.hypot(sum.x, sum.y);
+    way = { x: sum.x / length, y: sum.y / length };
+  }
+  const point = node.point;
+  /*
+   * Turned no further than moves the piece a fifth of the pen's narrow
+   * reach: a handle turned moves the curve behind it by at most four ninths
+   * of how far its tip moved, and on a hairline a long handle turned its
+   * whole way carried the curve across the other side of the stroke.
+   */
+  const room = reach.along * 0.2;
+  const turned = (handle: Vec2, sign: number): Vec2 => {
+    const d = { x: (handle.x - point.x) * sign, y: (handle.y - point.y) * sign };
+    const length = Math.hypot(d.x, d.y);
+    if (length < 1e-9) return handle;
+    const now = Math.atan2(d.y, d.x);
+    let by = Math.atan2(way.y, way.x) - now;
+    while (by > Math.PI) by -= Math.PI * 2;
+    while (by < -Math.PI) by += Math.PI * 2;
+    const most = 2 * Math.asin(Math.min(1, room / ((8 / 9) * length)));
+    by = Math.max(-most, Math.min(most, by));
+    const angle = now + by;
+    return {
+      x: point.x + Math.cos(angle) * length * sign,
+      y: point.y + Math.sin(angle) * length * sign,
+    };
+  };
+  if (node.handleIn) node.handleIn = turned(node.handleIn, -1);
+  if (node.handleOut) node.handleOut = turned(node.handleOut, 1);
+  if (node.handleIn && node.handleOut) node.type = "smooth";
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +639,51 @@ function kinksOf(headed: Headed[], closed: boolean): Kink[] {
     found.push({ before: index, after: next, at: segmentEnd(segments[index]), turn });
   }
   return found;
+}
+
+/**
+ * Where a curve's offset and a straight one's cross on the inside of a corner
+ * between them, and the curve's own parameter there: the crossing nearest the
+ * corner that lies on both pieces. Null on the outside, where they part.
+ */
+function curveCrossing(
+  before: OffsetSegment,
+  after: OffsetSegment,
+): { point: Vec2; t: number } | null {
+  const curveFirst = before.kind === "ellipse";
+  const arc = (curveFirst ? before : after) as OffsetEllipse;
+  const line = (curveFirst ? after : before) as OffsetSegment;
+  if (arc.kind !== "ellipse" || line.kind !== "line") return null;
+  if (arc.rx <= 1e-9 || arc.ry <= 1e-9) return null;
+  const local = (point: Vec2): Vec2 => {
+    const turned = rotate({ x: point.x - arc.centre.x, y: point.y - arc.centre.y }, -arc.rotation);
+    return { x: turned.x / arc.rx, y: turned.y / arc.ry };
+  };
+  const a = local(line.from);
+  const b = local(line.to);
+  const d = { x: b.x - a.x, y: b.y - a.y };
+  const qa = d.x * d.x + d.y * d.y;
+  const qb = 2 * (a.x * d.x + a.y * d.y);
+  const qc = a.x * a.x + a.y * a.y - 1;
+  const disc = qb * qb - 4 * qa * qc;
+  if (qa < 1e-18 || disc < 0) return null;
+  const sweep = arc.to - arc.from;
+  const way = sweep >= 0 ? 1 : -1;
+  const span = Math.abs(sweep);
+  let best: { point: Vec2; t: number; s: number } | null = null;
+  for (const sign of [-1, 1]) {
+    const s = (-qb + sign * Math.sqrt(disc)) / (2 * qa);
+    if (s <= 1e-9 || s >= 1 - 1e-9) continue;
+    const t0 = Math.atan2(a.y + d.y * s, a.x + d.x * s);
+    let u = ((t0 - arc.from) * way) % (2 * Math.PI);
+    if (u < 0) u += 2 * Math.PI;
+    if (u <= 1e-9 || u >= span - 1e-9) continue;
+    const t = arc.from + u * way;
+    // Nearest the corner: the end of the line before it, the start after.
+    const near = curveFirst ? s : 1 - s;
+    if (!best || near < best.s) best = { point: ellipseAt(arc, t), t, s: near };
+  }
+  return best ? { point: best.point, t: best.t } : null;
 }
 
 function offsetStart(segment: OffsetSegment): Vec2 {
@@ -761,6 +930,34 @@ function sideRun(
       }
     }
 
+    /*
+     * A curve running into a straight piece at a corner: on the inside, cut
+     * both back to where their offsets cross, as two straight pieces are. A
+     * wedge there is a loop of outline turned back on itself. Where the corner
+     * is too slight for the two to cross at all -- the offset of a curve drawn
+     * with contrast is not quite the pen's reach -- the straight piece is run
+     * from where the curve's offset ends, which is a step of a hair.
+     */
+    if (!straight && kink.turn * side > 0 && (before.kind === "line" || after.kind === "line")) {
+      const cut = curveCrossing(before, after);
+      let point: Vec2;
+      if (cut) {
+        point = cut.point;
+        if (before.kind === "line") before.to = point;
+        else before.to = cut.t;
+        if (after.kind === "line") after.from = point;
+        else after.from = cut.t;
+      } else if (after.kind === "line") {
+        point = offsetEnd(before);
+        after.from = point;
+      } else {
+        point = offsetStart(after);
+        (before as OffsetLine).to = point;
+      }
+      filling.set(kink.before, stall(point));
+      continue;
+    }
+
     const wedge = outerJoin(before, after, kink.at, reach, join === "miter" ? "round" : join);
     filling.set(kink.before, wedge);
   }
@@ -778,6 +975,175 @@ function sideRun(
 // Terminals
 // ---------------------------------------------------------------------------
 
+/** The sine of the steepest a curved end may arrive and still be cut upright. */
+const CUT_LEVEL_FROM = 0.4;
+
+/**
+ * The line a curved end is cut along when its terminal is `aligned`: level
+ * through the end of the spine where the stroke arrives more up and down than
+ * across, and plumb where it arrives more across. Nothing for a straight end,
+ * which `terminalNodes` slides exactly as it does a level cut.
+ */
+function alignedCut(headed: Headed[], atEnd: boolean): { axis: "x" | "y"; value: number } | null {
+  const order = atEnd ? [...headed].reverse() : headed;
+  const last = order.find((one) =>
+    one.segment.kind === "line"
+      ? Math.hypot(one.segment.to.x - one.segment.from.x, one.segment.to.y - one.segment.from.y) >
+        1e-9
+      : Math.abs(one.segment.endAngle - one.segment.startAngle) > 1e-9,
+  );
+  if (last?.segment.kind !== "arc") return null;
+  const tip = atEnd ? segmentEnd(last.segment) : segmentStart(last.segment);
+  const heading = atEnd ? last.end : last.start;
+  // Level unless the curve is nearly running across when it stops: a c whose
+  // hook has turned only a little past its crown is still cut level, as every
+  // grotesque cuts it, where an f's hook that runs out flat is cut upright.
+  return Math.abs(heading.y) >= CUT_LEVEL_FROM * Math.hypot(heading.x, heading.y)
+    ? { axis: "y", value: tip.y }
+    : { axis: "x", value: tip.x };
+}
+
+/**
+ * One side of a curved end carried on, or brought back, along its own curve
+ * until it meets the line the end is cut along.
+ *
+ * The side is an offset of the spine's arc -- a circle, or an ellipse under a
+ * pen with contrast -- and it is moved along that same curve, so the letter's
+ * outline is exactly what it was up to the new end and the cut is a straight
+ * line between two points that both lie on it. The outside of a turn reaches
+ * further than the spine before it meets the line and the inside stops short,
+ * which is what a cut level across a curve is.
+ *
+ * Drawn in the pieces the side had before it moved, so a side carried past a
+ * right angle is not a node more at one weight than at another.
+ */
+function cutAlong(
+  run: OffsetSegment[],
+  atEnd: boolean,
+  cut: { axis: "x" | "y"; value: number },
+  furthest: number,
+): (() => void) | null {
+  const order = atEnd ? [...run.keys()].reverse() : [...run.keys()];
+  const travels = (one: OffsetSegment): boolean =>
+    one.kind === "ellipse"
+      ? Math.abs(one.to - one.from) > 1e-9 && (one.rx > 1e-9 || one.ry > 1e-9)
+      : Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y) > 1e-9;
+  const found = order.findIndex((index) => travels(run[index]));
+  if (found < 0) return null;
+  const outermost = run[order[found]];
+  if (outermost.kind !== "ellipse") return null;
+  const off = (point: Vec2): number => (cut.axis === "y" ? point.y : point.x) - cut.value;
+  /*
+   * Where along a piece the side meets the line, nearest its outer end: `t`
+   * is the ellipse's own angle, or the share of the way along a straight.
+   */
+  const rootIn = (one: OffsetSegment, from: number, to: number, near: number): number | null => {
+    const value = (t: number): number =>
+      off(
+        one.kind === "ellipse"
+          ? ellipseAt(one, t)
+          : {
+              x: one.from.x + (one.to.x - one.from.x) * t,
+              y: one.from.y + (one.to.y - one.from.y) * t,
+            },
+      );
+    const steps = 96;
+    let best: number | null = null;
+    let previous = value(from);
+    for (let step = 1; step <= steps; step++) {
+      const t0 = from + ((to - from) * (step - 1)) / steps;
+      const t1 = from + ((to - from) * step) / steps;
+      const here = value(t1);
+      if (previous === 0 || previous * here < 0) {
+        let a = t0;
+        let b = t1;
+        let fa = previous;
+        for (let pass = 0; pass < 60; pass++) {
+          const middle = (a + b) / 2;
+          const fm = value(middle);
+          if (fa * fm <= 0) b = middle;
+          else {
+            a = middle;
+            fa = fm;
+          }
+        }
+        const root = (a + b) / 2;
+        if (best === null || Math.abs(root - near) < Math.abs(best - near)) best = root;
+      }
+      previous = here;
+    }
+    return best;
+  };
+  /*
+   * First on the outermost piece itself, carried on past its end or brought
+   * back along it; then, where the line lies further back than that piece
+   * reaches, on the pieces before it -- the ones the cut passes are left
+   * standing where it falls, at no length, so the side keeps its points.
+   */
+  const sweep = outermost.to - outermost.from;
+  const way = Math.sign(sweep);
+  const end = atEnd ? outermost.to : outermost.from;
+  const start = atEnd ? outermost.from : outermost.to;
+  let hit: { at: number; root: number } | null = null;
+  const onward = rootIn(outermost, end, end + way * (atEnd ? 1 : -1) * (Math.PI / 3), end);
+  const within = rootIn(outermost, start, end, end);
+  const pick = [onward, within].filter((one): one is number => one !== null);
+  if (pick.length > 0) {
+    const root = pick.reduce((a, b) => (Math.abs(a - end) <= Math.abs(b - end) ? a : b));
+    hit = { at: found, root };
+  } else {
+    // Back along the side no further than about a pen: a cut that has to go
+    // further than that is not the end of this stroke being squared off.
+    let travelled = lengthOf(outermost);
+    for (let step = found + 1; step < order.length && !hit && travelled < furthest; step++) {
+      const one = run[order[step]];
+      if (!travels(one)) continue;
+      travelled += lengthOf(one);
+      const [from, to] = one.kind === "ellipse" ? [one.from, one.to] : [0, 1];
+      const [outer, inner] = atEnd ? [to, from] : [from, to];
+      const root = rootIn(one, inner, outer, outer);
+      if (root !== null) hit = { at: step, root };
+    }
+  }
+  if (!hit) return null;
+  const { at: position, root } = hit;
+  return () => {
+    const index = order[position];
+    const one = run[index];
+    let tip: Vec2;
+    if (one.kind === "ellipse") {
+      const pieces =
+        one.pieces ??
+        Math.max(1, Math.ceil(Math.abs(one.to - one.from) / (Math.PI / 2) - A_QUARTER));
+      const moved: OffsetEllipse = atEnd
+        ? { ...one, to: root, pieces }
+        : { ...one, from: root, pieces };
+      run[index] = moved;
+      tip = ellipseAt(moved, root);
+    } else {
+      tip = {
+        x: one.from.x + (one.to.x - one.from.x) * root,
+        y: one.from.y + (one.to.y - one.from.y) * root,
+      };
+      run[index] = atEnd
+        ? { kind: "line", from: one.from, to: tip }
+        : { kind: "line", from: tip, to: one.to };
+    }
+    // Whatever lay past the cut is left standing on it, at no length.
+    for (const other of order.slice(0, position)) {
+      const piece = run[other];
+      if (piece.kind === "line") run[other] = { kind: "line", from: tip, to: tip };
+      else run[other] = { ...piece, centre: tip, rx: 0, ry: 0 };
+    }
+  };
+}
+
+/** How long one side piece is, near enough: an ellipse's by its mean radius. */
+function lengthOf(one: OffsetSegment): number {
+  if (one.kind === "line") return Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y);
+  return ((one.rx + one.ry) / 2) * Math.abs(one.to - one.from);
+}
+
 /**
  * The nodes that close one end of a stroke, running from the left side across
  * to the right.
@@ -793,13 +1159,14 @@ function terminalNodes(
   at: Vec2,
   direction: Vec2,
   reach: PenReach,
+  straight = true,
 ): GlyphNode[] {
   const normal = leftOf(direction);
   const shift = reachAlong(normal, reach);
   const left = { x: at.x + shift.x, y: at.y + shift.y };
   const right = { x: at.x - shift.x, y: at.y - shift.y };
 
-  if (terminal.kind === "round") {
+  if (terminal.kind === "round" && straight) {
     /*
      * A half turn of the pen itself, which with contrast is a half ellipse.
      *
@@ -816,7 +1183,7 @@ function terminalNodes(
       -dx * Math.sin(reach.angle) + dy * Math.cos(reach.angle),
       dx * Math.cos(reach.angle) + dy * Math.sin(reach.angle),
     );
-    const arc: OffsetEllipse = {
+    return ellipseNodes({
       kind: "ellipse",
       centre: at,
       rx: reach.across,
@@ -827,27 +1194,79 @@ function terminalNodes(
       // it, which is decided by which side of the direction of travel we are on.
       to: fromAngle - Math.PI,
       /*
-       * And two pieces, said rather than worked out.
-       *
-       * A half turn wants two quarter-turn pieces and an arc is cut into
-       * `ceil(sweep / 90 degrees)` of them -- which is exactly two here, and
-       * only exactly two when the subtraction above comes out at exactly pi.
-       * It does not always: `fromAngle` is read off the stroke's own direction,
-       * so it is whatever the letter's geometry makes it, and subtracting pi
-       * from a large angle loses the last bit or two. Landing a hair over,
-       * `ceil` gives three and the cap arrives with a node it does not have at
-       * the next weight along -- which a variable font cannot join, since two
-       * weights meet only where they are drawn with the same points. A Display
-       * `V` came off with twelve nodes at the Thin and the Black and thirteen
-       * at the Regular and the Bold, and the whole of the difference was one
-       * node in a cap that is the same half circle at all four.
+       * And two pieces, said rather than worked out: a half turn is exactly
+       * two quarter turns, and subtracting pi from a large angle can land a
+       * hair over and make `ceil` say three -- a node the next weight along
+       * does not have, which a variable font cannot join.
        */
       pieces: CAP_PIECES,
-    };
-    return ellipseNodes(arc);
+    });
   }
 
-  if (terminal.level && Math.abs(direction.y) > 1e-3) {
+  if (terminal.aligned && !straight && terminal.kind !== "round") {
+    // Cut along a line by moving the two sides: see `cutAlong`. The cut is the
+    // straight run between where they now stop, and needs no nodes of its own.
+    return [];
+  }
+
+  if (terminal.kind === "round") {
+    /*
+     * On a curved end, half an ellipse laid square on the end of the stroke:
+     * across from one corner to the other, and out along the way the stroke
+     * was going by as far as the pen reaches that way.
+     *
+     * Not the pen's own half turn, which is right on a straight end and wrong
+     * here: held at an angle with contrast, it leaves the corners heading
+     * somewhere other than along the sides, and on the hook of a c or the tail
+     * of a y the cap folded back over the side it started from. This one
+     * leaves both corners running straight on along the stroke, so it meets
+     * the sides without a kink -- and on a round pen it is the same half
+     * circle the pen's was.
+     */
+    const k = 0.5523;
+    const across = {
+      x: shift.x - direction.x * dot(shift, direction),
+      y: shift.y - direction.y * dot(shift, direction),
+    };
+    const lean = Math.abs(dot(shift, direction));
+    const outward = reachAlong(direction, reach);
+    const depth = Math.max(
+      Math.hypot(outward.x, outward.y),
+      lean + Math.hypot(across.x, across.y) * 0.25,
+    );
+    const tip = { x: at.x + direction.x * depth, y: at.y + direction.y * depth };
+    const outFrom = (point: Vec2): number =>
+      depth - dot({ x: point.x - at.x, y: point.y - at.y }, direction);
+    return [
+      {
+        point: left,
+        handleIn: null,
+        handleOut: {
+          x: left.x + direction.x * outFrom(left) * k,
+          y: left.y + direction.y * outFrom(left) * k,
+        },
+        type: "smooth",
+      },
+      {
+        point: tip,
+        handleIn: { x: tip.x + across.x * k, y: tip.y + across.y * k },
+        handleOut: { x: tip.x - across.x * k, y: tip.y - across.y * k },
+        type: "smooth",
+      },
+      {
+        point: right,
+        handleIn: {
+          x: right.x + direction.x * outFrom(right) * k,
+          y: right.y + direction.y * outFrom(right) * k,
+        },
+        handleOut: null,
+        type: "smooth",
+      },
+    ];
+  }
+
+  const flat = Math.abs(direction.y) >= Math.abs(direction.x);
+  if ((terminal.level || (terminal.aligned && flat)) && Math.abs(direction.y) > 1e-3) {
     /*
      * Both corners of the cut slid along the stroke until they are level with
      * where it was meant to stop.
@@ -862,23 +1281,63 @@ function terminalNodes(
       const back = (point.y - at.y) / direction.y;
       return { x: point.x - direction.x * back, y: at.y };
     };
+    /*
+     * And the left corner carried on back down the stroke where the cut is to
+     * slope: the top of a lowercase stem under a sloped head serif, which falls
+     * away to the left along the same line as the flag laid there.
+     */
+    const sink = terminal.sink ?? 0;
+    const sunk = (point: Vec2): Vec2 => ({
+      x: point.x - direction.x * sink,
+      y: point.y - direction.y * sink,
+    });
     return [
-      { point: onLine(left), handleIn: null, handleOut: null, type: "corner" },
+      { point: sunk(onLine(left)), handleIn: null, handleOut: null, type: "corner" },
       { point: onLine(right), handleIn: null, handleOut: null, type: "corner" },
     ];
   }
 
-  if (terminal.kind === "angled" && terminal.angle) {
-    // Slide the two corners in opposite directions along the stroke, which is
-    // the cut a nib held at an angle leaves.
-    const slide = Math.tan((terminal.angle * Math.PI) / 180) * reach.across;
-    const move = (point: Vec2, way: number): Vec2 => ({
-      x: point.x + direction.x * slide * way,
-      y: point.y + direction.y * slide * way,
-    });
+  if ((terminal.level || (terminal.aligned && !flat)) && Math.abs(direction.x) > 1e-3) {
+    /*
+     * A level cut on an arm lying along a line: the corners slid until they
+     * stand one above the other, square across the arm. A pen held at an
+     * angle otherwise leans the end of every arm with it, and the beak serif
+     * laid there -- whose outside is upright -- stood a step proud of one
+     * corner of it.
+     */
+    const plumb = (point: Vec2): Vec2 => {
+      const back = (point.x - at.x) / direction.x;
+      return { x: at.x, y: point.y - direction.y * back };
+    };
     return [
-      { point: move(left, 1), handleIn: null, handleOut: null, type: "corner" },
-      { point: move(right, -1), handleIn: null, handleOut: null, type: "corner" },
+      { point: plumb(left), handleIn: null, handleOut: null, type: "corner" },
+      { point: plumb(right), handleIn: null, handleOut: null, type: "corner" },
+    ];
+  }
+
+  if (terminal.kind === "angled" && terminal.angle) {
+    /*
+     * The cut a nib held at an angle leaves: the two corners slid along the
+     * stroke in opposite directions.
+     *
+     * On a straight end, that is the side's last node moved on or back along
+     * the same line. On a curved one it is not: a corner slid back up the
+     * tangent lands off the side, with the side's own curve still aimed at
+     * where it was, and the hook of a c folded over itself. So a curved end
+     * carries one corner on by the whole slide and leaves the other where the
+     * side stops -- the same angle, and nothing the side drew is moved.
+     */
+    const slide = Math.tan((terminal.angle * Math.PI) / 180) * reach.across;
+    const move = (point: Vec2, by: number): Vec2 => ({
+      x: point.x + direction.x * by,
+      y: point.y + direction.y * by,
+    });
+    const [on, back] = straight
+      ? [slide, -slide]
+      : [Math.max(0, 2 * slide), Math.max(0, -2 * slide)];
+    return [
+      { point: move(left, on), handleIn: null, handleOut: null, type: "corner" },
+      { point: move(right, back), handleIn: null, handleOut: null, type: "corner" },
     ];
   }
 
@@ -993,6 +1452,27 @@ export function sweep(stroke: Stroke): Contour[] {
   const join = stroke.join ?? "miter";
   const left = sideRun(headed, 1, reach, join, spine.closed);
   const right = sideRun(headed, -1, reach, join, spine.closed);
+  if (!spine.closed) {
+    for (const [terminal, atEnd] of [
+      [stroke.start, false],
+      [stroke.end, true],
+    ] as const) {
+      if (!terminal.aligned) continue;
+      const cut = alignedCut(headed, atEnd);
+      if (!cut) continue;
+      /*
+       * Both sides or neither: one side carried to the line and the other left
+       * where it stopped is a cut slanting across the stroke, and on a short
+       * hook it ran across the counter.
+       */
+      const leftCut = cutAlong(left, atEnd, cut, reach.across * 2.5);
+      const rightCut = cutAlong(right, atEnd, cut, reach.across * 2.5);
+      if (leftCut && rightCut) {
+        leftCut();
+        rightCut();
+      }
+    }
+  }
 
   if (spine.closed) {
     /*
@@ -1007,8 +1487,8 @@ export function sweep(stroke: Stroke): Contour[] {
      * on a radius of 250 the hole came out 999 units across, larger than the
      * letter containing it.
      */
-    const one: Contour = { nodes: closeRing(stitch(left)), closed: true };
-    const other: Contour = { nodes: closeRing(stitch(right)), closed: true };
+    const one: Contour = { nodes: closeRing(stitch(left, reach)), closed: true };
+    const other: Contour = { nodes: closeRing(stitch(right, reach)), closed: true };
     const [outside, inside] =
       Math.abs(contourArea(one)) >= Math.abs(contourArea(other)) ? [one, other] : [other, one];
     return [facing(outside, 1), facing(inside, -1)];
@@ -1016,12 +1496,34 @@ export function sweep(stroke: Stroke): Contour[] {
 
   const last = headed[headed.length - 1];
   const first = headed[0];
-  const endNodes = terminalNodes(stroke.end, segmentEnd(last.segment), last.end, reach);
+  /*
+   * Whether each end arrives straight, asked the way `endsStraight` asks it:
+   * the first piece back from the end that is not a line of no length. A run
+   * carries pieces of no length on purpose, and the hook of a c ends on one.
+   */
+  const arrives = (from: number, step: number): boolean => {
+    for (let index = from; index >= 0 && index < headed.length; index += step) {
+      const segment = headed[index].segment;
+      if (segment.kind !== "line") return false;
+      if (Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9) break;
+    }
+    return true;
+  };
+  const endStraight = arrives(headed.length - 1, -1);
+  const startStraight = arrives(0, 1);
+  const endNodes = terminalNodes(
+    stroke.end,
+    segmentEnd(last.segment),
+    last.end,
+    reach,
+    endStraight,
+  );
   const startNodes = terminalNodes(
     stroke.start,
     segmentStart(first.segment),
     { x: -first.start.x, y: -first.start.y },
     reach,
+    startStraight,
   );
 
   /*
@@ -1044,10 +1546,10 @@ export function sweep(stroke: Stroke): Contour[] {
    * weight is a fold whose size is a fraction of a slide that is itself a
    * fraction of the pen.
    */
-  let leftNodes = stitch(left);
-  let rightNodes = stitch([...right].reverse().map(reverseOffset));
-  const levelStart = slides(stroke.start);
-  const levelEnd = slides(stroke.end);
+  let leftNodes = stitch(left, reach);
+  let rightNodes = stitch([...right].reverse().map(reverseOffset), reach);
+  const levelStart = slides(stroke.start, startStraight);
+  const levelEnd = slides(stroke.end, endStraight);
   // Counted against what the sides started with, not against what is left of
   // them: a stroke of one straight run has two nodes a side and both of them
   // are replaced, which is right, and a rule applied one end at a time would
@@ -1062,28 +1564,379 @@ export function sweep(stroke: Stroke): Contour[] {
       leftNodes = leftNodes.slice(1);
       rightNodes = rightNodes.slice(0, -1);
     }
+    /*
+     * And a corner that slid on past the next node of its side takes that node
+     * with it. A curve can begin on a sliver of a piece, kept so every weight
+     * has the same points, and a cut across a tilted pen slides its outer
+     * corner further than the sliver runs: the edge went out to the corner,
+     * back down to the sliver's end and up again across the cut -- an e's
+     * bowl, under its bar, with the pen held at -20. Moved, not dropped, so
+     * the points stay the same in number; set a hair on from the corner, so
+     * the seams do not merge the two.
+     */
+    if (levelEnd && endNodes.length > 0) {
+      const [one, other] = [endNodes[0], endNodes[endNodes.length - 1]];
+      overtaken(leftNodes, one, other, last.end, -1);
+      overtaken(rightNodes, other, one, last.end, 1);
+    }
+    if (levelStart && startNodes.length > 0) {
+      const on = { x: -first.start.x, y: -first.start.y };
+      const [one, other] = [startNodes[0], startNodes[startNodes.length - 1]];
+      overtaken(rightNodes, one, other, on, -1);
+      overtaken(leftNodes, other, one, on, 1);
+    }
   }
 
+  const outline = facing(
+    { nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true },
+    1,
+  );
+  return [crowded(spine, pen) ? withoutBackLoops(outline, pen.weight) : outline];
+}
+
+/**
+ * Whether a spine has a run between two turns shorter than the pen is wide.
+ *
+ * Every inside corner is trimmed where the two sides meeting at it cross --
+ * but only against its own two neighbours. When a run is shorter than the pen,
+ * the inside of the corner before it and the corner after it overlap, and the
+ * crossing lies past the end of the run: the z of a Black joining script, whose
+ * diagonal is shorter than its own stroke is thick, came out with a small loop
+ * wound backwards inside it. Asked first because it is cheap and rare; the
+ * search for the loop is neither.
+ */
+function crowded(spine: Spine, pen: Pen): boolean {
+  const segments = spine.segments;
+  if (segments.length < 3) return false;
+  return segments.some((segment, index) => {
+    if (index === 0 || index === segments.length - 1 || segment.kind !== "line") return false;
+    const length = Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
+    return length > 1e-6 && length < pen.weight * 1.5;
+  });
+}
+
+/** A point along a contour's edge: which edge, and how far along it. */
+interface EdgeAt {
+  edge: number;
+  t: number;
+}
+
+/**
+ * The outline with the small loops that wind backwards cut out of it.
+ *
+ * A loop like that is where one side of the stroke has run back over itself;
+ * under a non-zero fill it draws nothing the rest of the outline does not
+ * already draw, and it is not a shape to anything that reads the outline. Cut
+ * at the crossing, with the curves on either side split there so the outline
+ * keeps its shape exactly up to the point.
+ *
+ * Only small ones, and only backwards ones. A stroke that crosses itself on
+ * purpose -- the loop of a script l -- winds its loop the same way as the rest
+ * of the letter and encloses a real piece of it.
+ */
+function withoutBackLoops(contour: Contour, weight: number): Contour {
+  let nodes = contour.nodes;
+  for (let pass = 0; pass < 4 && nodes.length > 3; pass++) {
+    const whole = contourArea({ nodes, closed: true });
+    const loop = backLoop(nodes, Math.sign(whole), weight * weight * 0.05);
+    if (!loop) break;
+    nodes = cutLoop(nodes, loop.from, loop.to, loop.at);
+  }
+  return nodes === contour.nodes ? contour : { ...contour, nodes };
+}
+
+const LOOP_STEPS = 12;
+
+function edgeCurve(nodes: GlyphNode[], edge: number): [Vec2, Vec2, Vec2, Vec2] {
+  const a = nodes[edge];
+  const b = nodes[(edge + 1) % nodes.length];
+  return [a.point, a.handleOut ?? a.point, b.handleIn ?? b.point, b.point];
+}
+
+function bezierAt([p0, p1, p2, p3]: [Vec2, Vec2, Vec2, Vec2], t: number): Vec2 {
+  const u = 1 - t;
+  return {
+    x: u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x,
+    y: u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y,
+  };
+}
+
+/** The first small loop wound against the contour, if there is one. */
+function backLoop(
+  nodes: GlyphNode[],
+  winding: number,
+  smallest: number,
+): { from: EdgeAt; to: EdgeAt; at: Vec2 } | null {
+  const count = nodes.length;
+  const points: Vec2[] = [];
+  const where: EdgeAt[] = [];
+  for (let edge = 0; edge < count; edge++) {
+    const curve = edgeCurve(nodes, edge);
+    const straight = !nodes[edge].handleOut && !nodes[(edge + 1) % count].handleIn;
+    const steps = straight ? 1 : LOOP_STEPS;
+    for (let step = 0; step < steps; step++) {
+      points.push(bezierAt(curve, step / steps));
+      where.push({ edge, t: step / steps });
+    }
+  }
+  const total = points.length;
+  const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  for (let i = 0; i < total; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % total];
+    for (let j = i + 2; j < total; j++) {
+      if (i === 0 && j === total - 1) continue;
+      const c = points[j];
+      const d = points[(j + 1) % total];
+      const d1 = side(a, b, c);
+      const d2 = side(a, b, d);
+      const d3 = side(c, d, a);
+      const d4 = side(c, d, b);
+      if (!(d1 * d2 < 0 && d3 * d4 < 0)) continue;
+      const s = d3 / (d3 - d4);
+      const at = { x: a.x + (b.x - a.x) * s, y: a.y + (b.y - a.y) * s };
+      const u = d1 / (d1 - d2);
+      // The two ways round from one crossing to the other; the loop is the
+      // smaller of them.
+      const inner = [at, ...points.slice(i + 1, j + 1)];
+      const outer = [at, ...points.slice(j + 1), ...points.slice(0, i + 1)];
+      const area = (ring: Vec2[]) =>
+        ring.reduce((sum, p, k) => {
+          const q = ring[(k + 1) % ring.length];
+          return sum + (p.x * q.y - q.x * p.y) / 2;
+        }, 0);
+      const inside = area(inner);
+      const outside = area(outer);
+      const [loop, ring, rest, first, second] =
+        Math.abs(inside) <= Math.abs(outside)
+          ? [inside, inner, outer, i, j]
+          : [outside, outer, inner, j, i];
+      // Nothing enclosed is nothing to take out: the points a round join
+      // stacks on one spot touch rather than loop.
+      if (Math.abs(loop) >= smallest || Math.abs(loop) < 0.01) continue;
+      // Wound with the letter, it is only dead weight if the rest of the
+      // outline covers it anyway -- a twist in the side, not a loop of ink.
+      if (Math.sign(loop) === winding && !within(rest, middleOf(ring))) continue;
+      const fractionOf = (index: number, share: number): EdgeAt => {
+        const here = where[index];
+        const next = where[(index + 1) % total];
+        const end = next.edge === here.edge ? next.t : 1;
+        return { edge: here.edge, t: here.t + (end - here.t) * share };
+      };
+      const shares = first === i ? [s, u] : [u, s];
+      return { from: fractionOf(first, shares[0]), to: fractionOf(second, shares[1]), at };
+    }
+  }
+  return null;
+}
+
+function middleOf(ring: Vec2[]): Vec2 {
+  const sum = ring.reduce((total, p) => ({ x: total.x + p.x, y: total.y + p.y }), { x: 0, y: 0 });
+  return { x: sum.x / ring.length, y: sum.y / ring.length };
+}
+
+function within(ring: Vec2[], point: Vec2): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i];
+    const b = ring[j];
+    if (a.y > point.y !== b.y > point.y) {
+      const x = ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+      if (point.x < x) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/** Split a cubic at t: the curve before and the curve after. */
+function split(
+  [p0, p1, p2, p3]: [Vec2, Vec2, Vec2, Vec2],
+  t: number,
+): [[Vec2, Vec2, Vec2, Vec2], [Vec2, Vec2, Vec2, Vec2]] {
+  const lerp = (p: Vec2, q: Vec2) => ({ x: p.x + (q.x - p.x) * t, y: p.y + (q.y - p.y) * t });
+  const a = lerp(p0, p1);
+  const b = lerp(p1, p2);
+  const c = lerp(p2, p3);
+  const d = lerp(a, b);
+  const e = lerp(b, c);
+  const f = lerp(d, e);
   return [
-    facing(
-      { nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true },
-      1,
-    ),
+    [p0, a, d, f],
+    [f, e, c, p3],
   ];
+}
+
+/**
+ * The nodes with everything between two crossing points taken out, going
+ * forwards from the first to the second, and the outline pinched to the point
+ * where they cross.
+ *
+ * The nodes inside the loop are not dropped but gathered onto that point, so
+ * the outline keeps as many nodes as it had, each with the handles it had.
+ * The loop only opens at some weights: the z of a Ribbon has it at the Black
+ * and not at the Regular, and a variable font can only carry a letter across
+ * the axis when every master has the same nodes -- dropped, the z stood still.
+ */
+function cutLoop(nodes: GlyphNode[], from: EdgeAt, to: EdgeAt, at: Vec2): GlyphNode[] {
+  const count = nodes.length;
+  const straight = (edge: number) => !nodes[edge].handleOut && !nodes[(edge + 1) % count].handleIn;
+  const [before] = split(edgeCurve(nodes, from.edge), from.t);
+  const [, after] = split(edgeCurve(nodes, to.edge), to.t);
+  const inside = (to.edge - from.edge + count) % count;
+  if (inside === 0) return nodes;
+  const kept = nodes.map((node) => ({ ...node }));
+  const first = (from.edge + 1) % count;
+  const last = to.edge;
+  const onto = (handle: Vec2 | null): Vec2 | null => (handle ? { ...at } : null);
+  for (let step = 0; step < inside; step++) {
+    const index = (first + step) % count;
+    const node = kept[index];
+    node.point = { ...at };
+    node.handleIn =
+      index === first ? (straight(from.edge) ? null : before[2]) : onto(node.handleIn);
+    node.handleOut = index === last ? (straight(to.edge) ? null : after[1]) : onto(node.handleOut);
+  }
+  kept[from.edge].handleOut = straight(from.edge) ? null : before[1];
+  kept[(to.edge + 1) % count].handleIn = straight(to.edge) ? null : after[2];
+  return kept;
+}
+
+/**
+ * Moves each node of a side that a slid corner has passed -- lying further out
+ * past the end than the corner -- to just inside the corner, as a corner.
+ * Only where the side, carrying on from those nodes, crosses back over the cut
+ * between `corner` and `across`: a node a hair past the corner whose edge
+ * meets the cut at the corner itself is no fold, and is left where it is.
+ * `step` walks the side from the node next to the corner: -1 from its last,
+ * 1 from its first.
+ */
+function overtaken(
+  side: GlyphNode[],
+  corner: GlyphNode,
+  across: GlyphNode,
+  outward: Vec2,
+  step: 1 | -1,
+): void {
+  const length = Math.hypot(outward.x, outward.y);
+  if (length < 1e-9) return;
+  const out = { x: outward.x / length, y: outward.y / length };
+  const beyondOf = (point: Vec2): number =>
+    (point.x - corner.point.x) * out.x + (point.y - corner.point.y) * out.y;
+  // How many nodes, counted from the corner, lie past it.
+  let passed = 0;
+  while (passed < side.length - 1) {
+    const index = step === 1 ? passed : side.length - 1 - passed;
+    if (beyondOf(side[index].point) <= 0) break;
+    passed++;
+  }
+  if (passed >= side.length - 1) return;
+  const from = (count: number): number => (step === 1 ? count : side.length - 1 - count);
+  if (passed > 0) {
+    if (
+      !crosses(side[from(passed - 1)].point, side[from(passed)].point, corner.point, across.point)
+    )
+      return;
+    const HAIR = 0.01;
+    for (let count = 0; count < passed; count++) {
+      const index = from(count);
+      const node = side[index];
+      const beyond = beyondOf(node.point);
+      const shift = {
+        x: -out.x * (beyond + HAIR * (count + 1)),
+        y: -out.y * (beyond + HAIR * (count + 1)),
+      };
+      const toCorner = { x: corner.point.x - node.point.x, y: corner.point.y - node.point.y };
+      const along = toCorner.x * out.y - toCorner.y * out.x;
+      // Across as well as back: onto the corner's line along the stroke.
+      const place = (p: Vec2): Vec2 => ({
+        x: p.x + shift.x + out.y * along,
+        y: p.y + shift.y - out.x * along,
+      });
+      // A corner, as the cut's own are: carried with it, its handles loop.
+      side[index] = {
+        ...node,
+        point: place(node.point),
+        handleIn: null,
+        handleOut: null,
+        type: "corner",
+      };
+    }
+  }
+  /*
+   * And a curve between the corner and the first node inside it that dips
+   * back out past the cut before it turns up the side: the edge of a tilted
+   * pen can run backwards for a moment as a curve begins, and a handle drawn
+   * along it points out past the cut. Such handles are laid no further out
+   * than their own nodes.
+   */
+  const levelled = (point: Vec2, handle: Vec2 | null): Vec2 | null => {
+    if (!handle) return handle;
+    const further = beyondOf(handle) - Math.min(0, beyondOf(point));
+    return further > 0 ? { x: handle.x - out.x * further, y: handle.y - out.y * further } : handle;
+  };
+  for (let count = 0; count <= passed; count++) {
+    const index = from(count);
+    const near = count === 0 ? corner : side[from(count - 1)];
+    const node = side[index];
+    const leaving = count === 0 ? null : step === 1 ? near.handleOut : near.handleIn;
+    const arriving = step === 1 ? node.handleIn : node.handleOut;
+    if (!dipsPast(near.point, leaving, arriving, node.point, corner.point, across.point)) continue;
+    const arrived = levelled(node.point, arriving);
+    side[index] = step === 1 ? { ...node, handleIn: arrived } : { ...node, handleOut: arrived };
+    if (count > 0) {
+      const left = levelled(near.point, leaving);
+      side[from(count - 1)] =
+        step === 1 ? { ...near, handleOut: left } : { ...near, handleIn: left };
+    }
+  }
+}
+
+/** Whether a curve, flattened, crosses the segment from `c` to `d`. */
+function dipsPast(
+  from: Vec2,
+  leaving: Vec2 | null,
+  arriving: Vec2 | null,
+  to: Vec2,
+  c: Vec2,
+  d: Vec2,
+): boolean {
+  const one = leaving ?? from;
+  const two = arriving ?? to;
+  let before = from;
+  for (let k = 1; k <= 16; k++) {
+    const t = k / 16;
+    const u = 1 - t;
+    const point = {
+      x: u * u * u * from.x + 3 * u * u * t * one.x + 3 * u * t * t * two.x + t * t * t * to.x,
+      y: u * u * u * from.y + 3 * u * u * t * one.y + 3 * u * t * t * two.y + t * t * t * to.y,
+    };
+    if (crosses(before, point, c, d)) return true;
+    before = point;
+  }
+  return false;
+}
+
+/** Whether the segment from `a` to `b` crosses the one from `c` to `d`, strictly. */
+function crosses(a: Vec2, b: Vec2, c: Vec2, d: Vec2): boolean {
+  const turn = (p: Vec2, q: Vec2, r: Vec2): number =>
+    (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  return turn(a, b, c) * turn(a, b, d) < 0 && turn(c, d, a) * turn(c, d, b) < 0;
 }
 
 /**
  * Whether a terminal's cut is the side's own end node moved, rather than a
  * shape added on after it.
  *
- * The two that move are a level cut and an angled one, and they are never the
- * same terminal: `level` is only ever put on a butt or a slab, and an angled
- * nib is neither. So each of them is asked for on its own terms.
+ * The two that move are a level cut and an angled one on a straight end, and
+ * they are never the same terminal: `level` is only ever put on a butt or a
+ * slab, and an angled nib is neither. An angled cut on a curve adds its moved
+ * corner after the side instead -- see `terminalNodes`.
  */
-function slides(terminal: Terminal): boolean {
+function slides(terminal: Terminal, straight: boolean): boolean {
   if (terminal.kind === "round") return false;
   if (terminal.level === true) return true;
-  return terminal.kind === "angled" && Boolean(terminal.angle);
+  if (terminal.aligned === true) return straight;
+  return straight && terminal.kind === "angled" && Boolean(terminal.angle);
 }
 
 /**

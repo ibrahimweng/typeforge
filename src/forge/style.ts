@@ -17,10 +17,21 @@
 
 import type { WaveAlong } from "./shapes";
 import { noEffects, type Effects } from "@/font/effects";
-import type { JoinKind, Pen, Terminal, TerminalKind } from "./types";
+import type { JoinKind, Pen, SerifHead, SerifShape, Terminal, TerminalKind } from "./types";
 import { NO_SCRIPT, type Script } from "./script";
 
 /** The heights and widths every letter is built against. */
+/**
+ * How a listed side closes at a heavy weight: as fast as the n's ("closes",
+ * or on a stem's side only), half as fast (`"half"`, as a side with no kind
+ * does), unopened at the Light, or held at the Regular's at every weight.
+ * A fourth entry moves either side by that many units at the Thin, going
+ * with the face's own light opening (`metrics.lightHeld`), and a fifth by
+ * that many at the Black (a `blackness` of 0.88), run in from the face's own
+ * weight and held there past it.
+ */
+export type SideKind = "closes" | "stem-left" | "stem-right" | "unopened" | "held" | "half";
+
 export interface Metrics {
   unitsPerEm: number;
   /** Height of the lowercase, where most of the reading happens. */
@@ -42,6 +53,22 @@ export interface Metrics {
   /** White space left either side of a letter. */
   sidebearing: number;
   /**
+   * How much more of it a capital takes, as a multiple. One, or left out, is
+   * the same as the lowercase.
+   *
+   * A capital is taller, so the same white beside it reads as less: Lora sets
+   * its capitals half as loose again as its lowercase -- 45 units a side
+   * against 30 -- and a text face spaced for its lowercase alone set words in
+   * capitals cramped.
+   */
+  capitalSpacing?: number;
+  /**
+   * Whether that extra closes at a heavy weight as the sidebearing does and
+   * as fast again: Geist gives its H 12 more than its n at the Regular, 7 at
+   * the UltraBlack and 6 at the Black.
+   */
+  capitalCloses?: boolean;
+  /**
    * How wide every letter runs, as a multiple.
    *
    * Applied to the horizontal measures a letter is built from and to nothing
@@ -59,6 +86,243 @@ export interface Metrics {
    * face does and why its i has such long ears in the ones that draw them.
    */
   monospaced?: boolean;
+  /**
+   * How far each side is fitted to the white it already has, nought to one.
+   *
+   * Nought, or left out, sets every letter the same sidebearing either side
+   * of its ink and tightens the round ones by a fixed share on the right. One
+   * measures each side -- a stem is flat against its box, an o leaves wedges
+   * of white beside it, a v a whole triangle -- and gives back as much as it
+   * already has: see `fitted` in `build.ts`.
+   */
+  fit?: number;
+  /**
+   * Whether the figures share one width, as a column of numbers wants, or are
+   * each spaced by their own ink, as figures in running text want. Tabular, or
+   * left out, is the one width; proportional needs `fit` to space them.
+   */
+  figures?: "tabular" | "proportional";
+  /**
+   * Sides the eye sets rather than the measure, per letter: each side's white
+   * as a multiple of the sidebearing at this weight, before a capital's extra.
+   *
+   * The fitting in `build.ts` finds a letter's white from its drawing and
+   * gives it back, and for most letters that is where a foundry lands too.
+   * For a few it is not, because a foundry spaces some shapes by habit as much
+   * as by area: Geist sets its T and its Z as open as a V (25 a side) but its
+   * E at 57 and its L at 47, its x and k at 47 where the measure says 20, and
+   * its B and R at 62 where their round sides would give back as much as a D.
+   * Those letters are listed here, measured off Geist, and the rest are
+   * fitted.
+   *
+   * They close at a heavy weight only half as fast as a fitted side does (see
+   * `fitted` in `build.ts`), unless marked "closes": Geist closes its bar,
+   * its stops and its t as fast as its n. "stem-left" and "stem-right" close
+   * just that side as fast: the stem beside a b's or a d's bowl. "unopened"
+   * sides are not opened towards the Thin (`lightHeld.open`).
+   */
+  /**
+   * How much taller the x-height is drawn by a heavy weight (`by` units, by a
+   * blackness of `at`): Geist's rises from 542 at its Regular to 552 at its
+   * Black. Only the letters are drawn taller; the face's x-height, and the
+   * weight measured against it, stay the face's own.
+   */
+  xGrows?: { by: number; at: number };
+  /**
+   * How tall a square dot stands against its width at the Thin and at the
+   * Black (by a blackness of `at`): Geist's full stop is a tenth taller than
+   * wide at its Thin, square at its Regular and 0.92 as tall at its Black.
+   */
+  dotAspect?: { thin: number; black: number; at: number };
+  /**
+   * How much faster the counters close midway to the Black than the straight
+   * line `heavyCounter` gives, as a share of it at its most: see `narrowed`.
+   */
+  counterBend?: number;
+  sides?: Record<
+    string,
+    | [number, number]
+    | [number, number, SideKind]
+    | [number, number, SideKind, [number, number]]
+    | [number, number, SideKind, [number, number], [number, number]]
+  >;
+  /**
+   * How much counter a heavy weight gives back for the stem it gains, unit
+   * for unit, past the text weight (see `blackness`). Left out, a heavier pen keeps the
+   * counters where they were and the letters run wider, which is how every
+   * face here grows by default. Geist does the other thing -- its Black's n
+   * has 155 units of counter where its Regular has 250, on a stem twice as
+   * heavy -- and the spacing closes with it: see `narrowed`.
+   */
+  heavyCounter?: number;
+  /**
+   * The least a heavy weight's counter closes to, against the x-height, where
+   * `heavyCounter` closes it: a fifth when left out. A geometric face goes
+   * lower, keeping its rounds round rather than its counters open.
+   */
+  heavyFloor?: number;
+  /**
+   * Below the pen `from`, each bowl and arch is held as wide through its
+   * middle as at `from`, widening by `grow` of it over the whole way to no pen
+   * at all: see `frame` in `letters/common.ts`. Left out, a lighter pen widens
+   * the bowls (their insides grow taller) and narrows the arches (the counter
+   * is kept), which is how every other face here thins.
+   */
+  lightHeld?: { from: number; grow: number; open?: number };
+  /**
+   * The word space as shares of the x-height, at the face's own pen and at
+   * its Black (see `blackness`), held past it. Left out, it follows the arch.
+   */
+  wordSpace?: [number, number];
+  /**
+   * Where the accents stand: `gap`, how far over a lowercase letter and over
+   * a capital, as shares of the em; and `byFoot`, whether a grave or an
+   * acute is set with its foot over the middle of the letter rather than its
+   * whole width, as a steep one is. Left out, see `gapFor`.
+   */
+  accents?: {
+    gap: [number, number];
+    byFoot?: boolean;
+    /**
+     * The gap over a lowercase letter and a capital at the Black
+     * (`blackness` of `heavyAt`), run in from `gap` as the weight grows and
+     * held there past it. Left out, the gap is `gap` at every weight.
+     */
+    heavy?: [number, number];
+    heavyAt?: number;
+  };
+  /**
+   * The most contrast a heavy weight takes on: see `heavierPen`. Left out,
+   * the horizontals go on thinning to the pen's limit, which on a face with
+   * little contrast of its own reads as a fat face rather than as an Ultra.
+   */
+  heavyContrast?: number;
+  /**
+   * How a heavy weight's contrast rises with its pen, where not in step with
+   * `blackness`: towards `to`, most of the way there `over` units of pen past
+   * `from`, and past `past` of the way to a Black climbing on as every other
+   * face's does. Geist's horizontals thin fast from its Regular and then
+   * level off -- its o's crown is 104 on a stem of 128 and 144 on 194 -- where
+   * in step with `blackness` they came to 116 and 137. Its bowls are still
+   * sized by the plain contrast: see `Pen.sized`.
+   */
+  contrastRise?: { from: number; to: number; over: number; past: number };
+  /**
+   * How much of the contrast a heavy weight gains the capitals and figures
+   * take, as a share. Left out, all of it. Geist Black's E, T and 2 carry
+   * horizontals of 142 on a stem of 172, where its o's crown is 127: the
+   * capitals stand taller, and thinned as far as the lowercase they look
+   * lighter than it.
+   */
+  capitalContrast?: number;
+  /**
+   * How much heavier than the pen a face's capitals and figures are drawn at
+   * its lightest (pen 30), run in from nothing at `lightHeld.from`. Geist
+   * Thin's capital and figure stems are 32 on a lowercase stem of 30.
+   */
+  capitalThin?: number;
+  /**
+   * The letters that hang past their own sides, and how far they may -- on
+   * the left before the health check calls them touching the letter before
+   * -- as a share of the em. A letter not listed starts at least half a
+   * hundredth in. Geist hangs its Y, j and # up to ten units past their
+   * sides, as a text face's overhangs do.
+   */
+  overhangs?: Record<string, number>;
+  /**
+   * The capitals and figures that overshoot their lines by their own amount,
+   * in units, rather than by `overshoot`. Geist's O and Q overshoot 16
+   * where its o overshoots 12; its other round capitals were fitted to 12,
+   * and fit worse at 16.
+   */
+  overshoots?: Record<string, number>;
+  /** Set on the style a capital or figure is drawn with: see `capitalContrast`. Never saved. */
+  capital?: boolean;
+  /**
+   * Set on the style a letter drawn lighter across than the face is drawn
+   * with, past the Black (`lighterAcross` in `letters/grotesque.ts`): its pen
+   * is taken as it is. Never saved.
+   */
+  lighterAcross?: boolean;
+  /**
+   * Whether a straight stroke rising to the right is drawn as a hairline, as
+   * a didone's are: the right arm of a v, a y and an x, the left leg of an A.
+   * An upright pen gives both diagonals of a vee the same weight, and a
+   * didone set that way had a y whose tail was as heavy as its stem.
+   */
+  risingHairline?: boolean;
+  /**
+   * The letters left as drawn on a face whose rising strokes are hairlines:
+   * a text face's z, Z and slash carry their weight on the rising diagonal,
+   * and a letter that draws its own hairline -- the Serif's A -- is not
+   * thinned again.
+   */
+  risingOwn?: string[];
+  /** The bowls' superness the face was drawn with, once `heavier` has rounded them. Never saved. */
+  drawnSuperness?: number;
+  /**
+   * Each letter's width at the face's Bold against its Regular, where the
+   * construction's own way of growing a heavy letter is not the face's: `at`
+   * is how black the Bold is (see `blackness`), and the letter reaches its
+   * factor there and holds it past it.
+   *
+   * A heavy weight here keeps its counters open by widening the letters, and
+   * most faces do much the same. Lora does not, or not evenly: its Bold's o is
+   * the width of its Regular's to the unit and its A and its w within a
+   * dozen, while its B and its n take forty or fifty more -- which is a
+   * drawing, letter by letter, and is written down as one.
+   */
+  bold?: {
+    at: number;
+    widths: Record<string, number>;
+    /**
+     * How much of the Bold's width is kept at a Black (a blackness of one),
+     * eased back from all of it at the Bold toward halfway between the
+     * Regular's own width and the construction's. Past its Bold a face has
+     * no drawing to follow, and a Black held to a Bold's widths shut the
+     * small counters -- the a's, the e's eye, the v's wings -- that the
+     * construction's own widening keeps open. Left out, all of it.
+     */
+    kept?: number;
+    /**
+     * Each letter's width at the heaviest weight (a blackness of 1.5) against
+     * what the rest of this would give it, reached along the weight from the
+     * Bold. The construction widens a letter by the stems it has to fit and
+     * the counters between them, so past a Bold an H, a D and an M ran on
+     * wide while the letters with no counter to hold open -- the C, the E,
+     * the T, the Z -- stood still or narrowed, and the colour of a heavy
+     * word came and went letter by letter. Written down as the widths a
+     * Black face keeps, against its own H and o. Left out, one.
+     */
+    past?: Record<string, number>;
+    /**
+     * The sidebearings at the Bold against the Regular's, reached by the
+     * Bold and held past it: Lora Bold sets its rounds a quarter tighter
+     * than its Regular (an o 31 a side against 41) and its stems a little.
+     */
+    spacing?: number;
+  };
+  /** The counter the face was drawn with, once `heavier` has narrowed it. */
+  drawnCounter?: number;
+  /**
+   * How much wider or narrower than the face's rhythm a letter is drawn, by
+   * letter, as a multiple of `width`.
+   *
+   * The rhythm sets most widths -- an n and an o follow from the counter and
+   * the bowl -- but not all of them. How wide an H stands beside its n, how
+   * far an x or a z reaches, how broad an S is: each of those is its own
+   * decision in every face that has ever been drawn by hand, and a face
+   * modelled on one has to be able to say so. Applied exactly as the width
+   * is, to the horizontal measures a letter is built from and to nothing
+   * else, so the strokes keep their weight.
+   */
+  proportions?: Record<string, number>;
+  /**
+   * The factor from `proportions` a letter is being drawn at, set by
+   * `proportioned` and read by the few skeletons measured off the counter
+   * rather than off the width. Never saved: nought or left out is one.
+   */
+  stretch?: number;
   /**
    * Degrees the whole letter leans, to the right when positive.
    *
@@ -101,6 +365,26 @@ export interface Parts {
     thickness: number;
     /** How much the inside corner is filleted: zero is a slab, more is a text serif. */
     bracket: number;
+    /**
+     * A bar of one depth all the way out, or one that thins toward its tip.
+     * Square is a slab's; a wedge is what an old-style text serif is.
+     */
+    shape: SerifShape;
+    /**
+     * The top of a lowercase stem: a level bar both ways, or one flag sloping
+     * down to the left, which is where a pen enters the stroke.
+     */
+    head: SerifHead;
+    /**
+     * The stem, as a share of the em, past which the serif stops lengthening
+     * with it, and how much of what the stem gains after that it still takes.
+     * Left out, an eighth of the em and a third. A text face like Lora holds
+     * its serifs nearly where its Regular has them all the way to its Bold --
+     * 64 units past a stem of 87, and 66 past one of 142 -- so a heavy cut's
+     * serifs thicken rather than reach.
+     */
+    hold?: number;
+    past?: number;
   };
   shoulder: {
     /**
@@ -139,6 +423,20 @@ export interface Parts {
      * from a technical one, and is not reachable by adjusting a circle.
      */
     squareness: number;
+    /**
+     * How far the round of a bowl is pushed toward its corners: nought is a
+     * circle, and turned up the sides and the crown run flatter and the
+     * turning gathers in the corners -- the superellipse of a neo-grotesque's
+     * o, firm without being square. Not the squareness, which straightens the
+     * sides outright and leaves circular corners on them.
+     */
+    superness: number;
+    /**
+     * Whether a bowl taller or wider than it is round is an oval, as a text
+     * face's o is, rather than a circle's quarters on straight sides: see
+     * `Frame.curve`. Only read where the superness is nought.
+     */
+    oval?: boolean;
   };
   corner: {
     /**
@@ -178,6 +476,13 @@ export interface Parts {
     size: number;
     /** How far past the end its middle sits, as a share of its own radius. */
     drop: number;
+    /** Only on curved ends: a straight end in mid-air is left cut. */
+    curved?: boolean;
+    /**
+     * Whether a straight end in mid-air takes one too; on unless said. Unlike
+     * `curved` it leaves the balls sized by the pen.
+     */
+    straight?: boolean;
   };
   /**
    * The flare: a stroke that widens as it arrives at its own end.
@@ -329,21 +634,73 @@ export const FAMILIES: Array<{ id: Family; label: string; hint: string }> = [
  */
 export function terminalFor(style: Style): Terminal {
   const { terminal, slab } = style.parts;
-  if (!slab.on) return { kind: terminal.kind, angle: terminal.angle, open: true };
+  // A kind this version no longer draws, from an old document or a script,
+  // is drawn as the plain cut rather than as nothing.
+  const kind = TERMINAL_KINDS.includes(terminal.kind) ? terminal.kind : "butt";
+  const plain = { kind: kind === "slab" ? "butt" : kind, angle: terminal.angle ?? 0 } as const;
+  if (!slab.on) return { ...plain, open: true };
   const stem = style.pen.weight;
   return {
     kind: "slab",
     open: true,
-    projection: slab.projection * stem,
-    thickness: slab.thickness * stem,
-    bracket: slab.bracket * stem,
+    projection: slab.projection * serifReach(style),
+    // Deep in proportion to the stem, and no deeper than the reach allows: a
+    // light cut's serifs thin with its stems, a black's stop growing with them.
+    thickness: slab.thickness * Math.min(stem, serifReach(style)),
+    bracket: slab.bracket * Math.min(stem, serifReach(style)),
+    bracketHome: homeBracket(style),
+    shape: slab.shape === "wedge" ? "wedge" : "square",
+    head: slab.head === "sloped" || slab.head === "flag" ? slab.head : "level",
+    curved: plain,
   };
+}
+
+const TERMINAL_KINDS: TerminalKind[] = ["butt", "angled", "round", "teardrop", "level"];
+
+/**
+ * The bracket this style's own base draws at this weight, or nothing for a
+ * style that is not one of the bases' or whose base has no serifs.
+ */
+function homeBracket(style: Style): number | undefined {
+  const base = BASES.find((one) => one.name === style.name);
+  if (!base?.parts.slab.on) return undefined;
+  return base.parts.slab.bracket * Math.min(style.pen.weight, serifReach(style));
+}
+
+/**
+ * The stem a serif is measured in.
+ *
+ * The stem itself through the text weights -- and past them it is not, at
+ * either end. A serif is something the eye has to find at the end of a
+ * stroke, and at a hairline a reach of two thirds of the stem is a dozen
+ * units: the serifs of a light cut vanished into their own stems and it read
+ * as a sans. Real light cuts keep their serifs about as long as the regular's
+ * and only thin them, so below nine hundredths of an em the reach is counted
+ * from halfway between the stem and that.
+ *
+ * And at a black weight a serif two thirds of a two-hundred-unit stem long and
+ * as deep again is a flag rather than a serif: the heads of the i, the j and
+ * the l stood out like pennants. Real heavy cuts grow their serifs much more
+ * slowly than their stems, so past an eighth of an em the serif gains a third
+ * of what the stem does.
+ */
+export function serifReach(style: Style, ordinary = false): number {
+  const stem = style.pen.weight;
+  const em = style.metrics.unitsPerEm;
+  const light = em * 0.09;
+  // `ordinary`: as every face grows its serifs, whatever this one's own hold,
+  // for the things measured in serifs that are not their length.
+  const heavy = em * ((ordinary ? undefined : style.parts.slab.hold) ?? 0.125);
+  const past = (ordinary ? undefined : style.parts.slab.past) ?? 1 / 3;
+  if (stem < light) return (stem + light) / 2;
+  if (stem > heavy) return heavy + (stem - heavy) * past;
+  return stem;
 }
 
 const EM = 1000;
 
 /**
- * The sans.
+ * The plain sans every other base is built from.
  *
  * Monolinear, flat terminals, a shoulder springing from just below the middle:
  * the plainest set of decisions that still reads as designed rather than as
@@ -356,7 +713,7 @@ const EM = 1000;
  * conventions of the writing system rather than anyone's design, and are
  * arrived at here by construction rather than measured off an existing font.
  */
-export const SANS: Style = {
+const PLAIN: Style = {
   name: "Sans",
   family: "sans",
   blurb: "The plain case. One thickness, flat ends, ordinary proportions.",
@@ -374,9 +731,16 @@ export const SANS: Style = {
   },
   pen: { weight: 92, contrast: 0, angle: 0 },
   parts: {
-    slab: { on: false, projection: 0.65, thickness: 0.43, bracket: 0 },
+    slab: {
+      on: false,
+      projection: 0.65,
+      thickness: 0.43,
+      bracket: 0,
+      shape: "square",
+      head: "level",
+    },
     shoulder: { spring: 0.62, reach: 1, crest: 1 },
-    bowl: { width: 1, squareness: 0, aperture: 1 },
+    bowl: { width: 1, squareness: 0, aperture: 1, superness: 0 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     crossbar: { height: 0.52, weight: 1 },
@@ -396,12 +760,378 @@ export const SANS: Style = {
  * the join. Nothing about the letters themselves is different, which is the
  * point of building it this way.
  */
+/**
+ * The sans: a neo-grotesque in the manner of Geist.
+ *
+ * Built on the plain sans above, with the decisions that make a modern
+ * grotesque rather than a generic one. The proportions are compact -- an n
+ * whose counter is not three stems across, an x-height of 0.53 of the em, the
+ * ascenders level with the capitals -- and the stems carry a touch of contrast
+ * so the crowns of the round letters sit a little lighter than their sides.
+ *
+ * Measured against Geist Regular at every point, and arrived at by moving the
+ * numbers the other faces are built from rather than by drawing anything
+ * separately: the same skeletons, the same pen, fitted.
+ */
+export const SANS: Style = {
+  ...PLAIN,
+  name: "Sans",
+  blurb: "A neo-grotesque: compact, even, cut level at its curved ends.",
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 530,
+    capHeight: 710,
+    ascender: 710,
+    descender: -150,
+    overshoot: 12,
+    counterWidth: 250,
+    sidebearing: 80,
+    capitalSpacing: 1.15,
+    capitalCloses: true,
+    fit: 1,
+    // Geist's figures are proportional: its one is 385 wide, its zero 672.
+    figures: "proportional",
+    heavyCounter: 1.3,
+    heavyContrast: 0.42,
+    capitalContrast: 0.61,
+    // Geist Thin's capitals and figures stand on stems of 32 to its lowercase's 30.
+    capitalThin: 0.067,
+    // Geist's Y, j and # hang up to 10 past their left sides.
+    overhangs: { Y: 0.012, j: 0.012, numbersign: 0.012 },
+    overshoots: { O: 16, Q: 16 },
+    contrastRise: { from: 87, to: 0.27, over: 56, past: 0.82 },
+    // Geist Thin's o and n are both a little wider down the stroke than the
+    // Regular's, and set 5 units further apart on either side (its figures 10).
+    lightHeld: { from: 87, grow: 0.085, open: 5 },
+    // Geist's word space: 250 at the Thin and the Regular, 221 at the Black.
+    wordSpace: [250 / 530, 221 / 530],
+    // Geist stands its accents 55 over a lowercase letter and 66 over a
+    // capital, and sets its steep grave and acute by their feet; and closer
+    // over a heavy letter, 33 and 47 over Geist Black's.
+    accents: { gap: [0.055, 0.066], byFoot: true, heavy: [0.033, 0.047], heavyAt: 0.88 },
+    xGrows: { by: 10, at: 0.88 },
+    counterBend: 0.24,
+    dotAspect: { thin: 1.1, black: 0.92, at: 0.88 },
+    /* Geist Regular's own sidebearings, over 80 (a capital's over 80 after its 12 of extra). */
+    sides: {
+      a: [0.59, 0.24, "closes"],
+      // Geist's bowls stand 44 off at the Regular and 32 at the Black: a
+      // fitted round side gave back twice that as the bowls narrowed. Its
+      // v, w and y stand 3 closer at the Thin than the light opening gives,
+      // and its e closes as fast as its n.
+      b: [1, 0.52, "stem-left"],
+      c: [0.59, 0.46, "closes"],
+      d: [0.52, 1, "stem-right"],
+      e: [0.545, 0.545, "closes", [1, 1]],
+      o: [0.52, 0.52],
+      p: [1, 0.52, "stem-left"],
+      q: [0.52, 1, "stem-right"],
+      g: [0.52, 1, "stem-right"],
+      f: [0.75, 0.53, "closes", [0, 0], [-7, -3]],
+      // Its foot reaches back under the letter before (Geist -5 to -3).
+      j: [-0.06, 1, "closes", [-5, -2]],
+      k: [1, 0.59, "stem-left"],
+      // Fitted, its arm's side closed to 20 at the Light; Geist Thin's is 50.
+      r: [1, 0.55, "closes"],
+      // Its foot turns out nearly to the advance, as Geist's does (24 off).
+      l: [1, 0.3, "closes"],
+      v: [0.28, 0.28, "half", [-3, -3]],
+      w: [0.28, 0.28, "half", [-3, -3]],
+      y: [0.28, 0.28, "half", [-3, -3]],
+      t: [0.69, 0.46, "closes", [0, 0], [-8, -5]],
+      x: [0.59, 0.59],
+      // Geist sets its z 51 off either side from the Regular to the Black.
+      z: [0.64, 0.64, "held", [2, 2]],
+      A: [0.11, 0.11, "held", [5, 5]],
+      // Geist closes its B, K, L, R, U and its a, c, f, j, l and r as fast
+      // as its n (its B stands 62 off its bowl at the Regular, 43 at the
+      // Black); closed half as fast, they stood 8 to 16 units loose there.
+      // Geist Thin sets the right of its B, E, F, L, P and R 7 units closer
+      // than its Regular, where opened with the rest they stood 11 to 16 loose.
+      B: [1, 0.63, "closes", [0, -12]],
+      // Geist's D: 92 off its stem, 41 off its bowl; fitted, the bowl's side
+      // closed to 25 at the heavy weights.
+      D: [1, 0.36, "stem-left"],
+      E: [1, 0.55, "closes", [0, -11]],
+      F: [1, 0.5, "closes", [0, -12]],
+      P: [1, 0.5, "closes", [0, -12]],
+      C: [0.41, 0.35, "held", [5, 5]],
+      G: [0.41, 0.48, "held", [5, 5]],
+      J: [0.69, 0.81, "closes"],
+      K: [1, 0.04, "closes"],
+      L: [1, 0.44, "closes", [0, -12]],
+      R: [1, 0.63, "closes", [0, -12]],
+      // Geist stands its T 12 off either side; 15 here, which still leaves
+      // the A and T enough white for the kerning to close.
+      T: [0.04, 0.04, "half", [-6, -6]],
+      // Set by the measured fit the O closed to 25 at the Black; Geist's is 40.
+      // Geist's round and diagonal capitals hardly close at a heavy weight:
+      // theirs are held at the Regular's, and give back only the extra a
+      // capital closes by (see `capitalCloses`).
+      O: [0.41, 0.41, "held", [5, 5]],
+      Q: [0.41, 0.41, "held", [5, 5]],
+      U: [0.77, 0.77, "closes"],
+      // Geist's S stands 55 off either side at the Regular and 50 at the
+      // Black, closing as its figures do; fitted, it closed to 40.
+      S: [0.54, 0.54, "held", [5, 5]],
+      V: [0.11, 0.11, "held", [5, 5]],
+      W: [0.33, 0.33, "held", [5, 5]],
+      X: [0.04, 0.04],
+      // Geist's Y reaches past both its sides (6 and 4 at the Regular, 9 and
+      // 7 at the Black), as `overhangs` lets it; held inside, it stood 12 in.
+      Y: [-0.225, -0.2, "half", [-1, -4]],
+      // Its bars reach further than the Y's arms: held just inside its sides.
+      yen: [0.11, 0.11],
+      Z: [0.19, 0.19, "held", [5, 5]],
+      zero: [0.63, 0.63],
+      one: [0.5, 1.38],
+      two: [0.75, 0.75],
+      three: [0.63, 0.63],
+      four: [0.38, 0.63],
+      five: [0.75, 0.75],
+      six: [0.63, 0.5],
+      // Geist's seven reaches right to its advance (held a unit inside it),
+      // and its Thin's stands where its Regular's does, unopened.
+      seven: [0.25, 0.02, "unopened"],
+      eight: [0.5, 0.5],
+      nine: [0.5, 0.63],
+      question: [0.55, 0.55, "closes"],
+      // Geist's stops and quote stand 2 to 4 closer than the first fit had
+      // them; its colons 2 to 4 closer again from the SemiBold on, and its
+      // quote closes a little slower than the n toward the Black.
+      period: [0.565, 0.565, "closes"],
+      comma: [0.565, 0.565, "closes"],
+      colon: [1.15, 1.15, "closes", [0, 0], [-4, -2]],
+      semicolon: [1.15, 1.15, "closes", [0, 0], [-4, -2]],
+      quotesingle: [0.57, 0.57, "half", [0, 0], [2, 1]],
+      quotedbl: [0.56, 0.56],
+      // Geist's parentheses stand 45 off the side they open from and 15 off
+      // the side they close on.
+      parenleft: [0.56, 0.19],
+      parenright: [0.19, 0.56],
+      // Geist closes its slashes as fast as its n, the slash's right faster.
+      slash: [0.5, 0.72, "closes", [-5, 2]],
+      // Geist closes its hyphen and underscore as fast as its n (44 off at
+      // the Regular, 32 at the Black); half as fast, they stood 8 loose.
+      hyphen: [0.55, 0.55, "closes"],
+      // Geist's reaches past both its sides at the Regular (-10 and -5), and
+      // stands 8 and 10 in at the Black.
+      numbersign: [-0.125, -0.06, "half", [-5, -6], [22, 18]],
+      // Geist closes its % * and brackets as fast as its n: half as fast,
+      // they stood 8 to 16 units loose at the Black.
+      percent: [0.55, 0.55, "closes"],
+      asterisk: [0.55, 0.55, "closes"],
+      asciicircum: [0.5, 0.5, "held"],
+      // Geist's brackets and braces stand well off the side they open from.
+      bracketleft: [1.15, 0.19, "closes"],
+      bracketright: [0.19, 1.15, "closes"],
+      braceleft: [0.56, 0.19],
+      braceright: [0.19, 0.56],
+      // Geist Thin's stands 60 off either side, its Regular's 40.
+      backslash: [0.5, 0.5, "closes", [15, 15]],
+      // Geist sets its signs 40 off either side at every weight (50 off the
+      // open side of an angle); closed with the letters they stood 6 tight
+      // at the Black and opened 5 loose at the Thin.
+      plus: [0.5, 0.5, "held"],
+      less: [0.5, 0.62, "held"],
+      greater: [0.62, 0.5, "held"],
+      equal: [0.5, 0.5, "held"],
+      underscore: [0.55, 0.55, "closes"],
+      asciitilde: [0.5, 0.5, "held"],
+      // Geist's stands 55 off either side at the Regular; fitted, 44 and 34.
+      dollar: [0.69, 0.69],
+      // Geist stands its ! 50 off either side and its bar 92.
+      exclam: [0.63, 0.63],
+      // Geist's ampersand stands 40 off its left and 20 off its right.
+      ampersand: [0.5, 0.25, "closes", [5, 5]],
+      bar: [1.15, 1.15, "closes"],
+      grave: [0.55, 0.55],
+      acute: [0.55, 0.55],
+      at: [0.56, 0.57],
+    },
+    /*
+     * Each letter's width against the rhythm, fitted to Geist's by measuring
+     * the ink: see `proportions`. For the plain forms: the grotesque ones the
+     * Sans draws by default are drawn in Geist's own units and take none of it.
+     */
+    proportions: {
+      b: 0.965,
+      c: 1.121,
+      d: 0.965,
+      e: 0.97,
+
+      h: 0.994,
+
+      k: 1.217,
+      m: 0.936,
+      n: 0.994,
+      p: 0.965,
+      q: 0.965,
+
+      u: 0.976,
+      v: 1.287,
+      w: 1.394,
+      x: 1.353,
+
+      z: 1.3,
+      A: 1.13,
+      B: 1.401,
+      H: 1.38,
+      C: 1.122,
+      D: 1.134,
+      E: 1.299,
+      F: 1.273,
+
+      K: 1.336,
+      L: 1.377,
+      M: 1.296,
+      N: 1.258,
+      O: 1.022,
+      P: 1.337,
+      Q: 1.007,
+
+      T: 1.008,
+      U: 1.332,
+      V: 1.076,
+      W: 1.15,
+      X: 1.15,
+      Y: 1.066,
+      Z: 1.265,
+      zero: 1.084,
+      two: 1.052,
+      four: 1.222,
+      five: 0.909,
+      six: 1.059,
+      eight: 1.403,
+      nine: 1.059,
+      onequarter: 1.2,
+      onehalf: 1.2,
+      threequarters: 1.12,
+    },
+  },
+  pen: { weight: 87, contrast: 0.06, angle: 0 },
+  /*
+   * The forms a neo-grotesque takes where the plain sans takes another: see
+   * `letters/grotesque.ts`.
+   */
+  forms: {
+    a: "grotesque",
+    c: "grotesque",
+    e: "grotesque",
+    f: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    j: "grotesque",
+    t: "grotesque",
+    u: "grotesque",
+    y: "grotesque",
+    G: "grotesque",
+    J: "grotesque",
+    R: "grotesque",
+    one: "grotesque",
+    k: "grotesque",
+    l: "grotesque",
+    K: "grotesque",
+    M: "grotesque",
+    N: "grotesque",
+    W: "grotesque",
+    v: "grotesque",
+    w: "grotesque",
+    A: "grotesque",
+    B: "grotesque",
+    C: "grotesque",
+    P: "grotesque",
+    Q: "grotesque",
+    O: "grotesque",
+    D: "grotesque",
+    x: "grotesque",
+    X: "grotesque",
+    m: "grotesque",
+    n: "grotesque",
+    h: "grotesque",
+    b: "grotesque",
+    d: "grotesque",
+    p: "grotesque",
+    q: "grotesque",
+    V: "grotesque",
+    Y: "grotesque",
+    s: "grotesque",
+    S: "grotesque",
+    z: "grotesque",
+    Z: "grotesque",
+    exclam: "grotesque",
+    hyphen: "grotesque",
+    quotesingle: "grotesque",
+    quotedbl: "grotesque",
+    parenleft: "grotesque",
+    parenright: "grotesque",
+    slash: "grotesque",
+    numbersign: "grotesque",
+    percent: "grotesque",
+    section: "grotesque",
+    asterisk: "grotesque",
+    at: "grotesque",
+    asciicircum: "grotesque",
+    bracketleft: "grotesque",
+    bracketright: "grotesque",
+    braceleft: "grotesque",
+    braceright: "grotesque",
+    backslash: "grotesque",
+    plus: "grotesque",
+    less: "grotesque",
+    greater: "grotesque",
+    equal: "grotesque",
+    underscore: "grotesque",
+    asciitilde: "grotesque",
+    grave: "grotesque",
+    acute: "grotesque",
+    circumflex: "grotesque",
+    dieresis: "grotesque",
+    tilde: "grotesque",
+    dollar: "grotesque",
+    bar: "grotesque",
+    zero: "grotesque",
+    two: "grotesque",
+    three: "sided",
+    four: "grotesque",
+    five: "sided",
+    six: "sided",
+    seven: "grotesque",
+    eight: "grotesque",
+    nine: "sided",
+    ampersand: "grotesque",
+    question: "grotesque",
+    E: "grotesque",
+    F: "grotesque",
+    H: "grotesque",
+    L: "grotesque",
+    T: "grotesque",
+    U: "grotesque",
+    i: "grotesque",
+  },
+  parts: {
+    ...PLAIN.parts,
+    bowl: { width: 0.845, squareness: 0, aperture: 0.8, superness: 0.15 },
+    // High enough that the springing still shapes the arch on an n this narrow:
+    // below it the turn is held to the arch's own half-width and the control
+    // does nothing.
+    shoulder: { spring: 0.72, reach: 1, crest: 1 },
+    terminal: { kind: "level", angle: 0 },
+  },
+};
+
 export const SERIF: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Serif",
   family: "serif",
   blurb: "Contrast, an angled pen, and bracketed serifs.",
-  pen: { weight: 96, contrast: 0.42, angle: 8 },
+  /*
+   * Lora's o is 102 units across its sides and 38 across its crown and its
+   * base, a thin stroke four tenths of the thick one, and its thinnest point
+   * sits a few degrees round from the top. At 0.42 ours was 0.59 of the thick,
+   * which reads as a sans with serifs rather than as a text face.
+   */
+  pen: { weight: 87, contrast: 0.55, angle: 8 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
    * were asking for.
@@ -411,12 +1141,350 @@ export const SERIF: Style = {
    * default. So every face here had the geometric one, which is most of why a
    * Serif and a Geometric read as the same drawings with the pen changed.
    */
-  forms: { a: "double", J: "descending" },
+  /*
+   * And the two-storey g beside it, and a J that stands on the line.
+   *
+   * A text serif's g is binocular far more often than not, and set beside a
+   * two-storey a the single-storey one read as a letter borrowed from the sans.
+   * The J hung below the baseline was the old-style choice; a contemporary text
+   * face -- Lora, Source Serif, Merriweather -- sits it on the line with a hook,
+   * which is also what keeps it from colliding with the line below in caps.
+   * The G with an upright spur rather than a bar turned in, and the Q whose
+   * tail sweeps out under the line, are the same kind of decision.
+   */
+  forms: {
+    a: "humanist",
+    g: "humanist",
+    G: "humanist",
+    Q: "humanist",
+    y: "hooked",
+    // Lora's own: see `letters/humanist.ts`.
+    e: "humanist",
+    u: "humanist",
+    t: "humanist",
+    U: "humanist",
+    M: "humanist",
+    N: "humanist",
+    o: "humanist",
+    c: "humanist",
+    O: "humanist",
+    C: "humanist",
+    zero: "humanist",
+    j: "humanist",
+    five: "humanist",
+    hyphen: "humanist",
+    slash: "humanist",
+    exclam: "humanist",
+    A: "humanist",
+    w: "humanist",
+    W: "humanist",
+    k: "humanist",
+    K: "humanist",
+    s: "humanist",
+    at: "humanist",
+    S: "humanist",
+    seven: "humanist",
+    two: "humanist",
+    question: "humanist",
+    ampersand: "humanist",
+    R: "humanist",
+  },
+  /*
+   * A text face's proportions rather than the sans's.
+   *
+   * Measured against Lora at the same x-height: its n is 0.83 of an x-height
+   * from stem edge to stem edge where the sans's is 1.07, its o 0.94 inside
+   * where ours was 1.03, and its extenders reach 0.51 of an x-height below the
+   * line where the sans's stop at 0.40. The capitals were already close -- an
+   * H within two hundredths -- so the cap height and the counter of an H are
+   * left alone and only the lowercase rhythm and the bowls come in.
+   */
+  /*
+   * And set as tight as Lora: its lowercase averages 32 units a side on an
+   * x-height of 500, which is 34 on ours. The sans's 55 set the serif half as
+   * loose again as the face it was measured against.
+   */
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 500,
+    capHeight: 700,
+    ascender: 755,
+    descender: -255,
+    overshoot: 16,
+    sidebearing: 34,
+    capitalSpacing: 1.4,
+    /*
+     * The rising strokes of the vees and the x drawn as hairlines, as Lora's
+     * are -- the right arm of its v is 52 units across against the left's 91
+     * -- where a pen held nearly level gave both arms of a v the same weight
+     * and the v, w and y stood dark in a line of text. But not the z's and
+     * the Z's diagonals, which Lora draws heavy, nor the A, which draws its
+     * own: thinned again, its hairline leg stood apart from the other at
+     * the apex past a Black. Nor the one's flag, whose thinned end stood
+     * seven units over the stem's head at the heaviest.
+     */
+    risingHairline: true,
+    risingOwn: ["z", "Z", "slash", "A", "one"],
+    // Lora's word space, 263 at the Regular and the Bold, a little more past it.
+    wordSpace: [263 / 500, 280 / 500],
+    // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
+    bold: {
+      at: 0.47,
+      kept: 0.5,
+      spacing: 0.82,
+      widths: {
+        a: 0.879,
+        b: 0.929,
+        c: 0.962,
+        d: 0.928,
+        e: 0.95,
+        f: 0.923,
+        g: 1.021,
+        h: 0.951,
+        k: 0.978,
+        m: 0.98,
+        n: 0.957,
+        o: 0.94,
+        p: 0.945,
+        q: 0.948,
+        r: 0.985,
+        s: 0.88,
+        t: 1.087,
+        u: 1.013,
+        v: 0.906,
+        w: 0.807,
+        x: 0.829,
+        y: 0.879,
+        z: 0.993,
+        A: 0.762,
+        B: 0.727,
+        C: 0.996,
+        D: 0.979,
+        E: 0.989,
+        F: 1.056,
+        G: 0.95,
+        H: 0.938,
+        J: 1.211,
+        K: 0.974,
+        L: 1.055,
+        M: 1.008,
+        N: 0.961,
+        O: 0.952,
+        P: 0.698,
+        Q: 0.98,
+        R: 0.914,
+        S: 0.947,
+        T: 1.076,
+        U: 0.923,
+        V: 0.952,
+        W: 0.959,
+        X: 0.965,
+        Y: 0.909,
+        Z: 1.032,
+        zero: 0.894,
+        one: 0.709,
+        two: 0.872,
+        three: 0.841,
+        four: 0.936,
+        five: 0.87,
+        six: 0.892,
+        seven: 0.861,
+        eight: 0.833,
+        nine: 0.894,
+        question: 0.787,
+      },
+      // Past the Bold: the open letters widening with the stems, as a
+      // Black's do (C/O 0.9, E/H 0.75, T/H 0.87, z/x 0.83 at a pen of 260).
+      past: {
+        C: 1.2,
+        G: 1.3,
+        E: 1.39,
+        F: 1.39,
+        L: 1.44,
+        T: 1.49,
+        Z: 1.41,
+        z: 1.45,
+        J: 1.43,
+        N: 1.3,
+        W: 1.33,
+        w: 0.75,
+        s: 1.54,
+        five: 1.19,
+        seven: 1.27,
+      },
+    },
+    // LORA-BOLD-END
+    // LORA-TABLES-BEGIN (fitted to Lora Regular: see lora.test.ts)
+    sides: {
+      a: [1, 0.74],
+      b: [0.24, 1.24],
+      c: [1.21, 1],
+      d: [1.24, 0.88],
+      e: [1.24, 1.15],
+      f: [0.74, 0.06],
+      g: [1.03, 0.06],
+      h: [0.76, 0.88],
+      i: [1.06, 0.97],
+      j: [0.21, 2.18],
+      k: [0.76, 0.21],
+      l: [0.74, 1],
+      m: [1.06, 0.94],
+      n: [1.09, 0.88],
+      o: [1.21, 1.21],
+      p: [0.85, 1.24],
+      q: [1.24, 0.44],
+      r: [1.06, 0.21],
+      s: [1.53, 1.21],
+      t: [0.62, 0.12],
+      u: [0.76, 0.85],
+      v: [0.21, 0.09],
+      w: [0.21, 0.06],
+      x: [0.65, 0.32],
+      y: [0.21, 0.12],
+      z: [1.18, 1.29],
+      A: [-0.19, -0.34],
+      B: [1.22, 0.75],
+      C: [0.95, 0.48],
+      D: [1.22, 0.95],
+      E: [1.22, 0.92],
+      F: [1.22, 0.31],
+      G: [0.98, 0.22],
+      H: [1.22, 1.22],
+      I: [1.22, 1.22],
+      J: [-0.19, 0.48],
+      K: [1.22, -0.25],
+      L: [1.22, 0.22],
+      M: [0.89, 0.6],
+      N: [1.28, 0.86],
+      O: [0.95, 0.89],
+      P: [1.22, 0.36],
+      Q: [0.95, -0.11],
+      R: [1.22, -0.34],
+      S: [1.31, 0.89],
+      T: [0.25, 0.28],
+      U: [0.51, 0.48],
+      V: [-0.19, -0.34],
+      W: [-0.19, -0.34],
+      X: [-0.14, -0.34],
+      Y: [-0.19, -0.34],
+      Z: [0.86, 1.01],
+      zero: [1.65, 1.62],
+      one: [0.53, 1.03],
+      two: [1.35, 1.53],
+      three: [1.29, 1.47],
+      four: [0.35, 1],
+      five: [1.53, 1.32],
+      six: [1.65, 1.44],
+      seven: [0.65, 0.59],
+      eight: [1.74, 1.47],
+      nine: [1.41, 1.74],
+      ampersand: [1.06, 0.06],
+      question: [0.97, 1.08],
+      exclam: [2.18, 2.21],
+      period: [1.88, 1.91],
+      comma: [1.94, 1.79],
+      semicolon: [2.06, 1.97],
+      colon: [1.97, 1.94],
+      quotesingle: [1.82, 1.82],
+      quotedbl: [1.82, 1.85],
+      parenleft: [1.06, 0.5],
+      parenright: [0.53, 1.03],
+      hyphen: [1.97, 1.97],
+      slash: [0.62, 0.59],
+      at: [1.47, 1.24],
+      yen: [0.82, 0.79],
+    },
+    proportions: {
+      a: 1.069,
+      b: 0.84,
+      c: 0.83,
+      d: 0.826,
+      e: 0.796,
+      f: 1.303,
+      g: 1.016,
+      h: 0.936,
+      k: 0.92,
+      m: 0.875,
+      n: 0.927,
+      o: 0.889,
+      p: 0.826,
+      q: 0.811,
+      r: 0.88,
+      s: 0.935,
+      t: 1.278,
+      u: 0.933,
+      v: 0.865,
+      x: 0.927,
+      y: 0.941,
+      z: 1.19,
+      A: 0.776,
+      B: 1.036,
+      C: 0.897,
+      D: 1.017,
+      E: 1.128,
+      F: 0.984,
+      G: 1.023,
+      H: 0.987,
+      J: 1.135,
+      K: 1.055,
+      L: 1.176,
+      M: 1.15,
+      N: 1.033,
+      O: 0.948,
+      P: 1.029,
+      Q: 1.027,
+      R: 0.964,
+      S: 0.96,
+      T: 0.984,
+      U: 1.035,
+      V: 0.795,
+      X: 0.857,
+      Y: 0.821,
+      Z: 1.158,
+      zero: 0.943,
+      one: 0.981,
+      two: 0.942,
+      three: 1.226,
+      four: 1.141,
+      six: 0.984,
+      seven: 0.954,
+      eight: 1.028,
+      nine: 0.982,
+      question: 0.889,
+    },
+    // LORA-TABLES-END
+    fit: 1,
+    figures: "proportional",
+    heavyCounter: 1.3,
+  },
   parts: {
-    ...SANS.parts,
-    slab: { on: true, projection: 0.46, thickness: 0.48, bracket: 0.23 },
-    shoulder: { spring: 0.58, reach: 1, crest: 1 },
-    terminal: { kind: "angled", angle: 12 },
+    ...PLAIN.parts,
+    /*
+     * A text serif rather than a slab: it thins toward its tip, it is
+     * bracketed well into the stem, and the top of a lowercase stem wears one
+     * flag sloping down to the left, which is where a pen enters the stroke.
+     */
+    slab: {
+      on: true,
+      projection: 0.74,
+      thickness: 0.4,
+      bracket: 0.4,
+      shape: "wedge",
+      head: "sloped",
+      hold: 0.087,
+      past: 0.1,
+    },
+    /*
+     * Lora's c and C close in further than the sans's: the drop on the c
+     * hangs at about forty degrees round from the top, and its foot ends
+     * a third of the way up the right.
+     */
+    // Ovals, as Lora's o is, not circles stood on straight sides.
+    bowl: { ...PLAIN.parts.bowl, width: 0.92, aperture: 0.75, oval: true },
+    shoulder: { spring: 0.58, reach: 0.76, crest: 1 },
+    // The curved ends -- the hooks of the a, c, f, r, j and y -- swell into a
+    // teardrop rather than taking a bar across, which is what a text face does.
+    terminal: { kind: "teardrop", angle: 12 },
   },
 };
 
@@ -429,7 +1497,7 @@ export const SERIF: Style = {
  * numbers sits where a text face would refuse to go.
  */
 export const DISPLAY: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Display",
   family: "display",
   blurb: "A fat face: as heavy as the counters will take, with the weight all on the uprights.",
@@ -443,13 +1511,20 @@ export const DISPLAY: Style = {
    * they turn. Set tight it reads as one block of colour, which is what it was
    * invented to do.
    */
-  metrics: { ...SANS.metrics, xHeight: 575, counterWidth: 285, sidebearing: 34, width: 1.02 },
+  metrics: { ...PLAIN.metrics, xHeight: 575, counterWidth: 285, sidebearing: 34, width: 1.02 },
   pen: { weight: 205, contrast: 0.55, angle: 0 },
   // The apex cut flat, which its own hint says is what a heavy face does to
   // keep the top of an A from going black.
-  forms: { A: "flat" },
+  forms: {
+    A: "flat",
+    G: "grotesque",
+    S: "grotesque",
+    s: "grotesque",
+    c: "grotesque",
+    e: "grotesque",
+  },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     shoulder: { spring: 0.66, reach: 1.02, crest: 1 },
     /*
      * Narrower than tall, which is both what a fat face is and what keeps its
@@ -459,8 +1534,8 @@ export const DISPLAY: Style = {
      * hundred and eighty -- and an `o` wider than an `n` is a face whose
      * rhythm has inverted.
      */
-    bowl: { width: 0.92, squareness: 0.12, aperture: 0.9 },
-    corner: { radius: 0, join: "round" },
+    bowl: { width: 0.92, squareness: 0.12, aperture: 0.9, superness: 0 },
+    corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
   },
 };
@@ -480,25 +1555,80 @@ export const DISPLAY: Style = {
 
 /** Geometric: circles, points, one thickness. */
 export const GEOMETRIC: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Geometric",
   family: "sans",
   blurb: "Circles and points, one thickness throughout.",
-  metrics: { ...SANS.metrics, xHeight: 500, counterWidth: 380, sidebearing: 58 },
+  /*
+   * A heavy weight gives its counters back for the stem it gains, as Futura
+   * Extra Bold does: its o stays nearly a circle and closes from the inside.
+   * Left to widen the letters instead, as every face does by default, a Black
+   * Geometric ran its bowls out into flat-topped stadiums and read as an
+   * extended face.
+   */
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 500,
+    counterWidth: 380,
+    sidebearing: 58,
+    heavyCounter: 1.4,
+    /*
+     * And closing further than that past the Black: a pen a quarter of the
+     * em wide leaves an o no rounder than its counter lets it, and held to a
+     * counter a fifth of the x-height across, an Ultra's o stood a third as
+     * wide again as it was tall.
+     */
+    heavyFloor: 0.14,
+    /*
+     * Spaced by what each side leaves inside its own box (see `fitted` in
+     * `build.ts`), as the Sans is: at one sidebearing for every side, the A,
+     * V, W and Y stood as far off their neighbours as an H, and LATVAWAY was
+     * a row of holes.
+     */
+    fit: 1,
+    sides: { T: [0.3, 0.3] },
+  },
   pen: { weight: 86, contrast: 0, angle: 0 },
   /*
-   * The three letters a geometric face argues about, and every one of these
+   * The letters a geometric face argues about, and every one of these
    * alternates names it in its own hint: the tail hung under the bowl rather
-   * than crossing its wall, a G with nothing turned back into it, and the M's
-   * vertex carried to the baseline to square the letter off. The a stays as it
+   * than crossing its wall, and the M's vertex carried to the baseline to
+   * square the letter off. (The G with nothing turned back into it read as a
+   * C with a chopped end past a Bold, and gave way to the grotesque's below.) The a stays as it
    * is -- single storey is already what is drawn here, and it is the text faces
    * that wanted the other one.
    */
-  forms: { Q: "under", G: "bare", M: "deep" },
+  /*
+   * And the neo-grotesque's own S and s, G, t, g, r, e, c, @, %, # and ? (see
+   * `letters/grotesque.ts`), drawn to hold their shape to a Black and past
+   * it. The construction's own came apart past a Bold: an S whose spine was a
+   * hairline between two blobs, a t notched where its foot turned, a g
+   * spurred where its tail left the stem, a percent whose rings ran into its
+   * slash, and a G that was a C with a chopped end.
+   */
+  forms: {
+    Q: "under",
+    G: "grotesque",
+    M: "deep",
+    // The grotesque's S and s held narrow, as Futura's are: see `NARROWED`
+    // in `letters/alternates.ts`.
+    S: "geometric",
+    s: "geometric",
+    at: "grotesque",
+    percent: "grotesque",
+    section: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+    t: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    e: "grotesque",
+    c: "grotesque",
+  },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     shoulder: { spring: 0.55, reach: 1, crest: 1 },
-    bowl: { width: 1, squareness: 0, aperture: 1 },
+    bowl: { width: 1, squareness: 0, aperture: 1, superness: 0 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -506,19 +1636,19 @@ export const GEOMETRIC: Style = {
 
 /** Ribbon: one heavy stroke bent round, with the corners opened right out. */
 export const RIBBON: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Ribbon",
   family: "display",
   blurb: "One heavy stroke bent round. Corners opened until the joints disappear.",
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 330, sidebearing: 46 },
+  metrics: { ...PLAIN.metrics, xHeight: 560, counterWidth: 330, sidebearing: 46 },
   pen: { weight: 150, contrast: 0, angle: 0 },
   // A single bent stroke cannot tell an l from a one, so the l is turned out
   // at the foot -- which is what its alternate exists for.
-  forms: { l: "tailed" },
+  forms: { l: "tailed", two: "grotesque", five: "grotesque", six: "grotesque", nine: "grotesque" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     shoulder: { spring: 0.4, reach: 1.05, crest: 1 },
-    bowl: { width: 1, squareness: 0.5, aperture: 1 },
+    bowl: { width: 1, squareness: 0.5, aperture: 1, superness: 0 },
     corner: { radius: 220, join: "round" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -526,19 +1656,19 @@ export const RIBBON: Style = {
 
 /** Technical: squared off, narrow, corners just off the pen's limit. */
 export const TECHNICAL: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Technical",
   family: "display",
   blurb: "Squared off and narrow, with the corners just off the limit.",
-  metrics: { ...SANS.metrics, counterWidth: 300, sidebearing: 52, width: 0.9 },
+  metrics: { ...PLAIN.metrics, counterWidth: 300, sidebearing: 52, width: 0.9 },
   pen: { weight: 78, contrast: 0, angle: 0 },
   // The t cut off square at the baseline, which its own hint calls the
   // squared or technical face's.
   forms: { t: "straight" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     shoulder: { spring: 0.78, reach: 0.82, crest: 1 },
-    bowl: { width: 0.82, squareness: 0.92, aperture: 1 },
+    bowl: { width: 0.82, squareness: 0.92, aperture: 1, superness: 0 },
     corner: { radius: 45, join: "round" },
     terminal: { kind: "butt", angle: 0 },
   },
@@ -546,7 +1676,7 @@ export const TECHNICAL: Style = {
 
 /** Fairground: the pen turned a quarter, so the horizontals are the thick strokes. */
 export const FAIRGROUND: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Fairground",
   family: "display",
   blurb:
@@ -558,7 +1688,7 @@ export const FAIRGROUND: Style = {
    * Wide, heavy, slabbed and set on the older forms, it reads as the poster it
    * is named after rather than as a sans with its pen turned.
    */
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 400, sidebearing: 46, width: 1.1 },
+  metrics: { ...PLAIN.metrics, xHeight: 560, counterWidth: 400, sidebearing: 46, width: 1.1 },
   // Not as far as reverse contrast will go: at seven tenths the uprights thin
   // to hairlines and the right stem of an `n` all but leaves. Six tenths keeps
   // the horizontals carrying the weight and the letters legible, which is what
@@ -568,24 +1698,24 @@ export const FAIRGROUND: Style = {
   // that overlap, and a one with a foot so it does not lean on its neighbours.
   forms: { W: "crossed", one: "footed" },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Slabs, because a circus face has them and because a slab laid across a
     // thin vertical is what stops reverse contrast reading as a mistake.
-    slab: { on: true, projection: 0.5, thickness: 0.34, bracket: 0 },
-    bowl: { width: 1.06, squareness: 0.18, aperture: 1 },
+    slab: { ...PLAIN.parts.slab, on: true, projection: 0.5, thickness: 0.34, bracket: 0 },
+    bowl: { width: 1.06, squareness: 0.18, aperture: 1, superness: 0 },
     terminal: { kind: "butt", angle: 0 },
   },
 };
 
 /** Marker: leaned over, drawn with a flat pen held at an angle. */
 export const MARKER: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Marker",
   family: "hand",
   blurb:
     "A felt tip on paper: one width whichever way it goes, and an edge that followed the grain.",
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     // A hand leans a little; thirteen degrees was a typeface being italic.
     slant: 8,
     // Handwriting runs a larger x-height than type does, and sits looser.
@@ -604,10 +1734,10 @@ export const MARKER: Style = {
    */
   pen: { weight: 126, contrast: 0.06, angle: 0 },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // A hand does not close its apertures, and a bullet tip cannot draw a
     // corner: the tip has a radius and so does everything it draws.
-    bowl: { width: 0.98, squareness: 0.1, aperture: 1.06 },
+    bowl: { width: 0.98, squareness: 0.1, aperture: 1.06, superness: 0 },
     corner: { radius: 30, join: "round" },
     /*
      * Square, and not for want of trying.
@@ -634,7 +1764,17 @@ export const MARKER: Style = {
    * two-storey one that is the alternate, and it is the text faces that should
    * be asking for it.
    */
-  forms: { g: "curled", t: "straight", y: "straight", l: "tailed" },
+  /*
+   * The spurred G. The plain one's upper terminal is cut back as the pen
+   * grows, and at the slider's heaviest it stood off the bowl as a hook and
+   * the letter read as a 6. The spur keeps the bar on the bowl at every weight.
+   */
+  /*
+   * And the grotesque `k`, its arm and leg meeting the stem on the diagonal.
+   * The plain one's arm runs out nearly flat, and as the pen grows it reaches
+   * further: at 260 it stood out past the letter as a long thin blade.
+   */
+  forms: { g: "curled", t: "straight", y: "straight", l: "tailed", G: "spurred", k: "grotesque" },
   /*
    * And the tool, which is where this face stops being a slanted sans.
    *
@@ -662,20 +1802,33 @@ export const MARKER: Style = {
  * a ribbon.
  */
 export const WAVY: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Wavy",
   family: "display",
   blurb: "Thin, wide, and rippling along every run that lies flat.",
-  metrics: { ...SANS.metrics, width: 1.12, sidebearing: 44 },
+  metrics: { ...PLAIN.metrics, width: 1.12, sidebearing: 44 },
   pen: { weight: 44, contrast: 0, angle: 0 },
   // A wave needs something long and flat to happen along, and the barred seven
   // and the open four both give it one where the plain forms give it a
   // diagonal.
   forms: { seven: "barred", four: "open" },
   parts: {
-    ...SANS.parts,
-    slab: { on: true, projection: 1.55, thickness: 0.52, bracket: 0 },
-    bowl: { width: 1.05, squareness: 0, aperture: 1 },
+    ...PLAIN.parts,
+    /*
+     * The long serifs held to a hairline face's size as the pen grows: grown with
+     * it, a Black's ran a third of an em out from every stem, met the next
+     * letter's, and closed a z into a box.
+     */
+    slab: {
+      ...PLAIN.parts.slab,
+      on: true,
+      projection: 1.55,
+      thickness: 0.52,
+      bracket: 0,
+      hold: 0.06,
+      past: 0.1,
+    },
+    bowl: { width: 1.05, squareness: 0, aperture: 1, superness: 0 },
     wave: { length: 152, depth: 34, along: "flat" },
   },
 };
@@ -689,18 +1842,18 @@ export const WAVY: Style = {
  * the stroke swelling rather than as a serif stuck on.
  */
 export const FLARED: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Flared",
   family: "display",
   blurb: "Condensed and swelling at every stroke end, the art-nouveau way.",
-  metrics: { ...SANS.metrics, width: 0.78, capHeight: 740, xHeight: 500, sidebearing: 42 },
+  metrics: { ...PLAIN.metrics, width: 0.78, capHeight: 740, xHeight: 500, sidebearing: 42 },
   pen: { weight: 118, contrast: 0.34, angle: 0 },
   // The art-nouveau f and J, both carried below the line as a display face
   // does with them.
   forms: { f: "descending", J: "descending" },
   parts: {
-    ...SANS.parts,
-    bowl: { width: 0.94, squareness: 0.1, aperture: 1 },
+    ...PLAIN.parts,
+    bowl: { width: 0.94, squareness: 0.1, aperture: 1, superness: 0 },
     corner: { radius: 0, join: "miter" },
     flare: { spread: 0.3, depth: 1.1, curve: 0.95 },
   },
@@ -716,20 +1869,27 @@ export const FLARED: Style = {
  * block of colour with the words cut out of it, which is the point.
  */
 export const PSYCHEDELIC: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Psychedelic",
   family: "display",
-  blurb: "Heavy, swollen, nearly shut, with a ball on every open end.",
-  metrics: { ...SANS.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40, width: 1.04 },
+  blurb: "Heavy, swollen, nearly shut, with a ball on every end that stops in the air.",
+  metrics: { ...PLAIN.metrics, xHeight: 560, counterWidth: 300, sidebearing: 40, width: 1.04 },
   pen: { weight: 168, contrast: 0.62, angle: 0 },
   // The warm curled g and the descending f, both of which their own hints
-  // give to a display face.
-  forms: { g: "curled", f: "descending" },
+  // give to a display face -- and the y's tail curled round under the line,
+  // so it ends in the air and takes a ball, as the j and the f beside it do.
+  // Cut straight on the descender it was the one hook here without one.
+  forms: { g: "curled", f: "descending", y: "hooked" },
   parts: {
-    ...SANS.parts,
-    bowl: { width: 1.02, squareness: 0.1, aperture: 0.42 },
+    ...PLAIN.parts,
+    bowl: { width: 1.02, squareness: 0.1, aperture: 0.42, superness: 0 },
     shoulder: { spring: 0.72, reach: 1, crest: 1 },
-    ball: { size: 1.75, drop: 0.4 },
+    /*
+     * Balls on the curves only. On the level arms of an E and an F, the bar of
+     * a four and the flag of an exclamation, cut square either side of the
+     * arms beside them, a disc read as a blot hung in the counter.
+     */
+    ball: { size: 1.75, drop: 0.4, straight: false },
   },
 };
 
@@ -745,12 +1905,12 @@ export const PSYCHEDELIC: Style = {
  * the l with a tail are all hands rather than types.
  */
 export const BRUSH: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Brush",
   family: "hand",
   blurb: "The signwriter's hand: leaned over, chisel-cut, drawn in cursive shapes.",
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     slant: 15,
     xHeight: 505,
     capHeight: 700,
@@ -762,14 +1922,24 @@ export const BRUSH: Style = {
   },
   pen: { weight: 132, contrast: 0.66, angle: -17 },
   parts: {
-    ...SANS.parts,
-    bowl: { width: 0.94, squareness: 0.28, aperture: 0.86 },
+    ...PLAIN.parts,
+    bowl: { width: 0.94, squareness: 0.28, aperture: 0.86, superness: 0 },
     shoulder: { spring: 0.5, reach: 0.96, crest: 1 },
     corner: { radius: 0, join: "miter" },
     terminal: { kind: "butt", angle: 0 },
     flare: { spread: 0.14, depth: 1.1, curve: 0.7 },
   },
-  forms: { g: "curled", f: "descending", y: "straight", l: "tailed" },
+  /*
+   * The spurred G. The plain one's upper terminal is cut back as the pen
+   * grows, and at the slider's heaviest it stood off the bowl as a hook and
+   * the letter read as a 6. The spur keeps the bar on the bowl at every weight.
+   */
+  /*
+   * And the grotesque `k`, its arm and leg meeting the stem on the diagonal.
+   * The plain one's arm runs out nearly flat, and as the pen grows it reaches
+   * further: at 260 it stood out past the letter as a long thin blade.
+   */
+  forms: { g: "curled", f: "descending", y: "straight", l: "tailed", G: "spurred", k: "grotesque" },
   /*
    * The pressure, which is what separates a brush from a slanted pen.
    *
@@ -798,11 +1968,11 @@ export const BRUSH: Style = {
  * different letter; it is the same skeletons with three numbers moved.
  */
 export const GROTESQUE: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Grotesque",
   family: "sans",
   blurb: "A sans that has closed up: tight apertures, high shoulders, squared bowls.",
-  metrics: { ...SANS.metrics, xHeight: 535, width: 0.97, counterWidth: 318 },
+  metrics: { ...PLAIN.metrics, xHeight: 535, width: 0.97, counterWidth: 318 },
   pen: { weight: 104, contrast: 0.06, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -813,10 +1983,36 @@ export const GROTESQUE: Style = {
    * default. So every face here had the geometric one, which is most of why a
    * Serif and a Geometric read as the same drawings with the pen changed.
    */
-  forms: { a: "double", R: "curved" },
+  /*
+   * And the neo-grotesque's own S and s, G, t, g, r, e, c, @, %, # and ? (see
+   * `letters/grotesque.ts`), drawn to hold their shape to a Black and past
+   * it. The construction's own came apart past a Bold: an S whose spine was a
+   * hairline between two blobs, a t notched where its foot turned, a g
+   * spurred where its tail left the stem, a percent whose rings ran into its
+   * slash, and a G that was a C with a chopped end.
+   */
+  forms: {
+    a: "grotesque",
+    R: "curved",
+    S: "grotesque",
+    s: "grotesque",
+    G: "grotesque",
+    at: "grotesque",
+    percent: "grotesque",
+    section: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+    t: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    f: "grotesque",
+    j: "grotesque",
+    e: "grotesque",
+    c: "grotesque",
+  },
   parts: {
-    ...SANS.parts,
-    bowl: { width: 0.97, squareness: 0.14, aperture: 0.62 },
+    ...PLAIN.parts,
+    bowl: { width: 0.97, squareness: 0.14, aperture: 0.62, superness: 0 },
     shoulder: { spring: 0.74, reach: 1, crest: 1 },
   },
 };
@@ -831,11 +2027,11 @@ export const GROTESQUE: Style = {
  * of the display ones.
  */
 export const DIDONE: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Didone",
   family: "serif",
   blurb: "Contrast at its limit and serifs left as unbracketed hairlines.",
-  metrics: { ...SANS.metrics, xHeight: 500, width: 0.98 },
+  metrics: { ...PLAIN.metrics, xHeight: 500, width: 0.98, risingHairline: true },
   pen: { weight: 118, contrast: 0.8, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -846,9 +2042,26 @@ export const DIDONE: Style = {
    * default. So every face here had the geometric one, which is most of why a
    * Serif and a Geometric read as the same drawings with the pen changed.
    */
-  forms: { a: "double" },
+  /*
+   * And the old-style S and s (see `bookSpine` in `letters/humanist.ts`),
+   * whose spine is the heaviest stroke in them as a didone's is -- the
+   * construction's put the hairline there -- and the neo-grotesque's G, %,
+   * # and ?, which hold their shape past a Bold where the construction's
+   * came apart. Not its @, though: drawn without contrast, the grotesque's
+   * was a monoline ring among hairlines and fat stems, where the plain one,
+   * held to the O's size at a heavy weight, keeps the face's own pen.
+   */
+  forms: {
+    a: "double",
+    S: "humanist",
+    s: "humanist",
+    G: "grotesque",
+    percent: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+  },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     /*
      * Longer than the old-style's, and no thinner or squarer than this.
      *
@@ -858,22 +2071,26 @@ export const DIDONE: Style = {
      * the bowl -- bisected, and the projection is innocent. Two hundredths of a
      * bracket is a hairline by any reading, and a Q in two pieces is not a Q.
      */
-    slab: { on: true, projection: 0.58, thickness: 0.13, bracket: 0.02 },
+    slab: {
+      ...PLAIN.parts.slab,
+      on: true,
+      projection: 0.58,
+      thickness: 0.13,
+      bracket: 0.02,
+      head: "flag",
+    },
     /*
-     * No balls, and this is the thing this face was most supposed to get.
+     * Balls: a disc on every curved end that stops in mid-air -- the a, the c,
+     * the f, the r, the j, the ear of the g, the 2, the 3, the 5, the 9 and
+     * the C, G, J and S -- which is half of what makes a didone read as one
+     * at a glance. Without them every one of those ends was a flat cut and the
+     * face read as a high-contrast sans with serifs added.
      *
-     * A ball on the `a`, the `c`, the `f`, the `r` and the `y` is half of what
-     * makes a didone read as one at a glance, and the part has sat unused since
-     * it was written with only the Psychedelic reaching for it. It cannot go on
-     * here: a ball goes wherever a stroke stops in mid-air, the tail of a `Q` is
-     * such a stop, and at every size tried -- from seven tenths of a stem to a
-     * stem and a sixth -- it comes away as a disc of its own and the letter is
-     * in two pieces. Hung below the bowl instead of crossing it, the same.
-     *
-     * So it waits for somewhere a base can say "not on this letter". A face is
-     * a set of decisions and this is one it cannot make yet.
+     * The Q's tail once came away as a disc of its own when this was tried;
+     * it stops on the line now, so the ball on it is buried (see `ballsFor`).
      */
-    bowl: { width: 0.96, squareness: 0, aperture: 0.9 },
+    ball: { size: 1, drop: 0.35, curved: true },
+    bowl: { width: 0.96, squareness: 0, aperture: 0.9, superness: 0 },
     crossbar: { height: 0.52, weight: 0.9 },
   },
 };
@@ -887,11 +2104,19 @@ export const DIDONE: Style = {
  * what an Egyptian is.
  */
 export const SLAB: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Slab",
   family: "serif",
   blurb: "Serifs as heavy as the stems, and no contrast to soften them.",
-  metrics: { ...SANS.metrics, xHeight: 528, width: 1.02, counterWidth: 340 },
+  // Fitted by its sides, as the Geometric is: see there.
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 528,
+    width: 1.02,
+    counterWidth: 340,
+    fit: 1,
+    sides: { T: [0.3, 0.3] },
+  },
   pen: { weight: 112, contrast: 0.05, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -902,11 +2127,41 @@ export const SLAB: Style = {
    * default. So every face here had the geometric one, which is most of why a
    * Serif and a Geometric read as the same drawings with the pen changed.
    */
-  forms: { a: "double" },
+  /*
+   * And the neo-grotesque's own S and s, G, t, g, r, e, c, @, %, # and ? (see
+   * `letters/grotesque.ts`), drawn to hold their shape to a Black and past
+   * it. The construction's own came apart past a Bold: an S whose spine was a
+   * hairline between two blobs, a t notched where its foot turned, a g
+   * spurred where its tail left the stem, a percent whose rings ran into its
+   * slash, and a G that was a C with a chopped end.
+   */
+  forms: {
+    a: "double",
+    S: "grotesque",
+    s: "grotesque",
+    G: "grotesque",
+    at: "grotesque",
+    percent: "grotesque",
+    section: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+    t: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    e: "grotesque",
+    c: "grotesque",
+  },
   parts: {
-    ...SANS.parts,
-    slab: { on: true, projection: 0.6, thickness: 0.74, bracket: 0.04 },
-    bowl: { width: 1, squareness: 0.08, aperture: 0.78 },
+    ...PLAIN.parts,
+    slab: {
+      ...PLAIN.parts.slab,
+      on: true,
+      projection: 0.6,
+      thickness: 0.74,
+      bracket: 0.04,
+      head: "flag",
+    },
+    bowl: { width: 1, squareness: 0.08, aperture: 0.78, superness: 0 },
     shoulder: { spring: 0.66, reach: 1, crest: 1 },
   },
 };
@@ -924,7 +2179,15 @@ export const TYPEWRITER: Style = {
   name: "Typewriter",
   family: "serif",
   blurb: "One advance for every letter, wide or narrow, and serifs to fill it.",
-  metrics: { ...SLAB.metrics, monospaced: true, width: 0.95, sidebearing: 40 },
+  // One advance for every letter: nothing fitted by its sides.
+  metrics: {
+    ...SLAB.metrics,
+    monospaced: true,
+    width: 0.95,
+    sidebearing: 40,
+    fit: undefined,
+    sides: undefined,
+  },
   pen: { weight: 96, contrast: 0.04, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -937,8 +2200,50 @@ export const TYPEWRITER: Style = {
    */
   // And a one with a foot on it: a monospaced face gives every letter the same
   // advance, so a bare one sits in a column of white with nothing to fill it.
-  forms: { a: "double", one: "footed" },
-  parts: { ...SLAB.parts, slab: { on: true, projection: 0.72, thickness: 0.5, bracket: 0.06 } },
+  /*
+   * And the neo-grotesque's own S and s, G, t, g, r, e, c, @, %, # and ? (see
+   * `letters/grotesque.ts`), drawn to hold their shape to a Black and past
+   * it. The construction's own came apart past a Bold: an S whose spine was a
+   * hairline between two blobs, a t notched where its foot turned, a g
+   * spurred where its tail left the stem, a percent whose rings ran into its
+   * slash, and a G that was a C with a chopped end.
+   */
+  forms: {
+    a: "double",
+    one: "footed",
+    // And the narrow letters' serifs run out to fill the column, as
+    // Courier's are: see `COLUMN` in `letters/alternates.ts`.
+    i: "typewriter",
+    dotlessi: "typewriter",
+    j: "typewriter",
+    dotlessj: "typewriter",
+    l: "typewriter",
+    I: "typewriter",
+    S: "grotesque",
+    s: "grotesque",
+    G: "grotesque",
+    at: "grotesque",
+    percent: "grotesque",
+    section: "grotesque",
+    numbersign: "grotesque",
+    question: "grotesque",
+    t: "grotesque",
+    g: "grotesque",
+    r: "grotesque",
+    e: "grotesque",
+    c: "grotesque",
+  },
+  parts: {
+    ...SLAB.parts,
+    slab: {
+      ...PLAIN.parts.slab,
+      on: true,
+      projection: 0.72,
+      thickness: 0.5,
+      bracket: 0.06,
+      head: "flag",
+    },
+  },
 };
 
 /**
@@ -956,8 +2261,17 @@ export const TYPEWRITER: Style = {
  * they are spaced by it like any other letter. Set to nothing, as this was at
  * first, every one of them sat flush against its neighbours.
  */
+/*
+ * The written capitals, on every joined face: each drawn capital entered with
+ * a hairline swash into the top of its first stroke. See the `written`
+ * capitals in `alternates.ts`.
+ */
+const WRITTEN_CAPITALS = Object.fromEntries(
+  "BDEFHIKLMNPRTUVWXYZ".split("").map((letter) => [letter, "written"]),
+);
+
 export const HANDWRITING: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Handwriting",
   family: "script",
   blurb:
@@ -990,7 +2304,7 @@ export const HANDWRITING: Style = {
    * so the face keeps its colour and its fit and only its proportion changes.
    */
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     xHeight: 350,
     capHeight: 656,
     ascender: 726,
@@ -1073,18 +2387,20 @@ export const HANDWRITING: Style = {
   // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
   // against the reference's 1.06.
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
     l: "tailed",
     t: "straight",
     y: "straight",
     f: "descending",
     n: "written",
+    r: "written",
     o: "written",
     a: "written",
     e: "written",
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     /*
      * Cut square, on all four of these, and the note is here because it is not
      * what any of them would choose.
@@ -1143,7 +2459,7 @@ export const HANDWRITING: Style = {
      * overshoot did -- a taller bowl is a wider one at the same ratio. 0.56
      * reads 0.795 here.
      */
-    bowl: { width: 0.56, squareness: 0, aperture: 1 },
+    bowl: { width: 0.56, squareness: 0, aperture: 1, superness: 0 },
     script: {
       ...NO_SCRIPT,
       on: true,
@@ -1312,7 +2628,7 @@ export const HANDWRITING: Style = {
  * formal. The others are hands writing; this one is a hand performing.
  */
 export const FORMAL_SCRIPT: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Formal Script",
   family: "script",
   blurb:
@@ -1331,7 +2647,7 @@ export const FORMAL_SCRIPT: Style = {
    * the metric because a descender loop reaches past its line.
    */
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     xHeight: 332,
     // Under the ascender by the gap this face already had, brought down in the
     // same proportion. Left at the Sans' 700 it stood level with the new
@@ -1408,19 +2724,27 @@ export const FORMAL_SCRIPT: Style = {
   // eye is the join layer's to draw, so a tail that curls round as well draws
   // it twice. Plain, this face set its `y` at 1.44 to 1.68 of its own `o`
   // against the reference's 1.06.
+  /*
+   * The written `a`, as on the other three joined faces. It was the two-storey
+   * one, which a pointed-pen hand does not write: pressed into this face's
+   * narrow oval and its hairline horizontals, the head lost its join to the
+   * bowl and the letter read as a `∂` with a hook floating over it.
+   */
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
-    a: "double",
+    a: "written",
     l: "tailed",
     y: "straight",
     f: "descending",
     one: "footed",
     n: "written",
+    r: "written",
     o: "written",
     e: "written",
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     /*
@@ -1434,7 +2758,7 @@ export const FORMAL_SCRIPT: Style = {
     corner: { radius: 46, join: "round" },
     // An oval, as on the Handwriting. 0.55 reads 0.822, and is the floor of
     // its own control; the reference's 0.799 would want 0.539.
-    bowl: { width: 0.55, squareness: 0, aperture: 1 },
+    bowl: { width: 0.55, squareness: 0, aperture: 1, superness: 0 },
     // The arch stops short, as on the Handwriting. 0.86 reads 0.88 and 0.88.
     shoulder: { spring: 0.5, reach: 0.7, crest: 0.86 },
     script: {
@@ -1536,7 +2860,7 @@ export const FORMAL_SCRIPT: Style = {
  * because a fast hand cuts corners, and the writing does not sit still.
  */
 export const CASUAL_SCRIPT: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Casual Script",
   family: "script",
   blurb:
@@ -1548,7 +2872,7 @@ export const CASUAL_SCRIPT: Style = {
   // furthest; it stops at the Telma end of the range rather than the Dancing
   // Script end, because a fast informal hand is not a formal one.
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     xHeight: 350,
     capHeight: 645,
     ascender: 729,
@@ -1609,23 +2933,25 @@ export const CASUAL_SCRIPT: Style = {
    * against the reference's 1.07; plain, it is 1.00.
    */
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
     t: "straight",
     y: "straight",
     f: "descending",
     l: "tailed",
     n: "written",
+    r: "written",
     o: "written",
     a: "written",
     e: "written",
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 70, join: "round" },
     // An oval, as on the Handwriting. 0.56 reads 0.799.
-    bowl: { width: 0.56, squareness: 0, aperture: 1.08 },
+    bowl: { width: 0.56, squareness: 0, aperture: 1.08, superness: 0 },
     // The arch stops short, as on the Handwriting. This face already sat
     // lowest of the four, so it asks for the least. 0.95 reads 0.89 and 0.91.
     shoulder: { spring: 0.48, reach: 0.8, crest: 0.95 },
@@ -1758,13 +3084,13 @@ export const CASUAL_SCRIPT: Style = {
  * hundredths and the colour by nothing that holds a direction.
  */
 export const MONOLINE_SCRIPT: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Monoline Script",
   family: "script",
   blurb:
     "A hairline of one thickness, drawn rather than written. Long looped ascenders, a hard lean, and a drop of ink on every open end.",
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     // Over the line, as on the Handwriting. Never named here before; it was
     // taking the Sans' 10.
     overshoot: 30,
@@ -1803,6 +3129,7 @@ export const MONOLINE_SCRIPT: Style = {
   // face's eye is the join layer's, and a tail that curls as well draws it
   // twice -- 1.68 of its own `o` against the reference's 1.06.
   forms: {
+    ...WRITTEN_CAPITALS,
     k: "standing",
     l: "tailed",
     y: "straight",
@@ -1810,12 +3137,13 @@ export const MONOLINE_SCRIPT: Style = {
     seven: "barred",
     four: "open",
     n: "written",
+    r: "written",
     o: "written",
     a: "written",
     e: "written",
   },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     /*
@@ -1851,7 +3179,7 @@ export const MONOLINE_SCRIPT: Style = {
     // An oval, as on the Handwriting. This face runs at a width of 0.95, which
     // multiplies the bowl, so it asks for more than the others; 0.66 reads
     // 0.801.
-    bowl: { width: 0.66, squareness: 0, aperture: 1 },
+    bowl: { width: 0.66, squareness: 0, aperture: 1, superness: 0 },
     // The arch stops short, as on the Handwriting. 0.85 reads 0.88 and 0.91.
     shoulder: { spring: 0.6, reach: 0.65, crest: 0.85 },
     script: {
@@ -1991,13 +3319,13 @@ export const MONOLINE_SCRIPT: Style = {
  * that checks the journey reads the same numbers this face was placed between.
  */
 export const ROUNDHAND: Style = {
-  ...SANS,
+  ...PLAIN,
   name: "Roundhand",
   family: "script",
   blurb:
     "The joined face built to be moved rather than to be one hand. Middling everything, with room on both sides of every control.",
   metrics: {
-    ...SANS.metrics,
+    ...PLAIN.metrics,
     xHeight: 420,
     capHeight: 708,
     ascender: 735,
@@ -2013,13 +3341,30 @@ export const ROUNDHAND: Style = {
    * other, which is the one thing a face meant to travel cannot afford.
    */
   pen: { weight: 74, contrast: 0.24, angle: 28 },
-  forms: { k: "standing", l: "tailed", g: "curled", t: "straight", f: "descending" },
+  forms: {
+    ...WRITTEN_CAPITALS,
+    k: "standing",
+    l: "tailed",
+    // The plain `g`, whose descender the join layer loops as it does the
+    // other four faces'. The curled one ended its curl in a ball jammed
+    // into the left of its own bowl.
+    t: "straight",
+    f: "descending",
+    // Hands on from its arm; see the written `r`.
+    r: "written",
+    /*
+     * And the written `e`, whose rising bar goes lighter as the pen gets
+     * heavy. The plain one's bar is the stem's own weight, and from the Bold
+     * up it filled the eye: at 260 a hundredth of an x-height squared.
+     */
+    e: "written",
+  },
   parts: {
-    ...SANS.parts,
+    ...PLAIN.parts,
     // Square, for the reason set out on the Handwriting above.
     terminal: { kind: "butt", angle: 0 },
     corner: { radius: 60, join: "round" },
-    bowl: { width: 0.96, squareness: 0, aperture: 1 },
+    bowl: { width: 0.96, squareness: 0, aperture: 1, superness: 0 },
     shoulder: { spring: 0.56, reach: 0.98, crest: 1 },
     script: {
       ...NO_SCRIPT,
@@ -2027,7 +3372,23 @@ export const ROUNDHAND: Style = {
       height: 0.33,
       reach: 1.7,
       flat: 0.12,
-      loop: 1.4,
+      /*
+       * Climbing, as on the other four, and for the reason set out on the
+       * Handwriting. This face was the one left level, and it showed: every
+       * join in a word lay at the same height as every other, so `gloves` and
+       * `brown` came out threaded on a rule struck through the `v`, the `w`,
+       * the `e` and the `s`.
+       */
+      tilt: 50,
+      // Welded rather than tacked, as on the other four; see `knit`.
+      knit: 0.4,
+      /*
+       * An eye with a counter in it. At 1.4 stems and a semicircle, the loops
+       * on the `l`, the `t` and the `b` closed to blobs at this face's own
+       * weight; this is the other four's shape at this face's size.
+       */
+      loop: 2.4,
+      eye: 0.32,
       /*
        * Two tenths, which reads as a hand and not as a fault.
        *
@@ -2075,3 +3436,447 @@ export const BASES: Style[] = [
   MONOLINE_SCRIPT,
   ROUNDHAND,
 ];
+
+/**
+ * How far past its own text weight a face has been taken: nought up to it,
+ * one at about a Black, and on to one and a half.
+ *
+ * Measured as a stem against an x-height rather than in units, because that
+ * is the question a heavy weight raises -- how much of the room between two
+ * lines the ink has taken -- and it holds when the lines move. It starts at
+ * whichever is heavier of the base's own weight and a text weight, so a face
+ * drawn heavy to begin with (the Display, the Fairground) is left as it was
+ * designed, and a hairline base (the Wavy, the Monoline Script) is not treated
+ * as bold at a regular stem.
+ *
+ * Everything a type designer does to a Black hangs off this one number, and
+ * none of it changes a node, so every weight still interpolates with every
+ * other: the pen takes contrast (`heavierPen`), the letters stand further
+ * apart (`spacingOf`), and the bowls widen so their counters keep open
+ * (`frame` in `letters/common.ts`).
+ */
+export function blackness(style: Style): number {
+  const { pen, metrics } = style;
+  if (pen.black !== undefined) return pen.black;
+  if (metrics.xHeight <= 0) return 0;
+  const base = BASES.find((one) => one.name === style.name);
+  const own = base ? base.pen.weight / base.metrics.xHeight : TEXT_STEM;
+  const from = Math.max(own, TEXT_STEM);
+  /*
+   * And a face that starts heavy has less of the way to go: it arrives at a
+   * Black at the same stem as every other face does, because what closes a
+   * counter is how much of the x-height the stem has taken, not how far the
+   * slider has moved. Counted over the whole span from the Sans's text stem,
+   * the Ribbon and the Marker came to a pen of 200 not halfway to a Black
+   * and with their B and e nearly shut.
+   */
+  const span = Math.max(TEXT_STEM + BLACK_SPAN - from, BLACK_SPAN / 4);
+  return Math.min(Math.max((pen.weight / metrics.xHeight - from) / span, 0), 1.5);
+}
+
+/**
+ * The pen at which a face reaches a given `blackness`: the same measure turned
+ * round, for a letter that wants to know where along its axis a Black falls.
+ */
+export function weightAtBlackness(style: Style, black: number): number {
+  const { metrics } = style;
+  const base = BASES.find((one) => one.name === style.name);
+  const own = base ? base.pen.weight / base.metrics.xHeight : TEXT_STEM;
+  const from = Math.max(own, TEXT_STEM);
+  const span = Math.max(TEXT_STEM + BLACK_SPAN - from, BLACK_SPAN / 4);
+  return (from + black * span) * metrics.xHeight;
+}
+
+/**
+ * What a joined face measures its joins in, which is its pen -- held near the
+ * pen the face was designed at.
+ *
+ * The reach, the weld and the loop are set in stem widths so they hold as the
+ * weight moves a little, and that is right near the face's own weight and wrong
+ * far from it. At a Light the stem is a third of what it was, the letters
+ * closed up to a third of their spacing, and a lead-in had no room left to
+ * climb to the top of its stem except by running up beside it: the
+ * Roundhand's `minimum` came out as a row of looped `p`s. At a Black the stem
+ * is three times what it was and so was every join, until the words were
+ * letters threaded on a bar as heavy as their stems. A hand writing larger or
+ * smaller spaces its letters by the size of the writing, not by the width of
+ * the pen, so the pen is held within a band either side of the face's own.
+ */
+export function scriptUnit(style: Style): number {
+  const { pen, metrics } = style;
+  if (metrics.xHeight <= 0) return pen.weight;
+  const base = BASES.find((one) => one.name === style.name);
+  if (!base || base.metrics.xHeight <= 0) return pen.weight;
+  const own = base.pen.weight / base.metrics.xHeight;
+  const stem = pen.weight / metrics.xHeight;
+  return metrics.xHeight * Math.min(Math.max(stem, own * SCRIPT_LEAST), own * SCRIPT_MOST);
+}
+
+/** How far a joined face's measure may fall below its own pen, and rise above. */
+const SCRIPT_LEAST = 0.8;
+const SCRIPT_MOST = 1.3;
+
+/** A text stem against its x-height, a little over the Sans's own. */
+const TEXT_STEM = 0.19;
+/** How much further a Black's stem goes: the Sans at a pen of 200. */
+const BLACK_SPAN = 0.2;
+
+/**
+ * The pen a heavy weight is drawn with: its horizontals lighter than its stems.
+ *
+ * A monolinear Black is not monolinear. Drawn with the stem's pen all round,
+ * an o at a fifth of the em has a crown and a foot each as thick as its sides
+ * and the x-height leaves a pinhole between them; the bowl of a b, the eye of
+ * an e and the two counters of an 8 went the same way. Every real Black thins
+ * its horizontals -- a third lighter than the stems is where the grotesques
+ * sit -- and that is what contrast on an upright pen is. So the pen gains it,
+ * never loses any it had, and a face whose own contrast is already more
+ * (the Serif, the Display, the scripts) is drawn exactly as before.
+ */
+export function heavierPen(style: Style): Pen {
+  const { pen } = style;
+  /*
+   * A pen held on its side draws its horizontals with the whole weight, and
+   * at a Black of a reversed face two of them took all but a sliver of the
+   * x-height: the Fairground's e and o were slits. So there the weight goes
+   * where a reversed Black puts it -- into the thin verticals, which carry on
+   * growing with the weight asked for -- and the horizontals take only a
+   * fifth of what the weight gains past the face's own. At half, an e, a B,
+   * an E and an F at the heaviest pen stacked three horizontals into more
+   * than the x-height and their counters closed to slits.
+   */
+  if (Math.abs(Math.abs(pen.angle) - 90) < 30) {
+    const black = blackness(style);
+    if (black <= 0) return pen;
+    const base = BASES.find((one) => one.name === style.name);
+    const own = base
+      ? base.pen.weight * (style.metrics.xHeight / base.metrics.xHeight)
+      : pen.weight;
+    if (pen.weight <= own) return pen;
+    const weight = own + (pen.weight - own) * 0.2;
+    const thin = pen.weight * (1 - pen.contrast);
+    return {
+      ...pen,
+      weight,
+      contrast: Math.max(0, 1 - thin / weight),
+      own: pen.own ?? pen.contrast,
+    };
+  }
+  const { heavyContrast, capitalContrast, contrastRise } = style.metrics;
+  if (style.metrics.lighterAcross) return pen;
+  const own = pen.own ?? pen.contrast;
+  const capital = style.metrics.capital && capitalContrast !== undefined;
+  const settled = (raw: number): number => {
+    let wanted = raw;
+    /*
+     * Given back past the Black, towards the lowercase's own at an Ultra: the
+     * capitals' and figures' counters are as short as the lowercase's by then,
+     * and an 8 or a 4 with horizontals a third heavier closed up.
+     */
+    if (capital && wanted > own) {
+      const past = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.83));
+      const share = capitalContrast + (1 - capitalContrast) * past * past;
+      wanted = own + (wanted - own) * share;
+    }
+    /*
+     * Eased into the face's limit rather than stopped at it, and only past the
+     * Black: the same pen as ever up to there.
+     */
+    if (heavyContrast !== undefined) {
+      const ease = heavyContrast * 0.3;
+      const knee = heavyContrast - ease;
+      if (wanted > knee) wanted = knee + ease * (1 - Math.exp((knee - wanted) / ease));
+    }
+    return wanted;
+  };
+  const plain = settled(Math.min(0.56, 0.37 * blackness(style)));
+  // Risen as the face's own measures have it, its bowls still sized by the plain one.
+  const wanted = contrastRise
+    ? settled(
+        Math.min(
+          0.56,
+          contrastRise.to *
+            Math.tanh(Math.max(0, pen.weight - contrastRise.from) / contrastRise.over) +
+            0.37 * Math.max(0, blackness(style) - contrastRise.past),
+        ),
+      )
+    : plain;
+  const sized = contrastRise ? { sized: Math.max(plain, own) } : {};
+  /*
+   * Never less than the pen already has -- but a capital's is worked out
+   * afresh from the face's own, since the style it is drawn from was made
+   * heavier for the lowercase first.
+   */
+  if (capital) {
+    if (wanted <= own) return pen.own === undefined ? pen : { ...pen, contrast: own, ...sized };
+    return wanted === pen.contrast && pen.own !== undefined && pen.sized === sized.sized
+      ? pen
+      : { ...pen, contrast: wanted, own, ...sized };
+  }
+  if (wanted <= pen.contrast) return pen;
+  return { ...pen, contrast: wanted, own, ...sized };
+}
+
+const CAPITALLED = new WeakMap<Style, Map<string, Style>>();
+const FIGURES = new Set([
+  "zero",
+  "one",
+  "two",
+  "three",
+  "four",
+  "five",
+  "six",
+  "seven",
+  "eight",
+  "nine",
+]);
+
+/**
+ * The style a capital or a figure is drawn with, on a face that gives them
+ * less of a heavy weight's contrast than its lowercase: see `capitalContrast`.
+ * The same object back for everything else.
+ */
+export function capitalled(style: Style, name: string): Style {
+  if (style.metrics.capitalContrast === undefined || style.metrics.capital) return style;
+  const capital =
+    FIGURES.has(name) ||
+    ([...name].length === 1 && name.toUpperCase() === name && name.toLowerCase() !== name);
+  if (!capital) return style;
+  let known = CAPITALLED.get(style);
+  if (!known) {
+    known = new Map();
+    CAPITALLED.set(style, known);
+  }
+  const had = known.get(name);
+  if (had) return had;
+  // Heavier towards the Thin, where the face asks for it: see `metrics.capitalThin`.
+  const heavier = style.metrics.capitalThin;
+  const held = style.metrics.lightHeld;
+  const light =
+    heavier && held && held.from > 30
+      ? Math.min(1, Math.max(0, (held.from - style.pen.weight) / (held.from - 30)))
+      : 0;
+  const made = {
+    ...style,
+    pen:
+      light > 0 ? { ...style.pen, weight: style.pen.weight * (1 + heavier! * light) } : style.pen,
+    metrics: {
+      ...style.metrics,
+      capital: true,
+      overshoot: style.metrics.overshoots?.[name] ?? style.metrics.overshoot,
+    },
+  };
+  known.set(name, made);
+  return made;
+}
+
+const PROPORTIONED = new WeakMap<Style, Map<string, Style>>();
+
+/**
+ * The style a letter's skeleton is built with: the face's own, with the
+ * letter's width from `metrics.proportions` folded into `width`.
+ *
+ * The same object back for a letter that has no entry, and the same object
+ * every time for one that does, so everything cached against a style stays
+ * cached.
+ */
+export function proportioned(style: Style, name: string): Style {
+  const own = style.metrics.proportions?.[name] ?? 1;
+  let factor = own;
+  /*
+   * And at a heavy weight, the width the face's Bold draws the letter at: see
+   * `metrics.bold`. Reached along the weight, and past the Bold eased back
+   * toward halfway between the Regular's own width and the construction's,
+   * which is how wide a Black has to stand to keep counters it has no
+   * drawing for.
+   */
+  const bold = style.metrics.bold;
+  if (bold) {
+    const black = blackness(style);
+    const heavy = bold.widths[name] ?? 1;
+    if (black <= bold.at) factor = own * (1 + (heavy - 1) * (black / bold.at));
+    else {
+      const eased =
+        (1 - (bold.kept ?? 1)) * Math.min(1, (black - bold.at) / Math.max(1 - bold.at, 1e-6));
+      const target = 1 + (own - 1) * 0.5;
+      factor = own * heavy + (target - own * heavy) * eased;
+      const past = bold.past?.[name];
+      if (past !== undefined) {
+        factor *= 1 + (past - 1) * Math.min(1, (black - bold.at) / Math.max(1.5 - bold.at, 1e-6));
+      }
+    }
+  }
+  if (factor === 1 || !(factor > 0)) return style;
+  let known = PROPORTIONED.get(style);
+  if (!known) {
+    known = new Map();
+    PROPORTIONED.set(style, known);
+  }
+  const had = known.get(name);
+  if (had) return had;
+  const made = {
+    ...style,
+    metrics: { ...style.metrics, width: style.metrics.width * factor, stretch: factor },
+  };
+  known.set(name, made);
+  return made;
+}
+
+const HEAVIER = new WeakMap<Style, Style>();
+
+/**
+ * The style a letter is actually drawn with at its weight: see `blackness`.
+ *
+ * The same object back when nothing changes, which is every weight up to the
+ * face's own; and the same object for the same style every time, so asking
+ * twice costs nothing and a drawing cached against it stays cached.
+ */
+export function heavier(style: Style): Style {
+  const known = HEAVIER.get(style);
+  if (known) return known;
+  const pen = heavierPen(style);
+  const counter = narrowed(style);
+  const metrics =
+    counter === style.metrics.counterWidth
+      ? style.metrics
+      : {
+          ...style.metrics,
+          counterWidth: counter,
+          drawnCounter: style.metrics.drawnCounter ?? style.metrics.counterWidth,
+        };
+  const parts = rounder(style);
+  const made =
+    pen === style.pen && metrics === style.metrics && parts === style.parts
+      ? style
+      : {
+          ...style,
+          pen,
+          metrics:
+            parts === style.parts
+              ? metrics
+              : {
+                  ...metrics,
+                  drawnSuperness: style.metrics.drawnSuperness ?? style.parts.bowl.superness,
+                },
+          parts,
+        };
+  HEAVIER.set(style, made);
+  HEAVIER.set(made, made);
+  return made;
+}
+
+/**
+ * The parts a heavy weight past the Black is drawn with, on a face that eases
+ * its contrast (`metrics.heavyContrast`): the superelliptic bowls rounding
+ * off towards ellipses.
+ *
+ * A superellipse's tight corners, offset inwards by a pen that is by then half
+ * the x-height, leave a counter of flats and knuckles -- a lemon rather than
+ * an oval -- so past the Black the flat sides give way, and at an Ultra the
+ * bowl is an ellipse and its counter a clean pill. Same pieces at every
+ * weight: only the shape of the three arcs changes.
+ */
+function rounder(style: Style): Style["parts"] {
+  const drawn = style.metrics.drawnSuperness ?? style.parts.bowl.superness;
+  if (!(drawn > 0)) return style.parts;
+  /*
+   * And lighter than a face that holds its widths below its own pen
+   * (`metrics.lightHeld`), towards the plain ellipse Geist Thin's o is: the
+   * superness the Regular was tuned to, drawn with a hairline, gave flat
+   * flanks and tight shoulders -- rounded rectangles for the o, the % and
+   * the loop of the &.
+   */
+  const held = style.metrics.lightHeld;
+  if (held && style.pen.weight < held.from) {
+    const light = Math.min(1, (held.from - style.pen.weight) / (held.from - 30));
+    const superness = drawn * (1 - 0.7 * light);
+    if (superness === style.parts.bowl.superness) return style.parts;
+    return { ...style.parts, bowl: { ...style.parts.bowl, superness } };
+  }
+  if (style.metrics.heavyContrast === undefined) return style.parts;
+  const t = Math.min(1, Math.max(0, (blackness(style) - 0.67) / 0.63));
+  // Never quite to nought, where an arch is drawn from other pieces: see `archSpine`.
+  const superness = drawn * Math.max(0.04, 1 - t * t * (3 - 2 * t));
+  if (superness === style.parts.bowl.superness) return style.parts;
+  return { ...style.parts, bowl: { ...style.parts.bowl, superness } };
+}
+
+/**
+ * The white either side of a letter at its weight.
+ *
+ * A heavy stem pushes its ink out towards the letter beside it, and with the
+ * sidebearing held where the regular had it the two stems of an `nn` came
+ * nearer each other than the n's own counter is wide -- the word fell into a
+ * row of blots. A heavy cut opens its spacing as it closes its counters, by
+ * about a quarter of what its stem gains.
+ */
+export function spacingOf(style: Style): number {
+  const { sidebearing, xHeight, bold } = style.metrics;
+  // A face drawn to its Bold closes up to the Bold's spacing: see `bold.spacing`.
+  const tighter =
+    bold?.spacing === undefined
+      ? 1
+      : 1 + (bold.spacing - 1) * Math.min(1, blackness(style) / bold.at);
+  /*
+   * A face whose heavy weights close their counters closes its spacing with
+   * them, about as the square root of the counter: Geist Black sets its n 61
+   * units off each side against the Regular's 80, on a counter of 155
+   * against 250.
+   */
+  if (style.metrics.heavyCounter) {
+    const drawn = style.metrics.drawnCounter ?? style.metrics.counterWidth;
+    return sidebearing * (narrowed(style) / drawn) ** 0.55 * tighter;
+  }
+  const gained = blackness(style) * BLACK_SPAN * xHeight;
+  return (sidebearing + gained * 0.25) * tighter;
+}
+
+/**
+ * The counter a letter is drawn with at this weight: the face's own, less
+ * what `metrics.heavyCounter` gives back for the stem gained past the face's
+ * own pen -- though never less than three quarters of a stem, so the heaviest
+ * pen still has a counter to hold open.
+ */
+export function narrowed(style: Style): number {
+  const { metrics, pen } = style;
+  const drawn = metrics.drawnCounter ?? metrics.counterWidth;
+  const give = metrics.heavyCounter;
+  if (!give) return metrics.counterWidth;
+  // Past the text weight, as every other heavy-weight change is: see `blackness`.
+  let gained = blackness(style) * BLACK_SPAN * metrics.xHeight;
+  if (gained <= 0) return drawn;
+  /*
+   * A face drawn to its Bold (see `metrics.bold`) closes its counters as its
+   * Bold does as far as the Bold, and past it a quarter as fast: a Black
+   * carried on at a Bold's rate had the feet of its m's serifs meeting.
+   */
+  /*
+   * Bent, on a face that closes its counters faster on the way to its Black
+   * than at either end (`metrics.counterBend`): Geist's n is 9 units
+   * narrower at its SemiBold than a straight line from its Regular to its
+   * UltraBlack gives, and as wide again at both.
+   */
+  const bend = metrics.counterBend;
+  if (bend) {
+    const t = Math.min(1, blackness(style) / 0.67);
+    gained *= 1 + bend * 4 * t * (1 - t);
+  }
+  const bold = metrics.bold ? metrics.bold.at * BLACK_SPAN * metrics.xHeight : Infinity;
+  if (gained > bold) gained = bold + (gained - bold) * 0.25;
+  /*
+   * Given back unit for unit as far as the Black; past it, an Ultra's counter
+   * keeps closing, but ever more slowly, towards a fifth of the x-height it
+   * never reaches. Held at three quarters of the stem instead, as it once was,
+   * the counter turned round at the Black and opened again with the pen, and
+   * at 0.26 of the em the n stood half as wide again as the Black's.
+   */
+  const linear = drawn - give * gained;
+  const least = metrics.heavyFloor ?? 0.2;
+  const floor = Math.min(
+    drawn,
+    Math.max(metrics.xHeight * least, pen.weight * 0.34 * (least / 0.2)),
+  );
+  const ease = metrics.xHeight * 0.1 * (least / 0.2);
+  if (linear >= floor + ease) return linear;
+  return floor + ease * Math.exp((linear - floor - ease) / ease);
+}

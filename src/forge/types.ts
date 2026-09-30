@@ -94,8 +94,32 @@ export interface Spine {
  * - `round` caps with a half-disc, for a soft display face.
  * - `angled` cuts across at an angle, as a broad nib leaves.
  * - `slab` squares off and then lays a bar across, which is a serif.
+ * - `teardrop` swells into a pear on the inside of a curve, which is how a
+ *   text face finishes the hook of an a, c, f, r or j. Only a curved end takes
+ *   one; a straight end wearing it is cut square.
+ * - `level` cuts every open end along the nearer of the two lines the letter
+ *   is built on: level with the baseline where the stroke arrives more up and
+ *   down than across, upright where it arrives across. On a curve that is not
+ *   square to the stroke -- the outside runs on past the spine and the inside
+ *   stops short -- which is how a neo-grotesque finishes its c, its s and its
+ *   G. See `Terminal.aligned`.
  */
-export type TerminalKind = "butt" | "round" | "angled" | "slab";
+export type TerminalKind = "butt" | "round" | "angled" | "slab" | "teardrop" | "level";
+
+/**
+ * How a serif's bar is drawn: a bar of one depth all the way out, or one that
+ * thins toward its tip, which is what a text serif does.
+ */
+export type SerifShape = "square" | "wedge";
+
+/**
+ * How the serif at the top of a lowercase stem sits: laid level and reaching
+ * both ways, as a slab does, or as one flag sloping down to the left, which is
+ * what a pen leaves where it enters the stroke -- or, `flag`, as one level
+ * flag to the left, which is how a slab and a typewriter face tell an l from
+ * an I.
+ */
+export type SerifHead = "level" | "sloped" | "flag";
 
 export interface Terminal {
   kind: TerminalKind;
@@ -114,6 +138,15 @@ export interface Terminal {
    * `slab`. A round cap is dealt with by pulling the spine back instead.
    */
   level?: boolean;
+  /**
+   * Cut along the nearer of the level and the upright through the end of the
+   * spine, whichever is closer to square across the stroke: the `level`
+   * terminal, settled when the end is dressed. On a straight end it slides the
+   * corners as a level cut does; on a curved one it carries each side along
+   * its own curve to the line, so the cut is exact and nothing the sides drew
+   * is moved off them.
+   */
+  aligned?: boolean;
   /**
    * Whether this is a real end of the letter rather than one buried inside
    * another stroke.
@@ -142,6 +175,58 @@ export interface Terminal {
    * which is what a text serif has.
    */
   bracket?: number;
+  /**
+   * For `slab`: the bracket the face's own base draws at this weight, in the
+   * same units. Where the serif is too short to take the bracket asked for,
+   * the control is read around this, so the base's own drawing stays put and
+   * no stretch of the slider is dead. See `serifsFor`.
+   */
+  bracketHome?: number;
+  /** For `slab`: a bar of one depth, or one that thins toward its tip. */
+  shape?: SerifShape;
+  /** For `slab`: how the top of a lowercase stem is finished. */
+  head?: SerifHead;
+  /**
+   * For `slab`: what a curved end is finished with instead.
+   *
+   * A bar laid across the end of a curve reads as snapped off, so a serif face
+   * finishes its curved ends -- the hook of a c, the arm of an r -- with the
+   * style's own terminal, and this is that terminal.
+   */
+  curved?: { kind: Exclude<TerminalKind, "slab">; angle: number };
+  /**
+   * How far the left corner of a level cut is carried back down the stroke,
+   * in font units: the sloped top a lowercase stem has under a sloped head.
+   * Only read on a level cut.
+   */
+  sink?: number;
+  /**
+   * On a level cut: a serif with its left wing only, the head of a lowercase
+   * stem on a face whose heads are flags (`SerifHead` "flag").
+   */
+  flag?: boolean;
+  /**
+   * For `teardrop`: the drop, settled when the end is dressed -- its radius,
+   * the radius of the curve it finishes, and which side of the stroke that
+   * curve turns to (one for the left of the way it is going, minus one for the
+   * right). Settled before the stroke is pulled back to make room for it, so a
+   * pull that swallows the last of a curve does not lose the drop.
+   */
+  drop?: { radius: number; bend: number; side: number };
+  /**
+   * For `slab`: an end that is cut plain rather than serifed -- one stopping in
+   * mid-air at an angle, as the neck of a question mark and the flag of a one
+   * do, or one on a symbol rather than a letter. Drawn as the serif refused.
+   */
+  bare?: boolean;
+  /**
+   * A beak on a curved end: the upright wedge a text face's C, G and S carry
+   * where their curves stop, running from the end straight down (or up) the
+   * outside of the letter. `reach` is the height its tip stops at, in font
+   * units, and `way` which way it runs: minus one down, one up.
+   * Settled when the end is dressed; the end itself is then a plain cut.
+   */
+  beak?: { reach: number; way: number };
 }
 
 /**
@@ -164,6 +249,28 @@ export interface Pen {
   contrast: number;
   /** Degrees. Zero means the pen is broadest vertically, thinning horizontals. */
   angle: number;
+  /**
+   * The contrast the face itself was drawn with, where a heavy weight has
+   * added some of its own: see `heavierPen` in `style.ts`. Left out otherwise.
+   *
+   * For the decisions about what kind of face this is -- whether it draws its
+   * punctuation as a text serif does -- which must not change along a weight
+   * axis, or the letters stop having the same points at every weight.
+   */
+  own?: number;
+  /**
+   * The contrast a heavy weight's bowls are sized by, where its horizontals
+   * thin faster than that (`metrics.contrastRise`): see `frame` in
+   * `letters/common.ts`. Left out otherwise.
+   */
+  sized?: number;
+  /**
+   * How far past its text weight the letter this is drawn for stands, where
+   * that is a different letter: a superior figure is drawn with a pen heavier
+   * against its size than the full-size letters, so that it holds its colour,
+   * and it is a Regular's figure all the same. See `blackness` in `style.ts`.
+   */
+  black?: number;
 }
 
 /**
@@ -184,6 +291,12 @@ export interface Stroke {
   end: Terminal;
   /** How the outside of a corner is finished. Miter unless said otherwise. */
   join?: JoinKind;
+  /**
+   * A flourish the hand starts the letter with, in clear air: the swash a
+   * written capital is entered by. It belongs to the letter as a lead-in
+   * does, so a split leaves it on rather than cutting it loose.
+   */
+  swash?: boolean;
 }
 
 export const BUTT: Terminal = { kind: "butt" };

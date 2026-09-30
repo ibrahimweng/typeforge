@@ -213,7 +213,9 @@ export function unite(
    * boolean given one answers nonsense. A slot cut through the traced `e` came
    * back holding 142% of the area it started with. So a self-crossing outline
    * goes the long way round and comes back resolved, which is what this
-   * function promises. `docs/audit.md` T6 has the measurements.
+   * function promises. `docs/audit.md` T6 has the measurements. A loop tied
+   * inside one curve, or a curve crossing the one beside it, counts too: the
+   * check sees those as well as passes that cross far apart.
    */
   const lapped = drawable.length === 1 && crossesItself(drawable[0]);
   if (drawable.length < 2 && !lapped) {
@@ -326,15 +328,52 @@ export function unite(
   const least = Math.max(0, biggest - holes);
   const swollen = (answer: Contour[]): boolean =>
     handed > 0 && Math.abs(inkIn(answer)) > handed * 1.0001;
+  /*
+   * And the fifth, which none of those four can see: a counter that no stroke
+   * drew on its own but two strokes close between them, filled in. The eye of
+   * a Typewriter ash is the e's bowl shut by its bar, with the e's left side
+   * laid on the a's stem and the a's bowl flush against the same edge -- three
+   * edges on one line, and at exactly the nudge above paper answered with the
+   * eye solid. The ink went up by less than the strokes overlap, so it was not
+   * swollen, and no point inside any one stroke was wrong, so it still drew.
+   * Measured across the letter on a few dozen lines instead, which is cheap
+   * beside the boolean, and a counter filled in is wrong on every line
+   * through it.
+   */
+  let given: { lines: number[]; cover: number[] } | null = null;
+  const unlike = (answer: Contour[]): number => {
+    if (!given) {
+      const lines = coverLines(drawable);
+      given = { lines, cover: coverAlong(drawable, roomFor, lines) };
+    }
+    return linesUnlike(
+      given.cover,
+      coverAlong(
+        answer,
+        answer.map((contour) => contourArea(contour) >= 0),
+        given.lines,
+      ),
+    );
+  };
   const gaveUp = (answer: Contour[]): boolean =>
     answer.length === 0 ||
     (least > 0 && Math.abs(inkIn(answer)) < least * 0.999) ||
     swollen(answer) ||
     (join === "whole"
       ? solidsIn(answer) > 1 || !stillDraws(answer, drawable, roles)
-      : answer.length >= drawable.length);
+      : answer.length >= drawable.length) ||
+    unlike(answer) > 1;
 
-  if (!gaveUp(result) || drawable === apart) return result.length > 0 ? result : contours;
+  if (drawable === apart || !gaveUp(result)) return result.length > 0 ? result : contours;
+
+  // Nudged by a different hair. The coincidence the nudge breaks is exact,
+  // and so is the one it can make by accident; the same shapes grown by other
+  // amounts do not land on it again.
+  const again = withoutStrayHoles(
+    contoursOf(fuse(compoundOf(paper, nudgeApart(drawable, roomFor, NUDGE * 3), roles))),
+  );
+  clear(paper);
+  if (!gaveUp(again)) return again;
 
   // Nudged and still wrong, so try it on the coordinates as they arrived. The
   // nudge fixes far more than it breaks, but it is a change to the shapes and
@@ -362,6 +401,12 @@ export function unite(
    * when the failure is a shape that came back as a crumb -- and which, asked
    * first, hands back the filled counter every time, since filled is bigger.
    */
+  // A filled counter first of all, since that is a different letter.
+  const unlikeResult = unlike(result);
+  const unlikePlain = unlike(plain);
+  if (unlikeResult !== unlikePlain && Math.min(unlikeResult, unlikePlain) <= 1) {
+    return unlikeResult <= 1 ? result : plain;
+  }
   if (join === "whole") {
     const drawsResult = stillDraws(result, drawable, roles);
     const drawsPlain = stillDraws(plain, drawable, roles);
@@ -370,6 +415,40 @@ export function unite(
   if (swollen(result) !== swollen(plain)) return swollen(result) ? plain : result;
   if (Math.abs(inkIn(plain)) > Math.abs(inkIn(result))) return plain;
   return result.length > 0 ? result : contours;
+}
+
+/**
+ * The ground a set of outlines covers under the non-zero rule, as written.
+ *
+ * Not a union in the sense the one above is. That one is handed shapes and
+ * told what each of them is -- a solid, a counter -- and it re-states each
+ * contour's direction to match before fusing, which is right for shapes and
+ * wrong for a curve that means something by going round a place twice or
+ * backwards. This is handed outlines whose directions are the point: the
+ * cast layer's shadow draws the swept edge of a letter as one long loop that
+ * crosses itself, and what it covers is exactly where that loop winds round
+ * a point at all. Re-stating the direction of a loop like that has no
+ * meaning, so nothing here does it, and nothing here second-guesses the
+ * answer either: there is nothing to compare it against that would be any
+ * more right than it.
+ */
+export function filled(contours: Contour[]): Contour[] {
+  const paper = need();
+  const drawable = contours.filter((contour) => contour.nodes.length >= 2);
+  if (drawable.length === 0) return [];
+  clear(paper);
+  const paths = drawable.map(
+    (contour) =>
+      new paper.Path({
+        segments: contour.nodes.map((node) => toSegment(paper, node)),
+        closed: true,
+      }),
+  );
+  const compound = new paper.CompoundPath({ children: paths });
+  compound.fillRule = "nonzero";
+  const result = withoutStrayHoles(contoursOf(fuse(compound)));
+  clear(paper);
+  return result;
 }
 
 /**
@@ -577,10 +656,10 @@ function fuse(item: paper.PathItem): paper.PathItem {
  */
 const NUDGE = 0.0001;
 
-function nudgeApart(contours: Contour[], isOuter: boolean[]): Contour[] {
+function nudgeApart(contours: Contour[], isOuter: boolean[], hair = NUDGE): Contour[] {
   return contours.map((contour, index) => {
     const step = (index * 0.6180339887498949) % 1;
-    const grow = (0.5 + step) * NUDGE * (isOuter[index] ? 1 : -1);
+    const grow = (0.5 + step) * hair * (isOuter[index] ? 1 : -1);
     const middle = centroid(contour);
     return {
       ...contour,
@@ -738,6 +817,78 @@ function stillDraws(answer: Contour[], given: Contour[], roles: Roles): boolean 
   });
 }
 
+/**
+ * Where to measure a set of shapes across: a few dozen levels spread over its
+ * height, each set off its step by an irrational share so none of them lies
+ * along a level edge, where which side a line is on is a coin toss.
+ */
+function coverLines(contours: Contour[]): number[] {
+  const box = contoursBounds(contours);
+  const height = box.yMax - box.yMin;
+  if (!(height > 0)) return [];
+  const count = 48;
+  const lines: number[] = [];
+  for (let at = 0; at < count; at++) {
+    lines.push(box.yMin + (height * (at + 0.3819660112501051)) / count);
+  }
+  return lines;
+}
+
+/**
+ * How much of each line is in the ink, by winding, with the roles as stated.
+ *
+ * The same question the union answers, asked of a whole line at once and in
+ * the union's own terms: each contour turned to run the way its role says, as
+ * `compoundOf` turns it, and the ink wherever the windings of all of them come
+ * to anything but nothing. Counted by winding rather than by crossings in
+ * pairs, so an outline that runs back over itself -- a traced e, a script's
+ * loop -- covers the ground it goes round twice, as the union covers it.
+ */
+function coverAlong(contours: Contour[], isOuter: boolean[], lines: number[]): number[] {
+  const polygons = contours.map((contour, index) => {
+    if (contour.nodes.length < 3) return { points: [] as Vec2[], turn: 0 };
+    const points = flattenContour(contour, 16);
+    let area = 0;
+    for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+      area += points[j].x * points[i].y - points[i].x * points[j].y;
+    }
+    return { points, turn: (isOuter[index] ? 1 : -1) * (area >= 0 ? 1 : -1) };
+  });
+  return lines.map((y) => {
+    const events: Array<[number, number]> = [];
+    for (const { points, turn } of polygons) {
+      for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+        const from = points[j];
+        const to = points[i];
+        if (from.y > y === to.y > y) continue;
+        const x = ((to.x - from.x) * (y - from.y)) / (to.y - from.y) + from.x;
+        // Anticlockwise, font units up: the outline runs down its left side.
+        events.push([x, (to.y < from.y ? 1 : -1) * turn]);
+      }
+    }
+    events.sort((one, other) => one[0] - other[0]);
+    let winding = 0;
+    let covered = 0;
+    for (let i = 0; i + 1 < events.length; i++) {
+      winding += events[i][1];
+      if (winding !== 0) covered += events[i + 1][0] - events[i][0];
+    }
+    return covered;
+  });
+}
+
+/**
+ * On how many lines two measurements disagree by more than drawing a curve as
+ * a polyline can account for: a few units, or a hundredth of the line.
+ */
+function linesUnlike(given: number[], answer: number[]): number {
+  let unlike = 0;
+  for (let at = 0; at < given.length; at++) {
+    if (Math.abs(given[at] - answer[at]) > 4 + given[at] * 0.01) unlike++;
+  }
+  return unlike;
+}
+
 /** What these contours add up to, a hole counting against the ink it is in. */
 function inkIn(contours: Contour[]): number {
   return contours.reduce((total, contour) => total + contourArea(contour), 0);
@@ -814,6 +965,7 @@ function contoursOf(item: paper.PathItem): Contour[] {
     paths
       .filter((path) => path.segments && path.segments.length >= 2)
       .map(fromPath)
+      .map(withoutStutter)
       /*
        * Without the specks paper leaves behind.
        *
@@ -829,6 +981,109 @@ function contoursOf(item: paper.PathItem): Contour[] {
        */
       .filter((contour) => Math.abs(contourArea(contour)) >= SPECK)
   );
+}
+
+/**
+ * The outline without the folds a boolean leaves where it hesitated.
+ *
+ * Where two edges of a union meet at the hair the nudge put between them,
+ * paper can answer with nodes a millionth of a unit apart that step forward,
+ * back and forward again, or with a spike: a straight edge run out a fraction
+ * of a unit and straight back along itself, or a curve that leaves a point and
+ * returns to it along the same line. None of it draws anything -- but the
+ * outline now runs back over itself, and anything asking whether it crosses
+ * itself says yes: a Flared H at Black had one in the top of each serif, and
+ * the next boolean handed that outline is handed a fold to judge.
+ *
+ * So both are taken out. Closer than a thousandth of a unit is the same place,
+ * which is what the nudge assumes too, and a run of nodes in the same place is
+ * one node -- unless the curve between them encloses something, because a
+ * curve that leaves a point and comes back to it round a loop is a shape. And
+ * a corner where a straight edge turns straight back on itself is no corner:
+ * the outline goes on from the one before it to the one after.
+ */
+const SAME_PLACE = 1e-3;
+
+function withoutStutter(contour: Contour): Contour {
+  let nodes = contour.nodes;
+  if (nodes.length < 3) return contour;
+  const same = (a: Vec2, b: Vec2): boolean =>
+    Math.abs(a.x - b.x) < SAME_PLACE && Math.abs(a.y - b.y) < SAME_PLACE;
+  const leaving = (node: GlyphNode, handle: Vec2 | null): Vec2 =>
+    handle ? { x: handle.x - node.point.x, y: handle.y - node.point.y } : { x: 0, y: 0 };
+  // Two nodes in one place with nothing enclosed between them: the handles, if
+  // any, lie along one line, so the curve goes out and comes back the same way.
+  const onTop = (a: GlyphNode, b: GlyphNode): boolean => {
+    if (!same(a.point, b.point)) return false;
+    const out = leaving(a, a.handleOut);
+    const back = leaving(b, b.handleIn);
+    return Math.abs(out.x * back.y - out.y * back.x) < SAME_PLACE;
+  };
+  // A straight edge in and a straight edge out, pointing back the way it came.
+  const spike = (before: GlyphNode, node: GlyphNode, after: GlyphNode): boolean => {
+    if (before.handleOut || node.handleIn || node.handleOut || after.handleIn) return false;
+    const inX = node.point.x - before.point.x;
+    const inY = node.point.y - before.point.y;
+    const outX = after.point.x - node.point.x;
+    const outY = after.point.y - node.point.y;
+    const lengths = Math.hypot(inX, inY) * Math.hypot(outX, outY);
+    if (lengths === 0) return false;
+    return inX * outX + inY * outY < 0 && Math.abs(inX * outY - inY * outX) < lengths * 1e-6;
+  };
+
+  // A curve out to a node and the same curve back again, which is a spike
+  // whatever shape the curve is.
+  const retraced = (before: GlyphNode, node: GlyphNode, after: GlyphNode): boolean => {
+    const handle = (owner: GlyphNode, one: Vec2 | null): Vec2 => one ?? owner.point;
+    const near = (a: Vec2, b: Vec2): boolean => Math.hypot(a.x - b.x, a.y - b.y) < 0.01;
+    return (
+      same(before.point, after.point) &&
+      near(handle(node, node.handleIn), handle(node, node.handleOut)) &&
+      near(handle(before, before.handleOut), handle(after, after.handleIn))
+    );
+  };
+
+  let changed = false;
+  for (let pass = 0; pass < nodes.length && nodes.length >= 3; pass++) {
+    const count = nodes.length;
+    let at = -1;
+    let merge = false;
+    let back = false;
+    for (let index = 0; index < count; index++) {
+      const node = nodes[index];
+      const next = nodes[(index + 1) % count];
+      if (onTop(node, next)) {
+        at = index;
+        merge = true;
+        break;
+      }
+      if (spike(nodes[(index + count - 1) % count], node, next)) {
+        at = index;
+        break;
+      }
+      if (count > 3 && retraced(nodes[(index + count - 1) % count], node, next)) {
+        at = index;
+        back = true;
+        break;
+      }
+    }
+    if (at < 0) break;
+    changed = true;
+    const kept = [...nodes];
+    if (back) {
+      // The node at the tip goes, and so does the one it came back to.
+      const before = (at + count - 1) % count;
+      const after = (at + 1) % count;
+      kept[before] = { ...kept[before], handleOut: kept[after].handleOut };
+      for (const gone of [at, after].sort((p, q) => q - p)) kept.splice(gone, 1);
+    } else if (merge) {
+      const next = (at + 1) % count;
+      kept[at] = { ...kept[at], handleOut: kept[next].handleOut };
+      kept.splice(next, 1);
+    } else kept.splice(at, 1);
+    nodes = kept;
+  }
+  return changed && nodes.length >= 2 ? { ...contour, nodes } : contour;
 }
 
 /** A node's handles are absolute here and relative to the point in paper. */

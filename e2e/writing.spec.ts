@@ -141,6 +141,22 @@ test("Trace says what it is holding, as the other three modes do", async ({ page
 
 test("a font that was opened can be shipped as one file that varies", async ({ page }) => {
   /*
+   * Room for the download the test already waits two minutes for. A varying
+   * file is every one of DejaVu's six thousand glyphs weighted three times
+   * over, and the weighting of an opened font now keeps apertures, dots and
+   * separate pieces of ink as it goes: under a loaded run of the whole suite
+   * the build alone came to most of the default ninety seconds.
+   *
+   * And more again for Firefox. The weighting is now a true offset of every
+   * outline (`embolden.ts`), three times the arithmetic it was on main: after
+   * the export was made a third faster, Chromium here still builds for about
+   * a minute of steady work -- twelve and a half thousand glyphs offset, two
+   * masters of DejaVu -- and Firefox runs it more slowly than Chromium, past
+   * the two minutes this used to wait. Nothing is stuck: the file arrives,
+   * and is checked below.
+   */
+  test.setTimeout(240_000);
+  /*
    * The `fvar`/`gvar`/`STAT` writer has been here since the forge learned to
    * put a family in one file, and it takes masters as whole typefaces -- so
    * nothing about it was ever particular to a drawn-from-nothing face. Only the
@@ -165,11 +181,11 @@ test("a font that was opened can be shipped as one file that varies", async ({ p
   await expect(dialog.getByText("What to carry over")).toHaveCount(0);
 
   const download = await Promise.race([
-    page.waitForEvent("download", { timeout: 120_000 }),
+    page.waitForEvent("download", { timeout: 180_000 }),
     dialog
       .getByRole("button", { name: "Download" })
       .click()
-      .then(() => page.waitForEvent("download", { timeout: 120_000 })),
+      .then(() => page.waitForEvent("download", { timeout: 180_000 })),
   ]);
 
   const bytes = readFileSync((await download.path())!);

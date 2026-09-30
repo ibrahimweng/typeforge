@@ -25,7 +25,12 @@
 
 import type * as React from "react";
 
+import type { Mode } from "@/App";
 import { NumberField } from "@/components/NumberField";
+import { useAssemble } from "@/state/useAssemble";
+import { useDrawing } from "@/state/drawn";
+import { useQuill } from "@/state/useQuill";
+import { useSurface } from "@/state/surface";
 import { toolInfo } from "@/font/toolset";
 import { fitCanvas, useFraming, zoomTo } from "@/state/framing";
 import { store, useAppState } from "@/state/useStore";
@@ -34,14 +39,50 @@ import { store, useAppState } from "@/state/useStore";
 const LEAST = 10;
 const MOST = 2_400;
 
+const count = (n: number, one: string, many: string) =>
+  `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+/**
+ * What the strip says is open, in the mode it is open in.
+ *
+ * It used to say the font the editor had open whatever the mode, so the Draw
+ * page, with a whole alphabet on screen, read "Nothing open".
+ */
+export function documentLine(
+  mode: Mode,
+  open: {
+    typeface: { familyName: string; letters: number } | null;
+    drawing: { familyName: string; base: string };
+    assembly: { familyName: string; pieces: number };
+    trace: { name: string };
+  },
+): string {
+  switch (mode) {
+    case "forge":
+      return `${open.drawing.familyName} — drawn from ${open.drawing.base}`;
+    case "assemble":
+      return `${open.assembly.familyName} — ${count(open.assembly.pieces, "drawing", "drawings")}`;
+    case "quill":
+      return `Tracing ${open.trace.name || "Untitled"}`;
+    default:
+      return open.typeface
+        ? `${open.typeface.familyName} — ${count(open.typeface.letters, "letter", "letters")}`
+        : "Nothing open";
+  }
+}
+
 export function StatusBar(): React.JSX.Element {
   const { zoom } = useFraming();
   const typeface = useAppState((state) => state.typeface);
   const tool = useAppState((state) => state.tool);
   const view = useAppState((state) => state.view);
   const glyphName = useAppState((state) => state.selectedGlyph);
-
-  const letters = typeface?.glyphs.length ?? 0;
+  const drawing = useDrawing();
+  const assemble = useAssemble();
+  const quill = useQuill();
+  // Which generator is on screen, as the views say; none of them is the editor.
+  const mode: Mode = useSurface() ?? "edit";
+  const editing = mode === "edit";
 
   return (
     <footer
@@ -76,13 +117,18 @@ export function StatusBar(): React.JSX.Element {
       <span className="h-3 w-px shrink-0 bg-border" />
 
       <span className="min-w-0 truncate" data-status-document>
-        {typeface
-          ? `${typeface.meta.familyName} — ${letters.toLocaleString()} ${letters === 1 ? "letter" : "letters"}`
-          : "Nothing open"}
+        {documentLine(mode, {
+          typeface: typeface
+            ? { familyName: typeface.meta.familyName, letters: typeface.glyphs.length }
+            : null,
+          drawing,
+          assembly: { familyName: assemble.familyName, pieces: assemble.assembly.pieces.length },
+          trace: { name: quill.document.name },
+        })}
       </span>
 
       <span className="ml-auto flex shrink-0 items-center gap-x-4">
-        {typeface && view === "glyph" && store.glyph(glyphName) && (
+        {editing && typeface && view === "glyph" && store.glyph(glyphName) && (
           <span data-status-glyph>{glyphName}</span>
         )}
         {/*
@@ -93,7 +139,8 @@ export function StatusBar(): React.JSX.Element {
           who took a tool up with a key rather than by pointing at it has no
           reason to be looking there at all.
         */}
-        <span data-status-tool>{toolInfo(tool).name}</span>
+        {/* Only where there is a rail to take a tool from. */}
+        {editing && <span data-status-tool>{toolInfo(tool).name}</span>}
       </span>
     </footer>
   );

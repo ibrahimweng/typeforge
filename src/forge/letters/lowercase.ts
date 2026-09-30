@@ -6,10 +6,13 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
+import type { Vec2 } from "@/font/types";
 import { spineStart } from "../shapes";
-import type { Style } from "../style";
-import type { Stroke } from "../types";
+import { blackness, type Style } from "../style";
+import type { Terminal } from "../types";
 import {
+  type Frame,
+  roundHalf,
   arch,
   arms,
   at,
@@ -17,24 +20,58 @@ import {
   BUTT,
   chain,
   corner,
+  doubleVee,
   corners,
   crossbar,
-  dot,
   finish,
   frame,
   ink,
-  junction,
   type LetterName,
   openBowl,
   type Recipe,
   ring,
+  eyeOf,
+  wallAt,
+  shoulderRadius,
   spine,
   straight,
   thin,
   trough,
+  tReach,
   tStem,
   turn,
+  tittle,
+  bookish,
+  blackGap,
+  heaviness,
+  openVee,
+  kReach,
+  lighter,
+  stemSide,
+  kArms,
 } from "./common";
+
+/**
+ * The outside of an e's bowl at an angle round it, for a pen turned on its
+ * side: its reach across an upright is its light one, and to the level reach
+ * the bar stood out past the Fairground's bowl as a block.
+ */
+function barOutside(
+  f: Frame,
+  degrees: number,
+  pointAt: (degrees: number) => Vec2,
+  light: number,
+): number {
+  return (
+    pointAt(degrees).x + stemSide(f) * (1 - 0.14 * light) * Math.cos((degrees * Math.PI) / 180) - 1
+  );
+}
+
+/** The contrast from which a y's thick arm turns into its tail: see the y. */
+const HAIRLINE_Y = 0.7;
+
+/** Just past level, where a bowl's loop is walked from: see the e. */
+const SEAM = 0.01;
 
 export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- lowercase ---------------------------------------------------------
@@ -74,7 +111,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   c: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    return finish(f, [openBowl(f, centre, f.bowl, f.bowlH)], true);
+    return finish(f, [openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, blackGap(f))], true);
   },
 
   d: (style) => {
@@ -106,10 +143,101 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * at half the x-height and nowhere else, an e was the second letter that
      * looked like it had a crossbar and did not listen to the crossbar.
      */
-    const eye = f.x * f.style.parts.crossbar.height;
+    /*
+     * And at a heavy weight the bar comes down until the eye above it is half
+     * a stem deep. Two horizontals and a crossbar share the x-height, and at a
+     * Black on a text x-height the eye was left a third of a stem -- a chink,
+     * beside an o whose counter had widened with the pen. A Black e trades
+     * some of its aperture for its eye, which is the counter it is read by.
+     *
+     * Lowered, not lightened: a bar lighter than the bowl moved where a break
+     * laid along it falls, and the break sliced the bowl above it.
+     */
+    // Not in a joined hand, whose e is a loop written round from its join.
+    const opening = f.style.parts.script.on ? 0 : Math.min(1, blackness(f.style) / 0.5);
+    const barHalf = f.upright * f.bar;
+    const crown = centre.y + f.bowlH - f.upright;
+    const deep = f.half * 2 * 0.6 * opening;
+    /*
+     * But never so low that the tail shuts the aperture under the bar: that
+     * keeps a quarter of a stem, and more where the tail ends in a flare,
+     * which stands up further into it.
+     */
+    const below = f.half * 2 * opening * (f.style.parts.flare.spread > 0 ? 0.33 : 0.26);
+    const floor = centre.y - f.bowlH + f.upright + barHalf + below;
+    const eye = Math.max(Math.min(eyeOf(f, centre), crown - barHalf - deep), floor);
     const rise = Math.max(-0.85, Math.min(0.85, (eye - centre.y) / f.bowlH));
-    const opens = (Math.asin(rise) * 180) / Math.PI;
-    const belt = bend(f, centre, f.bowlH, opens, opens + 300);
+    // Where the bowl is an oval, the ray to the point on it at that height,
+    // as it is drawn: a quarter circle's angle landed well under the bar.
+    const oval = f.curve > 0 && !(f.superness > 0);
+    /*
+     * Wider and a little lighter at a black weight, so the eye stays open:
+     * see `heaviness`. Lowering the bar instead cut the tail short.
+     */
+    const heavy = heaviness(f);
+    /*
+     * On a face whose bar runs flush out of its bowl, only past a Black: to
+     * a Black the contrast the pen takes on keeps the eye open by itself, and
+     * a bowl changed there moved where a break laid along the bar falls, so
+     * that it sliced the bowl. Past it the eye closes without the help.
+     */
+    /*
+     * And no wider than a Black's: carried on past it, an Ultra's e stood
+     * wider than its o, a slab of ink with a slot in it.
+     */
+    const light = bookish(f) ? Math.min(heavy, 0.9) : Math.max(0, heavy - 1.1) * 2;
+    const beltWidth = f.bowl + f.half * 0.3 * light;
+    const opens =
+      ((oval
+        ? Math.atan2(rise * f.bowlH, beltWidth * Math.sqrt(1 - rise * rise))
+        : Math.asin(rise)) *
+        180) /
+      Math.PI;
+    /*
+     * On a pen turned on its side the bar is as deep as a level stroke, and
+     * the bowl leans in over its height: begun at the bar's middle, the
+     * bowl's cut stood out under the bar's end, and the bar's top corner out
+     * past the bowl. So the bowl begins at the foot of the bar, and the bar
+     * stops where the bowl's outside is at the bar's top.
+     */
+    const onSide = Math.abs(f.style.pen.angle) > 45;
+    const pointAt = (degrees: number): Vec2 =>
+      spineStart(bend(f, centre, f.bowlH, degrees, degrees + 1, beltWidth));
+    const heightAt = (y: number, low: number, high: number): number => {
+      let a = low;
+      let b = high;
+      for (let pass = 0; pass < 40; pass++) {
+        const mid = (a + b) / 2;
+        if (pointAt(mid).y < y) a = mid;
+        else b = mid;
+      }
+      return (a + b) / 2;
+    };
+    /*
+     * And always from under the upright run of a squared bowl's side, even
+     * where the bar's foot is still on it, so the bowl is drawn with the same
+     * pieces at every weight: begun on the run at a light weight and under it
+     * at a heavy one, the e could not follow the weight axis.
+     */
+    const side = bend(f, centre, f.bowlH, -89, 89, beltWidth).segments.find(
+      (s) => s.kind === "line" && Math.abs(s.from.x - s.to.x) < 0.5 && s.from.x > centre.x,
+    );
+    const runFoot =
+      side?.kind === "line" ? heightAt(Math.min(side.from.y, side.to.y) - 2, -89, opens) : opens;
+    const starts = onSide ? Math.min(heightAt(eye - barHalf, -89, opens), runFoot, opens) : opens;
+    /*
+     * The rest of the run as it always was, so the tail keeps its end -- but
+     * on a pen turned on its side begun no lower than level, where the bowl's
+     * run is drawn with the same pieces whichever weight asks: begun a hair
+     * under it, at the Fairground's Bold, the loop was walked from the other
+     * side of its seam and the tail stopped short on the foot, a different
+     * letter from the one either side of it on the weight axis.
+     */
+    const joins = onSide ? Math.max(opens, SEAM) : opens;
+    const round = bend(f, centre, f.bowlH, joins, opens + 300, beltWidth);
+    const belt = onSide
+      ? chain(bend(f, centre, f.bowlH, Math.min(starts, joins - 1), joins, beltWidth), round)
+      : round;
     return finish(
       f,
       [
@@ -122,9 +250,40 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
          * it poked out of the other side the moment the bowl was squared, since
          * a squared bowl at that height is not where a round one is. Measured
          * off the bowl, it meets it whatever shape the bowl has been given.
+         *
+         * And from the middle of the left wall rather than its inside edge,
+         * where a square end against the curve folded the union: `wallAt`.
          */
-        thin(f, straight(at(centre.x - f.bowl + f.half, eye), spineStart(belt))),
-        ink(f, belt, BUTT, f.end),
+        /*
+         * And out to the bowl's outside edge on the right, cut upright there.
+         * Stopped at the middle of the wall, the outer half of the wall under
+         * the bar was left open and the bar's end stood in the aperture as a
+         * spur -- at a black weight half a stem of it. A text e's bar runs
+         * flush with the outside of the bowl, and the eye closes square.
+         */
+        thin(
+          f,
+          straight(
+            // The wall of the bowl as it is drawn, which a heavy weight
+            // has widened: at the width the bowl would have had, the bar
+            // stopped short of it and left a pinhole under its end.
+            at(wallAt(f, centre, opens, blackness(f.style) > 0 ? beltWidth : undefined), eye),
+            at(
+              onSide
+                ? barOutside(f, heightAt(eye + barHalf, opens, 89), pointAt, light)
+                : spineStart(belt).x +
+                    f.reach(at(1, 0)) * (1 - 0.14 * light) * Math.cos((opens * Math.PI) / 180),
+              eye,
+            ),
+          ),
+          BUTT,
+          { kind: "butt", level: true },
+        ),
+        // Cut level along the foot of the bar, on a pen turned on its side.
+        lighter(
+          ink(f, belt, onSide ? { kind: "butt", level: true } : BUTT, f.end),
+          1 - 0.14 * light,
+        ),
       ],
       true,
     );
@@ -134,10 +293,13 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     // Big enough to read as a hook rather than a curl, small enough that the
     // letter does not turn into a walking stick.
-    const radius = Math.max(f.arch * 0.66, f.least);
+    const radius = Math.max(roundHalf(f) * 0.6, f.least);
     // How far left of the stem the bar reaches, which is also how far in from
     // the sidebearing the stem stands: the bar is this letter's left edge.
-    const left = Math.max(f.arch * 0.42, f.least);
+    // At least half a stem clear of the stem's own edge: at a black weight
+    // the bar reached six units past it, and stood out as a notch rather than
+    // as a bar.
+    const left = Math.max(roundHalf(f) * 0.36, f.least, f.half * 1.5);
     const stem = f.edge + left;
     const top = f.crest(f.asc) - radius;
     return finish(f, [
@@ -163,7 +325,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       ),
       // Reaching further right than left, as the t's bar does, so the two are
       // told apart by more than the hook at the sizes text is set at.
-      crossbar(f, stem - left, stem + f.arch * 0.62),
+      crossbar(f, stem - left, stem + roundHalf(f) * 0.57),
     ]);
   },
 
@@ -211,10 +373,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   i: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    return finish(f, [
-      ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-      dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
-    ]);
+    return finish(f, [ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end), tittle(f, stem)]);
   },
 
   /*
@@ -246,7 +405,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         f.end,
         f.end,
       ),
-      dot(f, at(stem, f.x + f.half * 1.5 + f.half * 0.55), f.half * 0.55),
+      tittle(f, stem),
     ]);
   },
 
@@ -270,14 +429,14 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   k: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const reach = stem + f.arch * 1.7;
+    // Held out from the stem as the K's is: see `kReach`.
+    const reach = stem + Math.max(f.arch * 1.7, kReach(f)) + openVee(f) * 1.5;
     const waist = f.x * 0.42;
     const arm = at(reach, f.x);
     const leg = at(reach, 0);
-    const meet = junction(f, arm, stem, waist, leg);
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-      ink(f, chain(straight(arm, meet), straight(meet, leg)), f.end, f.end),
+      ...kArms(f, arm, stem, waist, leg),
     ]);
   },
 
@@ -349,7 +508,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * the x-height rather than a fault in the r.
      */
     const reach = f.arch;
-    const radius = Math.max(f.half, Math.min(reach, f.x * (1 - f.style.parts.shoulder.spring)));
+    const radius = shoulderRadius(f, f.x);
     const crest = Math.max(f.crest(f.x), radius);
     const landing = stem + Math.max(reach, radius * 2);
     return finish(f, [
@@ -384,9 +543,16 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   t: (style) => {
     const f = frame(style);
-    const radius = Math.max(f.arch * 0.42, f.least);
-    const reach = f.arch * 0.7;
+    // Never turned so tight that the inside of the turn is a notch.
+    const radius = Math.max(roundHalf(f) * 0.34, f.least, f.half * 1.5);
+    const reach = tReach(f);
     const stem = tStem(f);
+    /*
+     * Standing clear over the bar by more than a sliver: on a face with a tall
+     * x-height or a heavy bar the stem's head came out a few units over the
+     * bar's top and read as a nub stuck on it rather than as the head of a t.
+     */
+    const head = Math.min(Math.max(f.asc * 0.78, f.x + f.half * 1.5), f.asc);
     return finish(f, [
       /*
        * Down the stem and out along the baseline, as one run.
@@ -398,10 +564,21 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       ink(
         f,
         chain(
-          straight(at(stem, f.asc * 0.78), at(stem, f.dip(0) + radius)),
+          straight(at(stem, head), at(stem, f.dip(0) + radius)),
           turn(at(stem + radius, f.dip(0) + radius), radius, 180, 270),
+          // And a little way on along the line, so the foot ends in a run of
+          // its own rather than on the turn: cut where the turn stopped, the
+          // inside of the turn met the cut in a notch.
+          straight(at(stem + radius, f.dip(0)), at(stem + radius + f.half * 0.6, f.dip(0))),
         ),
-        f.end,
+        /*
+         * Cut off at the top rather than capped. The top of a t is not the end
+         * of a stem that stands on a line, it is the stroke stopping short of
+         * the ascender, and no text face puts a serif there: given one, the
+         * bar across its top sat just over the crossbar and the t read as a
+         * double cross.
+         */
+        f.plain,
         f.end,
       ),
       crossbar(f, stem - reach * 0.7, stem + reach),
@@ -415,7 +592,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   v: (style) => {
     const f = frame(style);
-    const half = f.arch * 0.92;
+    const half = f.arch * 0.92 + openVee(f);
     const left = f.edge;
     const middle = left + half;
     const top = at(left, f.x);
@@ -426,7 +603,18 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   w: (style) => {
     const f = frame(style);
-    const half = f.arch * 0.68;
+    /*
+     * From the round letters (`roundHalf`) rather than the arch. A w is two vees, and a vee's width
+     * is not the rhythm of an n: tied to the shoulder's reach it lost a
+     * quarter of itself when a text face tightened its n, and set 0.77 of the
+     * width of Lora's. Never narrower than it was, though: on a face whose
+     * bowls are small against its pen the arch is the wider of the two.
+     */
+    const half =
+      Math.max(roundHalf(f) * 0.57, f.arch * 0.68) +
+      f.half * 0.1 * heaviness(f) +
+      f.gain * 0.2 +
+      openVee(f) * 0.8;
     const left = f.edge;
     const top = f.x;
     /*
@@ -443,18 +631,12 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      *
      * Two vees is what a w is anyway, and each of them lands the way a v does.
      */
-    const vee = (from: number): Stroke => {
-      const start = at(left + half * from, top);
-      const end = at(left + half * (from + 2), top);
-      const point = corner(f, start, at(left + half * (from + 1), 0), end);
-      return ink(f, chain(straight(start, point), straight(point, end)), f.end, f.end);
-    };
-    return finish(f, [vee(0), vee(1.72)]);
+    return finish(f, doubleVee(f, left, half, top));
   },
 
   x: (style) => {
     const f = frame(style);
-    const width = f.arch * 1.7;
+    const width = f.arch * 1.7 + openVee(f) * 2;
     const left = f.edge;
     return finish(f, [
       ink(f, straight(at(left, f.x), at(left + width, 0)), f.end, f.end),
@@ -464,15 +646,30 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   y: (style) => {
     const f = frame(style);
-    const half = f.arch * 0.92;
+    const half = f.arch * 0.92 + openVee(f);
     const left = f.edge;
     const middle = left + half;
-    // The left diagonal carries a little past where the two cross, so its
-    // square end is inside the other stroke rather than standing out of it.
-    const past = f.half * 1.1;
-    const drop = past / Math.hypot(1, f.x / half);
+    /*
+     * The left diagonal stops on the tail's own spine a little above the
+     * baseline, so both corners of its square end are buried in the tail.
+     * Carried on past the crossing instead, the corner on its right stood out
+     * of the tail's right side as a spur; stopped on the line, it would be cut
+     * level along it and stand out as a ledge.
+     */
+    const lift = f.half * 0.5;
+    /*
+     * On a face whose hairlines are a fraction of its stems -- a didone's --
+     * nothing that thin buries a thick arm's square end: its corner stood out
+     * past the hairline and the two read as an x crossed on the line. There
+     * the thick arm is cut along the hairline instead, so its end lies in it.
+     */
+    const along =
+      f.style.pen.contrast >= HAIRLINE_Y && !f.style.parts.script.on
+        ? (2 * Math.atan(half / f.x) * 180) / Math.PI - 90
+        : 0;
+    const armEnd: Terminal = along ? { kind: "angled", angle: along } : BUTT;
     return finish(f, [
-      ink(f, straight(at(left, f.x), at(middle + (drop * half) / f.x, -drop)), f.end, BUTT),
+      ink(f, straight(at(left, f.x), at(middle + (half * lift) / f.x, lift)), f.end, armEnd),
       /*
        * One straight run: down from the x-height, through the apex the left
        * diagonal ends at, and on into the descender at the angle it arrived
@@ -492,14 +689,17 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         f,
         straight(at(middle + half, f.x), at(middle + (half * f.desc) / f.x, f.desc)),
         f.end,
-        f.end,
+        // The tail is cut, not capped: a slab under a descender is a foot on
+        // a stroke that is not standing on anything.
+        f.plain,
       ),
     ]);
   },
 
   z: (style) => {
     const f = frame(style);
-    const width = f.arch * 1.6;
+    // From the round letters, as the w is and for the same reason.
+    const width = Math.max(roundHalf(f) * 1.36, f.arch * 1.6);
     const left = f.edge;
     /*
      * The two arms hang from the x-height and stand on the baseline, and the

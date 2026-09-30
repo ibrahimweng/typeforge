@@ -375,6 +375,8 @@ const GlyphCell = React.memo(function GlyphCell({
     const view = fitEmSquare(typeface, size, size - 20, 0.18);
     drawGlyph(context, glyph, typeface, view, {
       fill: readToken("--glyph-fill", "#eeeeee"),
+      centreOnOutline: true,
+      maxWidth: size * 0.86,
     });
   }, [glyph, typeface, revision, preview, ratio]);
 

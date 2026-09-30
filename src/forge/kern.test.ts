@@ -104,7 +104,11 @@ describe("kerning worked out from the letters", () => {
       ["P", "comma"],
       ["F", "period"],
       ["Г", "А"],
-      ["У", "Д"],
+      /*
+       * Not the У and the Д: the Sans fits each side of a letter to the white
+       * it already has, so a Д's slanting leg and the У's arm are set close
+       * enough by the spacing that there is nothing left for a kern to close.
+       */
       ["Т", "а"],
       ["Γ", "Α"],
       ["Τ", "α"],

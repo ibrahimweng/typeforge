@@ -12,6 +12,7 @@ import {
   BUTT,
   chain,
   dot,
+  fatFace,
   finish,
   hook,
   ink,
@@ -24,6 +25,34 @@ import {
   straight,
   turn,
 } from "./common";
+
+/**
+ * The box a chevron is drawn in -- a circumflex, a caron: never shallower
+ * than a pen, and never steeper than about forty degrees.
+ *
+ * `markBox` lets a heavy pen take the height a mark would have had, which
+ * suits a stroke or a dot. A chevron is two strokes meeting, and flattened to
+ * half a pen tall its notch filled in: a heavy caron was a heart. So it keeps
+ * a pen and a fifth of height and widens to keep its angle, as Geist Black's
+ * does.
+ */
+function chevronBox(f: ReturnType<typeof markFrame>, m: ReturnType<typeof markBox>) {
+  const top = Math.max(m.top, m.foot + f.half * 1.2);
+  const w = Math.max(m.w, (top - m.foot) * 1.2);
+  return { ...m, top, w, cx: m.cx - m.w + w };
+}
+
+/**
+ * The box an acute or a grave is drawn in: on a fat face no wider than it is
+ * tall, or thereabouts, so the stroke stands at the angle an accent is read by.
+ * A heavy pen takes most of the height a mark has, and laid across the text
+ * width in what is left, the Display's acute was a brick lying nearly flat.
+ */
+function slopeBox(f: ReturnType<typeof markFrame>, m: ReturnType<typeof markBox>) {
+  if (!fatFace(f.style)) return m;
+  const w = Math.min(m.w, Math.max((m.top - m.foot) * 1.3, f.half));
+  return { ...m, w };
+}
 
 export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // -------------------------------------------------------------------------
@@ -42,7 +71,7 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   grave: (style) => {
     const f = markFrame(style);
-    const m = markBox(f);
+    const m = slopeBox(f, markBox(f));
     return finish(f, [
       ink(f, straight(at(m.cx - m.w, m.top), at(m.cx + m.w, m.foot)), shortEnd(f), shortEnd(f)),
     ]);
@@ -50,7 +79,7 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   acute: (style) => {
     const f = markFrame(style);
-    const m = markBox(f);
+    const m = slopeBox(f, markBox(f));
     return finish(f, [
       ink(f, straight(at(m.cx - m.w, m.foot), at(m.cx + m.w, m.top)), shortEnd(f), shortEnd(f)),
     ]);
@@ -58,7 +87,7 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   circumflex: (style) => {
     const f = markFrame(style);
-    const m = markBox(f);
+    const m = chevronBox(f, markBox(f));
     // One run with a corner in it rather than two strokes meeting, so the apex
     // is joined the way every other corner in the font is -- and rounds off
     // with them when the face asks for that.
@@ -77,7 +106,7 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   caron: (style) => {
     const f = markFrame(style);
-    const m = markBox(f);
+    const m = chevronBox(f, markBox(f));
     // The circumflex the other way up, which is what a caron is.
     return finish(f, [
       ink(
@@ -124,13 +153,15 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   dieresis: (style) => {
     const f = markFrame(style);
     const m = markBox(f);
-    const radius = f.half * 0.95;
+    const radius = f.half * 0.95 + f.x * 0.02 * Math.max(0, 1 - (f.half * 2) / 86);
     const height = m.foot + (m.top - m.foot) * 0.5;
     // Set apart by the width of the mark, so the pair reads as two dots rather
-    // than as a smudge at a heavy weight or as two separate marks at a light one.
+    // than as a smudge at a heavy weight or as two separate marks at a light one
+    // -- and never nearer than two thirds of a dot's width between them.
+    const apart = Math.max(m.w * 0.5, radius * 1.35);
     return finish(f, [
-      dot(f, at(m.cx - m.w * 0.5, height), radius),
-      dot(f, at(m.cx + m.w * 0.5, height), radius),
+      dot(f, at(m.cx - apart, height), radius),
+      dot(f, at(m.cx + apart, height), radius),
     ]);
   },
 
@@ -204,8 +235,14 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   hungarumlaut: (style) => {
     const f = markFrame(style);
     const m = markBox(f);
-    const wide = m.w * 0.44;
-    const apart = m.w * 0.62;
+    /*
+     * On a fat face each stroke a little longer than the pen is wide, so the
+     * pair read as two acutes rather than two tilted squares.
+     */
+    const wide = fatFace(f.style) ? Math.max(m.w * 0.44, f.half * 0.8) : m.w * 0.44;
+    // Never nearer than a pen and a bit apart, or at a heavy weight the two
+    // strokes ran into one notched block.
+    const apart = Math.max(m.w * 0.62, f.half * 1.75, fatFace(f.style) ? wide + f.half * 1.1 : 0);
     return finish(
       f,
       [-1, 1].map((side) =>
@@ -283,6 +320,34 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     return finish(f, [
       {
         spine: straight(foot, at(foot.x + radius * 0.5, m.foot + (m.top - m.foot) * 0.9)),
+        pen: { ...f.style.pen, contrast: 0, weight: radius * 1.7 },
+        start: { kind: "round" },
+        end: { kind: "round" },
+      },
+    ]);
+  },
+
+  /*
+   * The caron of a ď, an ľ, a ť and an Ľ: an apostrophe standing beside the
+   * stem, as every Czech and Slovak text is set, rather than a chevron over
+   * the ascender. Narrowing to its foot as the comma accent does, and as long
+   * as the ordinary caron is tall and a half again, so it reads beside a stem
+   * as tall as an ascender. Placed by `besideTop` in `build.ts`.
+   */
+  apostrophemod: (style) => {
+    const f = markFrame(style);
+    const m = markBox(f);
+    const radius = Math.max(f.half * 0.8, f.least * 0.5);
+    // And never so short beside a heavy pen that it reads as a dot.
+    const tall = Math.max((m.top - m.foot) * 1.5, radius * 3.2);
+    const top = at(m.cx + radius * 0.3, m.top);
+    const foot = at(top.x - Math.max(radius * 0.6, tall * 0.18), m.top - tall);
+    const middle = at((top.x + foot.x) / 2, (top.y + foot.y) / 2);
+    return finish(f, [
+      {
+        // Two pieces, so a written hand never bows it: at a hairline it bowed
+        // and at a text weight it did not, and the mark changed its points.
+        spine: chain(straight(top, middle), straight(middle, foot)),
         pen: { ...f.style.pen, contrast: 0, weight: radius * 1.7 },
         start: { kind: "round" },
         end: { kind: "round" },
