@@ -390,7 +390,7 @@ function swept(
    * of paper standing in each corner, and a Black A whose counter should have
    * closed kept a star of them.
    */
-  const kept = counters.flatMap((counter) => {
+  const paperOf = (counter: Contour): Contour[] => {
     const loop = convolve(counter);
     const box = contoursBounds([loop, counter]);
     const frame = poly([
@@ -408,7 +408,8 @@ function swept(
     const paper = reverseContour(counter);
     const checked = reachOf ? shrunk(paper, loop, frame, reachOf(counter)) : null;
     return checked ?? subtract([paper], filled([frame, loop]), "winding");
-  });
+  };
+  const kept = counters.flatMap(paperOf);
   let result = kept.length > 0 ? subtract(ground, kept, "winding") : ground;
   /*
    * An island is laid back on with its own counters in it.
@@ -432,10 +433,19 @@ function swept(
      * and the letter threw.
      */
     const deeper = islands.length + inner.length < solids.length + counters.length;
+    /*
+     * And where it is not, the islands are grown on their own and their own
+     * counters' paper still taken back out of them, a level down and no
+     * further. Grown as bare solids, a pinched island came back filled, and
+     * an o under a slot, an inline and a rim came back a black disc.
+     */
+    const bare = (): Contour[] => {
+      const grown = sweep(islands);
+      const paper = inner.flatMap(paperOf);
+      return paper.length > 0 ? subtract(grown, paper, "winding") : grown;
+    };
     const again =
-      inner.length > 0 && deeper
-        ? swept([...islands, ...inner], convolve, reachOf)
-        : sweep(islands);
+      inner.length > 0 && deeper ? swept([...islands, ...inner], convolve, reachOf) : bare();
     result = unite([...result, ...again], "winding", "whole");
   }
   return tidied(result);
@@ -1054,7 +1064,18 @@ export function eroded(shape: Contour[], reach: number): Contour[] {
     });
     return subtract(left, grown, "winding");
   });
-  return pieces.length <= 1 ? pieces : unite(pieces, "winding", "whole");
+  /*
+   * Less any hole smaller than the figure. Every hole in a letter shrunk by
+   * `reach` is paper grown by it, and holds a whole figure at the least; a
+   * speck of one is where a counter's point met the round of the figure
+   * grown into it and the two did not quite close -- the groove of a Sans p
+   * or a Slab b, run to a point at the join of bowl and stem, left one there
+   * that counted as a counter the letter did not have.
+   */
+  const least = reach * reach;
+  const whole = (contours: Contour[]) =>
+    contours.filter((contour) => contourArea(contour) >= 0 || -contourArea(contour) >= least);
+  return whole(pieces.length <= 1 ? pieces : unite(pieces, "winding", "whole"));
 }
 
 /**
@@ -1327,17 +1348,16 @@ function onEdge(from: GlyphNode, to: GlyphNode, by: number, way: "back" | "forwa
 }
 
 /**
- * A point built out of every corner.
+ * A spur on every square corner.
  *
  * The chamfer's opposite and found the same way -- a corner is a place where
  * the outline turns sharply with the ink on the inside of the turn -- so the
  * two agree about what a corner is, which matters when both are switched on
- * and one is undoing the other.
+ * and one is undoing the other: a corner the chamfer cut is left cut.
  *
- * The spike sits on the two edges that meet and reaches out past the point of
- * the corner. Its base is drawn back along both edges rather than pinned to
- * the corner itself, so what is added is a wedge with a width to it instead of
- * a hair standing on a single point.
+ * Each is a flare along the level edge out of the corner, tapering back
+ * along the other: see `spurAt`. Only a corner near square is spurred; a
+ * sharp one is a point already, and an obtuse one has nothing to flare from.
  */
 function spurTool(
   shape: Contour[],
@@ -1474,100 +1494,45 @@ function spurTool(
        * counter got a spike at each of its corners, aimed into the stem.)
        */
       if (turn <= 0) continue;
+      /*
+       * Only a corner near square: between about fifty-five and a hundred and
+       * twenty-five degrees. A point on an obtuse corner lies along the edge
+       * as a thorn, and one on a corner already sharp -- the apex of an A,
+       * the end of the arm of a k -- is a spike on a spike.
+       */
+      if (turn < (55 * Math.PI) / 180 || turn > (125 * Math.PI) / 180) continue;
+      /*
+       * A corner the chamfer cut keeps its cut. A spur is a flare along a
+       * level edge from a square corner, and the chamfer has taken the corner
+       * away: a point stood on the flat, or on each of the two corners it left,
+       * put back the corner the chamfer was asked to take off, as a thorn.
+       */
       if (last !== first) {
         for (let step = index; step !== lastIndex; step = (step + 1) % count) used.add(step);
         used.add(lastIndex);
+        continue;
       }
-
-      // The corner the point grows from: the one there was before any cut.
       const start = first.here.point;
-      const finish = last.here.point;
-      const apex =
-        last === first
-          ? start
-          : (meeting(start, arriving, finish, leaving) ?? midway(start, finish));
-
-      // Never more of the edge than there is edge to take, or the base of one
-      // spike reaches the next corner and the two run together.
-      const room = Math.min(
-        distance(start, first.previous.point),
-        distance(finish, last.next.point),
-      );
       /*
        * Nor on a step: the notch where the shoulder of a Sans r leaves the
        * top of its stem is a corner a few units across, and a point stood on
        * it read as a nick in the shoulder. A corner has to have edges at least
        * a good part of the point's length to carry one.
        */
-      if (last === first && room < size * 0.45) continue;
+      const room = Math.min(
+        distance(start, first.previous.point),
+        distance(start, first.next.point),
+      );
+      if (room < size * 0.45) continue;
       /*
        * Nor on a corner the chamfer made that was not read as half of one it
        * cut. A cut through an acute corner -- the end of the arm of a k, the
        * lower terminal of an e -- leaves more corners than two, and each
        * that was not paired grew a thorn of its own beside the point.
        */
-      if (last === first && chamfered.some((corner) => distance(corner, start) < stem * 0.75)) {
-        continue;
-      }
-      const base = Math.min(size * 0.7, room * 0.45);
-      /*
-       * And never longer than its base can hold up.
-       *
-       * A brushed outline turns sharply now and then over a unit or two -- a
-       * kink in the side of a stem, the step of a serif -- and a full-length
-       * point stood on a base that narrow is a hair: a Brush face with points
-       * on came back with whiskers standing off the middle of every stem, and
-       * a rim grown over them turned each into a tuft of fur. Held to a
-       * little over twice its base, a point on a short edge is a short point,
-       * and one too small to see is not drawn.
-       */
-      let reach = Math.min(
-        size,
-        // A corner the chamfer cut stands on the whole of the flat it left.
-        Math.max(base * 2.4, last === first ? 0 : distance(start, finish) * 1.5),
-      );
-
-      // Out of the corner is against the turn, along `arriving - leaving`.
-      // The other sign points into the letter and buries the spike.
-      const out = away({ x: leaving.x, y: leaving.y }, { x: arriving.x, y: arriving.y });
-      if (!out) continue;
-      /*
-       * And never into the letter's own space.
-       *
-       * A corner can be convex and still face another part of the letter
-       * across a gap: the end of the tail of an e faces its crossbar across
-       * the aperture, the top of an r's stem sits under its shoulder, the
-       * inner corners of a k's arm and leg face the crotch. A point grown
-       * there ran across the gap and left a hairline of paper between itself
-       * and the stroke it nearly touched. So the point is held about its own
-       * length short of any ink it is aimed at, and where that leaves too
-       * little of it, it is not grown.
-       */
-      const clear = size * 0.9;
-      for (const spread of [0, 0.35, -0.35, 0.7, -0.7]) {
-        const cos = Math.cos(spread);
-        const sin = Math.sin(spread);
-        const way = { x: out.x * cos - out.y * sin, y: out.x * sin + out.y * cos };
-        const hit = rayHitDistance(outline, { x: apex.x + way.x, y: apex.y + way.y }, way);
-        if (Number.isFinite(hit)) reach = Math.min(reach, (hit + 1) * Math.cos(spread) - clear);
-      }
-      if (reach < size * 0.35) continue;
-      /*
-       * The base stands on the outline either side, along the edges and not
-       * along their tangents. Off a curve, a point a base back along the
-       * tangent stands out in the paper beside it, and the point's side ran
-       * from there across the curve: a notch where the point met the bowl of
-       * a chamfered Black a, once the chamfer left that terminal cut clean.
-       */
-      added.push(
-        poly([
-          onEdge(first.previous, first.here, base, "back"),
-          ...(last === first ? [] : [start]),
-          { x: apex.x + out.x * reach, y: apex.y + out.y * reach },
-          ...(last === first ? [] : [finish]),
-          onEdge(last.here, last.next, base, "forward"),
-        ]),
-      );
+      if (chamfered.some((corner) => distance(corner, start) < stem * 0.75)) continue;
+      const flare = spurAt(first, size, outline);
+      if (flare) added.push(flare);
     }
   }
   /*
@@ -1585,6 +1550,56 @@ function spurTool(
         !overlapping(boxes[index], boxes[other]) ||
         !polygonsCross(polygons[index], polygons[other]),
     ),
+  );
+}
+
+/**
+ * The spur on one square corner: the level edge carried on past the corner
+ * to a point, and drawn back along the other edge in a taper.
+ *
+ * What a spur is on a Latin or a Tuscan face, and on a wedge serif: the foot
+ * of a stem flares out along the line it stands on, the end of an arm along
+ * the line of its top. It used to be a point grown straight out of the corner
+ * along the line that halves it -- at a Black, a thorn a stem and a half long
+ * off every foot and every junction of an n, an m and a 4, which reads as a
+ * letter in armour rather than a letter with spurs.
+ *
+ * As long as two fifths of the edge it carries on and no longer than half the
+ * size asked for, and never aimed at ink it would run into.
+ */
+function spurAt(
+  corner: {
+    here: GlyphNode;
+    previous: GlyphNode;
+    next: GlyphNode;
+    arriving: Vec2 | null;
+    leaving: Vec2 | null;
+  },
+  size: number,
+  outline: Vec2[][],
+): Contour | null {
+  const { here, previous, next, arriving, leaving } = corner;
+  if (!arriving || !leaving) return null;
+  const at = here.point;
+  const before = distance(previous.point, at);
+  const after = distance(at, next.point);
+  // The edge nearer level is the one carried on; the other takes the taper.
+  const onward = Math.abs(arriving.y) <= Math.abs(leaving.y);
+  const way = onward ? arriving : { x: -leaving.x, y: -leaving.y };
+  const carried = onward ? before : after;
+  const held = onward ? after : before;
+  let reach = Math.min(size * 0.5, carried * 0.4);
+  // Held back from any ink it points at, by its own length.
+  const hit = rayHitDistance(outline, { x: at.x + way.x, y: at.y + way.y }, way);
+  if (Number.isFinite(hit)) reach = Math.min(reach, (hit + 1) / 2);
+  if (reach < size * 0.15) return null;
+  const base = Math.min(reach * 1.8, held * 0.45);
+  if (base < reach * 0.6) return null;
+  const tip = { x: at.x + way.x * reach, y: at.y + way.y * reach };
+  return poly(
+    onward
+      ? [tip, onEdge(here, next, base, "forward"), at]
+      : [onEdge(previous, here, base, "back"), tip, at],
   );
 }
 
@@ -1613,8 +1628,6 @@ function meeting(a: Vec2, u: Vec2, b: Vec2, v: Vec2): Vec2 | null {
   const t = ((b.x - a.x) * v.y - (b.y - a.y) * v.x) / cross;
   return { x: a.x + u.x * t, y: a.y + u.y * t };
 }
-
-const midway = (a: Vec2, b: Vec2): Vec2 => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
 /**
  * Ink piled into the corner wherever two strokes run into each other.
