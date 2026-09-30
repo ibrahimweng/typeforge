@@ -179,10 +179,17 @@ suite("a joined face carries its joins into the file", () => {
          * What the seam does is unchanged, which is what this is guarding: the
          * lead-out still stops on the advance to the unit, and the pairs still
          * join at nothing on all four faces.
+         *
+         * Two more on the written `r`. Its joins are hairlines now, and the
+         * end of a hairline lead-out stands no further right than the tip of
+         * the r's own arm, so the rightmost ink is the arm on one drawing and
+         * the lead-out on the other -- and the arm, standing well above the
+         * seam, is the part the mid-word tilt moves furthest.
          */
+        const slack = WRITTEN_OUT.has(letter) ? 5 : 3;
         expect([
           name,
-          Math.abs(widths[name] - right[name] - (widths[letter] - right[letter])) <= 3,
+          Math.abs(widths[name] - right[name] - (widths[letter] - right[letter])) <= slack,
         ]).toEqual([name, true]);
       }
 
