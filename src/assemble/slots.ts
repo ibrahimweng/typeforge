@@ -70,10 +70,38 @@ oslash ugrave uacute ucircumflex udieresis yacute thorn ydieresis`
   .split(/\s+/)
   .filter(Boolean);
 
+/*
+ * The typographic punctuation past Latin-1 -- the dashes, the curly quotes,
+ * the ellipsis -- by the names the Adobe Glyph List gives them, which are the
+ * names Draw writes them under. Without these a file had a `uni2019` where
+ * every other font has a `quoteright`.
+ */
+const NAMES_BEYOND = new Map<number, string>([
+  [0x2013, "endash"],
+  [0x2014, "emdash"],
+  [0x2018, "quoteleft"],
+  [0x2019, "quoteright"],
+  [0x201a, "quotesinglbase"],
+  [0x201c, "quotedblleft"],
+  [0x201d, "quotedblright"],
+  [0x201e, "quotedblbase"],
+  [0x2020, "dagger"],
+  [0x2021, "daggerdbl"],
+  [0x2022, "bullet"],
+  [0x2026, "ellipsis"],
+  [0x2039, "guilsinglleft"],
+  [0x203a, "guilsinglright"],
+  [0x20ac, "Euro"],
+  [0x2122, "trademark"],
+  [0x2212, "minus"],
+]);
+
 /** What a character is called in a font file. */
 export function glyphNameFor(character: string): string {
   const code = character.codePointAt(0);
   if (code === undefined) return "unknown";
+  const beyond = NAMES_BEYOND.get(code);
+  if (beyond) return beyond;
   if (code >= 0x20 && code <= 0x40) return NAMES_20_40[code - 0x20];
   if (code >= 0x41 && code <= 0x5a) return character;
   if (code >= 0x5b && code <= 0x60) return NAMES_5B_60[code - 0x5b];

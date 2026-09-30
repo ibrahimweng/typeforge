@@ -6,7 +6,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
@@ -646,6 +646,104 @@ test("draws the symbols and writes them into the font", async ({ page }) => {
     [...bytes],
   );
 
+  const missing = measured
+    .filter(([, mono, serif]) => mono === 0 || mono !== serif)
+    .map(([character]) => character);
+  expect(missing.join(" "), "the font went out without these").toBe("");
+  expect(errors).toEqual([]);
+});
+
+/**
+ * The typographic punctuation, end to end: curly and low quotes, single
+ * guillemets, dashes, the ellipsis, the bullet, the minus, the euro, the trade
+ * mark and the daggers.
+ *
+ * Every base drew 452 glyphs and none of these, so "don’t" -- or any text that
+ * has been through a word processor -- set with holes in it. The grid has no
+ * fixed count to update: it is every glyph the font draws, so it grew by
+ * seventeen to 469, and what is checked is that the new ones are in it, in a
+ * line of type, and in the file under the codepoints and names other fonts
+ * use.
+ */
+test("draws the typographic punctuation and writes it into the font", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  for (const name of ["quoteleft", "quoteright", "endash", "emdash", "ellipsis", "Euro"]) {
+    await expect(page.locator(`[data-forge-cell="${name}"]`)).toBeVisible();
+  }
+
+  const text = "‘’“”‚„‹›–—…•−€™†‡";
+  await page.locator('input[value="Handgloves"]').fill(text);
+  const line = page.getByRole("img", { name: "Specimen" });
+  await expect.poll(() => line.locator("path").count()).toBe([...text].length);
+
+  const download = await Promise.race([
+    page.waitForEvent("download", { timeout: 90_000 }),
+    page
+      .getByRole("button", { name: "Export", exact: true })
+      .click()
+      .then(() =>
+        page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Download", exact: true })
+          .click()
+          .then(() => page.waitForEvent("download", { timeout: 90_000 })),
+      ),
+  ]);
+  const bytes = readFileSync((await download.path())!);
+
+  // In the file under the names every other font uses, mapped from the right
+  // characters -- as read by fontTools rather than by this application, which
+  // would only be agreeing with itself.
+  const saved = test.info().outputPath("typographic.otf");
+  writeFileSync(saved, bytes);
+  const named = JSON.parse(
+    execFileSync("python3", [
+      "-c",
+      "import json,sys;from fontTools.ttLib import TTFont;m=TTFont(sys.argv[1]).getBestCmap();" +
+        "print(json.dumps([m.get(ord(c)) for c in sys.argv[2]]))",
+      saved,
+      text,
+    ]).toString(),
+  );
+  expect(named).toEqual([
+    "quoteleft",
+    "quoteright",
+    "quotedblleft",
+    "quotedblright",
+    "quotesinglbase",
+    "quotedblbase",
+    "guilsinglleft",
+    "guilsinglright",
+    "endash",
+    "emdash",
+    "ellipsis",
+    "bullet",
+    "minus",
+    "Euro",
+    "trademark",
+    "dagger",
+    "daggerdbl",
+  ]);
+
+  // And set by the browser from the font rather than from whatever is behind it.
+  const measured = await page.evaluate(
+    async ({ data, text }) => {
+      const face = new FontFace("Typographic", new Uint8Array(data).buffer as ArrayBuffer);
+      await face.load();
+      document.fonts.add(face);
+      await document.fonts.load("100px Typographic");
+      const context = document.createElement("canvas").getContext("2d")!;
+      const width = (one: string, behind: string) => {
+        context.font = `100px Typographic, ${behind}`;
+        return context.measureText(one).width;
+      };
+      return [...text].map((one) => [one, width(one, "monospace"), width(one, "serif")] as const);
+    },
+    { data: [...bytes], text },
+  );
   const missing = measured
     .filter(([, mono, serif]) => mono === 0 || mono !== serif)
     .map(([character]) => character);

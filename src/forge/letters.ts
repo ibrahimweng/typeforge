@@ -59,6 +59,7 @@ import { LOWERCASE_RECIPES } from "./letters/lowercase";
 import { CAPITAL_RECIPES } from "./letters/capitals";
 import { FIGURE_RECIPES } from "./letters/figures";
 import { PUNCTUATION_RECIPES } from "./letters/punctuation";
+import { TYPOGRAPHIC_RECIPES } from "./letters/typographic";
 import { LATIN_RECIPES } from "./letters/latin";
 import { MARK_RECIPES } from "./letters/marks";
 import { CYRILLIC_RECIPES } from "./letters/cyrillic";
@@ -89,6 +90,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   ...CAPITAL_RECIPES,
   ...FIGURE_RECIPES,
   ...PUNCTUATION_RECIPES,
+  ...TYPOGRAPHIC_RECIPES,
   ...LATIN_RECIPES,
   ...MARK_RECIPES,
   ...CYRILLIC_RECIPES,

@@ -47,6 +47,7 @@ import {
   shortEnd,
   signGap,
   signWidth,
+  sized,
   spread,
   squareDots,
   stopRadius,
@@ -108,11 +109,35 @@ function quoteWidth(f: Frame): number {
   return stopRadius(f) * 1.44;
 }
 
-/** One straight quote: a wedge from the cap height down about a third of it. */
+/**
+ * One straight quote: a wedge from a little over the cap height down about a
+ * third of it. Lora's stands 16 over its cap line (491 to 716 on a cap height
+ * of 700), as its capitals' serifs and its curly quotes do; hung from the cap
+ * line it stood 16 short of them.
+ */
 function quote(f: Frame, x: number): Stroke[] {
   const wide = quoteWidth(f);
-  const depth = Math.max(f.cap * 0.31, wide * 1.7);
-  return wedge(f, x, f.cap, f.cap - depth, wide, wide * 0.55);
+  const top = f.cap * 1.023;
+  const depth = Math.max(f.cap * 0.32, wide * 1.7);
+  return wedge(f, x, top, top - depth, wide, wide * 0.55);
+}
+
+/**
+ * The frame a plain face's straight quote is drawn in: its own pen up to about
+ * the full stop's size, and no heavier.
+ *
+ * At a text weight that is the stem. Past it, a quote at the stem's full
+ * weight was a slab wider than the full stop beside it and hardly taller than
+ * it was wide -- a Grotesque Black's was 234 across and 202 deep, where Geist
+ * Black's is 140 across and 288 deep. Held to eight tenths of the full stop and
+ * never less than a text stem, it keeps to the dots' colour; and it runs at
+ * least a stroke and six tenths deep, so it stays a mark rather than a block.
+ */
+function quoteFrame(f: Frame): { g: Frame; depth: number } {
+  const stem = f.style.pen.weight;
+  const wide = Math.min(stem, Math.max(stopRadius(f) * 1.6, f.x * 0.19));
+  const g = wide < stem ? frame(sized(f.style, 1, wide / stem)) : f;
+  return { g, depth: Math.max(f.cap * 0.28, wide * 1.6) };
 }
 
 /**
@@ -527,9 +552,9 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   quotesingle: (style) => {
     const f = frame(style);
     if (bookish(f)) return finish(f, quote(f, f.edge));
-    return finish(f, [
-      ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
-    ]);
+    const { g, depth } = quoteFrame(f);
+    const x = f.edge - f.half + g.half;
+    return finish(g, [ink(g, straight(at(x, f.cap - depth), at(x, f.cap)), g.plain, g.plain)]);
   },
 
   quotedbl: (style) => {
@@ -547,10 +572,14 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     // A mark's width and then white of its own, never less than a share of
     // the x-height: at a hairline weight, set a share of the pen apart, the
     // two marks read as one split bar.
-    const gap = f.style.pen.weight + Math.max(f.style.pen.weight * 0.6, f.x * 0.09);
-    return finish(f, [
-      ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
-      ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
+    const { g, depth } = quoteFrame(f);
+    const pen = g.style.pen.weight;
+    const gap = pen + Math.max(pen * 0.6, f.x * 0.09);
+    const x = f.edge - f.half + g.half;
+    const foot = f.cap - depth;
+    return finish(g, [
+      ink(g, straight(at(x, foot), at(x, f.cap)), g.plain, g.plain),
+      ink(g, straight(at(x + gap, foot), at(x + gap, f.cap)), g.plain, g.plain),
     ]);
   },
 

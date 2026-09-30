@@ -1465,10 +1465,19 @@ function rounded(stroke: Stroke, straight: { start: boolean; end: boolean }): St
 
 /** A capital in any script: a letter that is its own upper case and has a lower one. */
 function isCapitalLike(name: string): boolean {
-  if (isCapital(name)) return true;
+  if (isCapital(name) || SET_AS_CAPITALS.has(name)) return true;
   const one = [...name].length === 1 ? name : characterOf(name);
   return one !== null && one.toUpperCase() === one && one.toLowerCase() !== one;
 }
+
+/**
+ * The symbols made of capitals, which are spaced and finished as capitals: the
+ * trade mark is a small T and M, and Geist sets it as far off either side as
+ * its H (92 units). Finished as a lowercase letter instead, a joined face gave
+ * its small T and M the ends of a lowercase stem at the light weights and not
+ * at the heavy ones, and the sign changed its points along the weight axis.
+ */
+const SET_AS_CAPITALS = new Set(["trademark"]);
 
 /** Letters drawn under a name the accented tables do not carry. */
 const OTHER_LETTERS: Record<string, number> = { dotlessj: 0x237 };

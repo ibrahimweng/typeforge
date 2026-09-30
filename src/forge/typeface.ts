@@ -123,6 +123,26 @@ const CODEPOINTS: Record<string, number> = {
   questiondown: 0xbf,
   multiply: 0xd7,
   divide: 0xf7,
+
+  // The typographic punctuation past Latin-1, under the names the Adobe Glyph
+  // List gives them: see `letters/typographic.ts`.
+  endash: 0x2013,
+  emdash: 0x2014,
+  quoteleft: 0x2018,
+  quoteright: 0x2019,
+  quotesinglbase: 0x201a,
+  quotedblleft: 0x201c,
+  quotedblright: 0x201d,
+  quotedblbase: 0x201e,
+  dagger: 0x2020,
+  daggerdbl: 0x2021,
+  bullet: 0x2022,
+  ellipsis: 0x2026,
+  guilsinglleft: 0x2039,
+  guilsinglright: 0x203a,
+  Euro: 0x20ac,
+  trademark: 0x2122,
+  minus: 0x2212,
 };
 
 /**
