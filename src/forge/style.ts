@@ -948,6 +948,18 @@ export const SANS: Style = {
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
       at: [0.56, 0.57],
+      // The typographic punctuation (`letters/typographic.ts`). Geist stands
+      // its guillemets 44 off either side at the Regular and 32 at the Black,
+      // as its n; its daggers and its trade mark as far off as its H (92,
+      // the trade mark after a capital's 12 of extra); its euro 55 and 40.
+      guillemotleft: [0.55, 0.55, "closes"],
+      guillemotright: [0.55, 0.55, "closes"],
+      guilsinglleft: [0.55, 0.55, "closes"],
+      guilsinglright: [0.55, 0.55, "closes"],
+      dagger: [1.15, 1.15, "closes"],
+      daggerdbl: [1.15, 1.15, "closes"],
+      trademark: [1, 1, "closes"],
+      Euro: [0.69, 0.5],
     },
     /*
      * Each letter's width against the rhythm, fitted to Geist's by measuring
@@ -1393,6 +1405,24 @@ export const SERIF: Style = {
       slash: [0.62, 0.59],
       at: [1.47, 1.24],
       yen: [0.82, 0.79],
+      // The typographic punctuation (`letters/typographic.ts`). Lora sets its
+      // closing quotes tight, 25 and 23 off, and its opening ones 46 and 52;
+      // its guillemets 32 off the side they point to and 55 off the other,
+      // the single ones 31 and 47; its bullet 50 off either side; its euro
+      // 35 and 42; its trade mark 63 (49 and a capital's extra).
+      quoteright: [0.74, 0.68],
+      quotedblright: [0.74, 0.68],
+      quoteleft: [1.35, 1.53],
+      quotedblleft: [1.35, 1.53],
+      guillemotleft: [0.94, 1.62],
+      guillemotright: [1.62, 0.94],
+      guilsinglleft: [0.91, 1.38],
+      guilsinglright: [1.38, 0.91],
+      bullet: [1.47, 1.47],
+      trademark: [1.45, 1.45],
+      Euro: [1.03, 1.24],
+      dagger: [1.5, 1.5],
+      daggerdbl: [1.5, 1.5],
     },
     proportions: {
       a: 1.069,

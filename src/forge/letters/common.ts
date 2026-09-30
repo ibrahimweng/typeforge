@@ -4661,18 +4661,26 @@ export function enclosed(f: Frame, name: LetterName): Recipe {
  */
 export function chevrons(f: Frame, facing: 1 | -1): Recipe {
   const w = signWidth(f) * 0.42;
+  const step = Math.max(w * 0.92, f.style.pen.weight * f.bar * 2.1);
+  return finish(f, [chevron(f, facing, f.edge), chevron(f, facing, f.edge + step)]);
+}
+
+/**
+ * One of a guillemet's two chevrons, with its back at `left` or its tip there.
+ *
+ * A single guillemet is this and nothing else, so the two are drawn by one
+ * function and cannot drift apart: a ‹ is exactly half of a «.
+ */
+export function chevron(f: Frame, facing: 1 | -1, left: number): Stroke {
+  const w = signWidth(f) * 0.42;
   const rise = w * 1.05;
   const y = axis(f);
-  const step = Math.max(w * 0.92, f.style.pen.weight * f.bar * 2.1);
-  const one = (left: number): Stroke => {
-    const back = facing > 0 ? left : left + w;
-    const tip = facing > 0 ? left + w : left;
-    return bent(
-      f,
-      chain(straight(at(back, y + rise), at(tip, y)), straight(at(tip, y), at(back, y - rise))),
-    );
-  };
-  return finish(f, [one(f.edge), one(f.edge + step)]);
+  const back = facing > 0 ? left : left + w;
+  const tip = facing > 0 ? left + w : left;
+  return bent(
+    f,
+    chain(straight(at(back, y + rise), at(tip, y)), straight(at(tip, y), at(back, y - rise))),
+  );
 }
 
 /**
