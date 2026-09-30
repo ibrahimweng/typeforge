@@ -12,7 +12,6 @@
 
 import {
   centroid,
-  clearance,
   closestApproach,
   pointInside,
   contourContainsPoint,
@@ -898,6 +897,39 @@ function cornerAt(node: GlyphNode, previous: GlyphNode, next: GlyphNode): boolea
 }
 
 /**
+ * How close two contours come, and where: `closestApproach`, kept against the
+ * two of them.
+ *
+ * Weighing a letter asks it of the same pairs over and over. Which pieces of
+ * ink are one piece, which stand over which, which stand side by side and
+ * which float -- each is asked of the letter as drawn, by a different step,
+ * each time from scratch; and every trial weight a pair of contours backs off
+ * through asks it again of every other pair, most of which the trial did not
+ * touch. The contours are made for this letter and nothing changes them, so
+ * the answer is the same every time and is worked out once.
+ */
+const approaches = new WeakMap<Contour, WeakMap<Contour, ReturnType<typeof closestApproach>>>();
+
+function approachOf(one: Contour, other: Contour): ReturnType<typeof closestApproach> {
+  let from = approaches.get(one);
+  if (!from) {
+    from = new WeakMap();
+    approaches.set(one, from);
+  }
+  let found = from.get(other);
+  if (!found) {
+    found = closestApproach(one, other);
+    from.set(other, found);
+  }
+  return found;
+}
+
+/** `clearance`, the same way. */
+function gapBetween(one: Contour, other: Contour): number {
+  return approachOf(one, other).distance;
+}
+
+/**
  * And the letter's contours kept off each other where the weight took one
  * through another it did not cross as drawn.
  *
@@ -927,7 +959,7 @@ function keptApart(
   );
   const apart = spacing ? sideBySide(drawn, asDrawn, spacing.em, spacing.kept) : [];
   const tooNear = (trial: Contour[]) =>
-    apart.filter(({ one, other, need }) => clearance(trial[one], trial[other]) < need);
+    apart.filter(({ one, other, need }) => gapBetween(trial[one], trial[other]) < need);
   let result = weighed;
   for (let round = 0; round < drawn.length + apart.length; round++) {
     const pairs: Array<[number, number]> = [];
@@ -953,7 +985,7 @@ function keptApart(
     const unmendable = new Map(
       tooNear(unweighed)
         .filter(involves)
-        .map((pair) => [pair, clearance(unweighed[pair.one], unweighed[pair.other])]),
+        .map((pair) => [pair, gapBetween(unweighed[pair.one], unweighed[pair.other])]),
     );
     const clear = (trial: Contour[]): boolean => {
       const still: Array<[number, number]> = [];
@@ -962,7 +994,7 @@ function keptApart(
       return tooNear(trial).every((pair) => {
         if (!involves(pair)) return true;
         const least = unmendable.get(pair);
-        return least !== undefined && clearance(trial[pair.one], trial[pair.other]) >= least - 0.5;
+        return least !== undefined && gapBetween(trial[pair.one], trial[pair.other]) >= least - 0.5;
       });
     };
     let low = 0;
@@ -1001,7 +1033,7 @@ function slabsApart(
     let least = Infinity;
     drawn.forEach((contour, index) => {
       if (!outer[index]) return;
-      const gap = clearance(slab, contour);
+      const gap = gapBetween(slab, contour);
       if (gap < least) [nearest, least] = [index, gap];
     });
     return nearest < 0 ? -1 : pieceOf[nearest];
@@ -1018,7 +1050,7 @@ function slabsApart(
   for (let one = 0; one < drawnSlabs.length; one++)
     for (let two = one + 1; two < drawnSlabs.length; two++)
       if (group(owner[one]) !== group(owner[two]))
-        if (clearance(drawnSlabs[one], drawnSlabs[two]) <= 0.5)
+        if (gapBetween(drawnSlabs[one], drawnSlabs[two]) <= 0.5)
           joined.set(group(owner[one]), group(owner[two]));
   const pieceOfSlab = owner.map(group);
   const groupOf = (index: number) => group(pieceOf[index]);
@@ -1040,12 +1072,12 @@ function slabsApart(
   let slabs = weighAll(shares);
   drawnSlabs.forEach((slab, index) => {
     const pairs = keptOff(index)
-      .map((other) => ({ ...other, gap: clearance(slab, other.drawn) }))
+      .map((other) => ({ ...other, gap: gapBetween(slab, other.drawn) }))
       .filter(({ gap }) => gap > 1 && gap <= reach)
       .map((other) => ({ ...other, need: Math.min(other.gap * CLEAR_KEPT, most) }));
     if (!pairs.length) return;
     const clear = (trial: Contour[]) =>
-      pairs.every((pair) => clearance(trial[index], pair.now(trial)) >= pair.need);
+      pairs.every((pair) => gapBetween(trial[index], pair.now(trial)) >= pair.need);
     if (clear(slabs)) return;
     const at = (share: number) =>
       weighAll(shares.map((was, which) => (which === index ? share : was)));
@@ -1084,7 +1116,7 @@ function sideBySide(
     for (let other = one + 1; other < drawn.length; other++) {
       if (!outer[one] || !outer[other] || pieceOf[one] === pieceOf[other]) continue;
       if (!near(one, other, reach)) continue;
-      const approach = closestApproach(drawn[one], drawn[other]);
+      const approach = approachOf(drawn[one], drawn[other]);
       if (!(approach.distance > 1) || approach.distance > reach) continue;
       const stacked = Math.abs(approach.on.y - approach.off.y) >= approach.distance * 0.5;
       const moves = !stands.has(pieceOf[one]) || !stands.has(pieceOf[other]);
@@ -1187,7 +1219,7 @@ function clearOf(
       for (const a of inkOf(over))
         for (const b of inkOf(under)) {
           if (!near(a, b, reach)) continue;
-          const approach = closestApproach(drawn[a], drawn[b]);
+          const approach = approachOf(drawn[a], drawn[b]);
           if (!closest || approach.distance < closest.gap)
             closest = { gap: approach.distance, rise: approach.on.y - approach.off.y, at: [a, b] };
         }
@@ -1241,7 +1273,7 @@ function clearOf(
     );
   };
   const gapOf = (contours: Contour[], [a, b]: [number, number]) =>
-    clearance(contours[a], contours[b]);
+    gapBetween(contours[a], contours[b]);
   let result = weighed;
   // From the bottom up, so that what rides on a lifted piece is lifted with it.
   const order = [...stacks].sort(
@@ -1281,7 +1313,7 @@ function clearOf(
             outer[b] &&
             !inGroup.has(pieceOf[b]) &&
             near(a, b, reach + high) &&
-            clearance(trial[a], trial[b]) < clearance(result[a], result[b]) - 0.5,
+            gapBetween(trial[a], trial[b]) < gapBetween(result[a], result[b]) - 0.5,
         ),
     );
     if (nearer) continue;
@@ -1315,7 +1347,7 @@ function piecesOf(drawn: Contour[], em: number, outer = classifyContours(drawn))
   for (let one = 0; one < drawn.length; one++)
     for (let other = one + 1; other < drawn.length; other++)
       if (outer[one] && outer[other] && near(one, other, 1))
-        if (clearance(drawn[one], drawn[other]) <= 0.5) found[root(one)] = root(other);
+        if (gapBetween(drawn[one], drawn[other]) <= 0.5) found[root(one)] = root(other);
   // The smallest round it: the counter of an island in a ring is the island's.
   drawn.forEach((contour, index) => {
     if (outer[index]) return;
@@ -2110,7 +2142,7 @@ function keepHeights(
       const key = `${one}:${other}`;
       let over = stacked.get(key);
       if (over === undefined) {
-        const approach = closestApproach(asDrawn[one], asDrawn[other]);
+        const approach = approachOf(asDrawn[one], asDrawn[other]);
         over = Math.abs(approach.on.y - approach.off.y) >= approach.distance * 0.5;
         stacked.set(key, over);
       }
