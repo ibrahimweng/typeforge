@@ -189,6 +189,24 @@ export interface Metrics {
    */
   wordSpace?: [number, number];
   /**
+   * The superior figures and the fractions set as a text face sets them
+   * (Lora's): each figure `share` of the cap height, a superior's and a
+   * numerator's foot `foot` of the cap height up, and a fraction's two
+   * figures either side of a long slash from the line to the cap line,
+   * leaning `slope` across for every unit up and `slash` of the pen across,
+   * the figures on `pen` of the pen.
+   * Left out, a superior is six tenths of a capital hung from the cap line
+   * and a fraction's figures stand clear of a short slash.
+   */
+  superiors?: { share: number; foot: number; slope: number; slash: number; pen: number };
+  /**
+   * Where a yen's two bars stand, as Lora's do: at `bars` of the cap height,
+   * reaching `reach` of it either side of the middle (moved `shift` of it),
+   * `deep` of the pen deep and even. Left out, they stand under the fork and
+   * run the letter's width, one over the other where two will not fit.
+   */
+  yen?: { bars: [number, number]; reach: number; shift: number; deep: number };
+  /**
    * Where the accents stand: `gap`, how far over a lowercase letter and over
    * a capital, as shares of the em; and `byFoot`, whether a grave or an
    * acute is set with its foot over the middle of the letter rather than its
@@ -1201,6 +1219,7 @@ export const SERIF: Style = {
     five: "humanist",
     hyphen: "humanist",
     slash: "humanist",
+    backslash: "humanist",
     exclam: "humanist",
     A: "humanist",
     w: "humanist",
@@ -1229,6 +1248,36 @@ export const SERIF: Style = {
     bracketright: "humanist",
     braceleft: "humanist",
     braceright: "humanist",
+    // Lora's punctuation and symbols: see `letters/humanist-marks.ts`.
+    // (The bullet, the cent, the dollar, the euro and the ordinals are drawn
+    // out of the full stop, the c, the S, the C and the a and o, and follow
+    // their forms.)
+    dagger: "humanist",
+    daggerdbl: "humanist",
+    asterisk: "humanist",
+    sterling: "humanist",
+    section: "humanist",
+    paragraph: "humanist",
+    trademark: "humanist",
+    copyright: "humanist",
+    registered: "humanist",
+    bar: "humanist",
+    brokenbar: "humanist",
+    periodcentered: "humanist",
+    degree: "humanist",
+    currency: "humanist",
+    asciicircum: "humanist",
+    asciitilde: "humanist",
+    logicalnot: "humanist",
+    plusminus: "humanist",
+    guilsinglleft: "humanist",
+    guilsinglright: "humanist",
+    guillemotleft: "humanist",
+    guillemotright: "humanist",
+    period: "humanist",
+    colon: "humanist",
+    comma: "humanist",
+    semicolon: "humanist",
   },
   /*
    * A text face's proportions rather than the sans's.
@@ -1278,9 +1327,35 @@ export const SERIF: Style = {
       "multiply",
       "less",
       "greater",
+      // And the marks drawn to Lora's (`letters/humanist-marks.ts`): past a
+      // Black the upper arm of a guillemet and the right side of the
+      // exclamation mark's wedge went to hairlines, and the chevron came apart.
+      "exclam",
+      "backslash",
+      "guilsinglleft",
+      "guilsinglright",
+      "guillemotleft",
+      "guillemotright",
+      "asciicircum",
+      "asterisk",
+      "dagger",
+      "daggerdbl",
+      "sterling",
+      "at",
+      "currency",
+      "Euro",
     ],
     // Lora's word space, 263 at the Regular and the Bold, a little more past it.
     wordSpace: [263 / 500, 280 / 500],
+    // Lora's superior figures, 0.573 of a capital standing 306 up, and its
+    // fraction slash, 46 across at the Regular and 81 at the Bold, leaning
+    // 0.668: the construction's stood 26 units lower, 0.6 of a capital, beside
+    // a slash leaning 0.37 that kept the figures apart by the pen.
+    superiors: { share: 0.573, foot: 306 / 700, slope: 0.668, slash: 0.55, pen: 0.72 },
+    // Lora's yen: its bars 186 and 294 up, 345 long and 47 deep at the
+    // Regular, where the construction's lay one over the other at 127, the
+    // letter's whole width long.
+    yen: { bars: [186 / 700, 294 / 700], reach: 172.5 / 700, shift: 7 / 700, deep: 0.54 },
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
     bold: {
       at: 0.47,
@@ -1440,53 +1515,86 @@ export const SERIF: Style = {
       seven: [0.65, 0.59],
       eight: [1.74, 1.47],
       nine: [1.41, 1.74],
-      ampersand: [1.06, 0.06],
-      question: [0.97, 1.08],
-      exclam: [2.18, 2.21],
-      period: [1.88, 1.91],
-      comma: [1.94, 1.79],
-      semicolon: [2.06, 1.97],
-      colon: [1.97, 1.94],
-      quotesingle: [1.82, 1.82],
-      quotedbl: [1.82, 1.85],
-      parenleft: [1.06, 0.5],
-      parenright: [0.53, 1.03],
-      hyphen: [1.97, 1.97],
-      slash: [0.62, 0.59],
-      at: [1.47, 1.24],
-      yen: [0.82, 0.79],
+      ampersand: [1.06, 0.06, "half", [0, 0], [-15, -13]],
+      question: [0.97, 1.08, "half", [0, 0], [17, 24]],
+      exclam: [2.18, 2.21, "half", [0, 0], [-15, -15]],
+      period: [1.88, 1.91, "half", [0, 0], [-21, -22]],
+      ellipsis: [1.88, 1.91, "half", [0, 0], [-21, -22]],
+      quotesinglbase: [1.94, 1.79, "half", [0, 0], [-24, -19]],
+      quotedblbase: [1.94, 1.79, "half", [0, 0], [-24, -19]],
+      comma: [1.94, 1.79, "half", [0, 0], [-24, -19]],
+      semicolon: [2.06, 1.97, "half", [0, 0], [-19, -9]],
+      colon: [1.97, 1.94, "half", [0, 0], [-13, -6]],
+      quotesingle: [1.82, 1.82, "half", [0, 0], [-21, -21]],
+      quotedbl: [1.82, 1.85, "half", [0, 0], [-19, -21]],
+      parenleft: [1.06, 0.5, "half", [0, 0], [-13, -9]],
+      parenright: [0.53, 1.03, "half", [0, 0], [0, -11]],
+      hyphen: [1.97, 1.97, "half", [0, 0], [-13, -11]],
+      slash: [0.62, 0.59, "half", [0, 0], [13, 15]],
+      backslash: [0.62, 0.59, "half", [0, 0], [13, 15]],
+      bar: [2.32, 2.26, "half", [0, 0], [-13, -11]],
+      ordfeminine: [1.59, 1.21, "half", [0, 0], [-22, -28]],
+      ordmasculine: [1.41, 1.38, "half", [0, 0], [-21, -19]],
+      cent: [1.06, 1.12, "half", [0, 0], [37, 13]],
+      dollar: [1.47, 1.09, "half", [0, 0], [13, 19]],
+      onesuperior: [0.9, 2.26, "half", [0, 0], [-20, -8]],
+      twosuperior: [1.79, 1.88, "half", [0, 0], [-17, -21]],
+      threesuperior: [1.59, 1.56, "half", [0, 0], [-21, -24]],
+      onequarter: [1.32, 1.24, "half", [0, 0], [-12, 9]],
+      onehalf: [1.32, 1.21, "half", [0, 0], [-12, 11]],
+      threequarters: [1.59, 1.24, "half", [0, 0], [-21, 9]],
+      sterling: [1.38, 1, "held", [0, 0], [7, 15]],
+      paragraph: [0.97, 2.91, "half", [0, 0], [24, 6]],
+      section: [1.12, 1.09, "half", [0, 0], [21, 22]],
+      copyright: [1.29, 1.24, "held", [0, 0], [4, 7]],
+      registered: [1.29, 1.26, "held", [0, 0], [4, 6]],
+      brokenbar: [2.47, 2.47, "half", [0, 0], [-9, -7]],
+      at: [1.47, 1.24, "half", [0, 0], [7, 21]],
+      yen: [0.82, 0.79, "half", [0, 0], [15, 15]],
       // The typographic punctuation (`letters/typographic.ts`). Lora sets its
       // closing quotes tight, 25 and 23 off, and its opening ones 46 and 52;
       // its guillemets 32 off the side they point to and 55 off the other,
       // the single ones 31 and 47; its bullet 50 off either side; its euro
       // 35 and 42; its trade mark 63 (49 and a capital's extra).
-      quoteright: [0.74, 0.68],
-      quotedblright: [0.74, 0.68],
-      quoteleft: [1.35, 1.53],
-      quotedblleft: [1.35, 1.53],
-      guillemotleft: [0.94, 1.62],
-      guillemotright: [1.62, 0.94],
-      guilsinglleft: [0.91, 1.38],
-      guilsinglright: [1.38, 0.91],
-      bullet: [1.47, 1.47],
-      trademark: [1.45, 1.45],
-      Euro: [1.03, 1.24],
-      dagger: [1.5, 1.5],
-      daggerdbl: [1.5, 1.5],
+      quoteright: [0.74, 0.68, "half", [0, 0], [-2, 9]],
+      quotedblright: [0.74, 0.68, "half", [0, 0], [-2, 11]],
+      quoteleft: [1.35, 1.53, "half", [0, 0], [-13, -36]],
+      quotedblleft: [1.35, 1.53, "half", [0, 0], [-13, -36]],
+      guillemotleft: [0.94, 1.62, "half", [0, 0], [-15, -21]],
+      guillemotright: [1.62, 0.94, "half", [0, 0], [-21, -15]],
+      guilsinglleft: [0.91, 1.38, "half", [0, 0], [-15, -13]],
+      guilsinglright: [1.38, 0.91, "half", [0, 0], [-13, -15]],
+      bullet: [1.47, 1.47, "half", [0, 0], [-22, -22]],
+      trademark: [1.45, 1.45, "half", [0, 0], [22, 15]],
+      Euro: [1.03, 1.24, "half", [0, 0], [22, 4]],
+      dagger: [0.76, 0.76, "half", [0, 0], [11, 11]],
+      exclamdown: [1.85, 1.85, "half", [0, 0], [-15, -15]],
+      questiondown: [0.97, 0.88, "half", [0, 0], [22, 11]],
+      daggerdbl: [0.76, 0.76],
+      asterisk: [1.15, 1.21, "held", [0, 0], [7, 2]],
       // Lora's signs, measured off its Regular.
-      numbersign: [0.97, 1],
-      percent: [1.06, 1.03],
-      bracketleft: [2.32, 0.35],
-      bracketright: [0.35, 2.32],
+      numbersign: [0.97, 1, "half", [0, 0], [17, 15]],
+      percent: [1.06, 1.03, "half", [0, 0], [19, 19]],
+      bracketleft: [2.32, 0.35, "half", [0, 0], [-11, -17]],
+      bracketright: [0.35, 2.32, "half", [0, 0], [0, -11]],
       braceleft: [0.21, 0.35],
       braceright: [0.35, 0.21],
       underscore: [1.68, 1.68],
-      plus: [1.24, 1.24],
-      equal: [1.24, 1.24],
-      divide: [1.24, 1.24],
-      multiply: [2.6, 2.6],
-      less: [1, 1.5],
-      greater: [1.24, 1.26],
+      plus: [1.24, 1.24, "half", [0, 0], [11, 11]],
+      equal: [1.24, 1.24, "half", [0, 0], [11, 11]],
+      divide: [1.24, 1.24, "half", [0, 0], [11, 11]],
+      multiply: [2.6, 2.6, "half", [0, 0], [7, 7]],
+      less: [1, 1.5, "half", [0, 0], [21, -7]],
+      greater: [1.24, 1.26, "half", [0, 0], [7, 6]],
+      // Lora's punctuation and symbols (`letters/humanist-marks.ts`); those
+      // Lora sets as far off at its Bold as at its Regular held there.
+      periodcentered: [1.97, 1.94, "half", [0, 0], [-32, -32]],
+      degree: [1.38, 1.38, "half", [0, 0], [-22, -22]],
+      currency: [1.79, 1.76, "held"],
+      asciicircum: [1.76, 1.76, "held"],
+      asciitilde: [1.26, 1.26, "held"],
+      logicalnot: [1.06, 1.41, "held", [0, 0], [0, -7]],
+      plusminus: [1.24, 1.24, "held"],
     },
     proportions: {
       a: 1.069,
