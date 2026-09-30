@@ -134,6 +134,9 @@ const ESCAPED = 1.6;
  */
 const SHORT = 0.55;
 
+/** Over how many samples a pressure band eases in where it starts or stops short of its stroke's end. */
+const EASE = 3;
+
 /**
  * How wide the pen really is across one direction, which is not half its
  * weight on any face that has contrast.
@@ -215,7 +218,7 @@ export function effectInk(
     if (wedges.length > 0) shape = takenAway(shape, wedges);
   }
   if (canCarve && effects.pool.on && strokes.length > 0) {
-    const pools = poolTool(strokes, effects.pool, stem);
+    const pools = poolTool(strokes, effects.pool, stem, shape);
     if (pools.length > 0) shape = unite([...shape, ...pools], "winding", "whole");
   }
   if (canCarve && effects.skip.on && strokes.length > 0) {
@@ -621,10 +624,23 @@ function perimeterOf(points: Vec2[]): number {
  * at the ends -- and only the ends that are really ends, because a pool inside
  * a counter is a blot.
  */
-function poolTool(strokes: Stroke[], pool: Effects["pool"], stem: number): Contour[] {
+function poolTool(
+  strokes: Stroke[],
+  pool: Effects["pool"],
+  stem: number,
+  ink: Contour[] = [],
+): Contour[] {
   const size = pool.size * stem;
   if (size <= 0) return [];
   const added: Contour[] = [];
+  /*
+   * Only on ink. Two strokes can pass within a stem of each other without
+   * touching -- the lead-in and the arm of a Handwriting `k` either side of
+   * its stem -- and half-way between them is the counter: the pool stood
+   * there as a stray dot inside the letter.
+   */
+  const flat = ink.map((contour) => flattenContour(contour, RAY_STEPS));
+  const onInk = (point: Vec2) => flat.length === 0 || windingAt(flat, point) !== 0;
 
   if (pool.where !== "ends" && strokes.length > 1) {
     const near = stem * 1.15;
@@ -648,7 +664,7 @@ function poolTool(strokes: Stroke[], pool: Effects["pool"], stem: number): Conto
             }
           }
         }
-        if (closest < near && where !== null) added.push(disc(where, size * 0.62));
+        if (closest < near && where !== null && onInk(where)) added.push(disc(where, size * 0.62));
       }
     }
   }
@@ -700,6 +716,7 @@ function skipTool(strokes: Stroke[], skip: Effects["skip"], stem: number): Conto
     // more than a short arm rather than the same amount.
     const many = Math.max(1, Math.round((along / (long * 2.2)) * skip.density * 4));
     const seed = skip.seed * 2246822519 + index * 668265263;
+    const mine: Contour[] = [];
 
     for (let which = 0; which < many; which++) {
       const at = hashed(seed, which * 3);
@@ -714,30 +731,55 @@ function skipTool(strokes: Stroke[], skip: Effects["skip"], stem: number): Conto
       if (far < 1e-9) continue;
       const tangent = { x: dx / far, y: dy / far };
       const normal = { x: -tangent.y, y: tangent.x };
-      const middle = { x: here.x + normal.x * across, y: here.y + normal.y * across };
       const reach = long * (0.6 + hashed(seed, which * 3 + 1) * 0.8) * 0.5;
       const half = wide * 0.5;
-      gaps.push(
+      /*
+       * Open to the flank it is pushed toward, from its inner side out past
+       * the stroke's own edge. A gap floating inside the stroke left a thread
+       * of ink standing between it and the paper -- the Casual Script's
+       * strokes were scored all along with slivers split off their edges,
+       * which reads as a tear rather than as a tool that lifted on one side.
+       * Out past this stroke's own ink, and then held off the part of the
+       * stroke nearer its spine than the gap's inner side (below), so that on
+       * a curve too the gap is always open to the paper.
+       */
+      const own = penHalfAcross(stroke, { x: normal.x * side, y: normal.y * side });
+      const inner = across - side * half;
+      // Wholly outside this stroke -- a hairline's gap -- it could only have
+      // cut whatever the hairline runs into.
+      if (Math.abs(inner) >= own) continue;
+      const out = side * (own * 1.5 + stem * 0.2);
+      const outer = Math.abs(out) > Math.abs(across + side * half) ? out : across + side * half;
+      const at1 = { x: here.x + normal.x * inner, y: here.y + normal.y * inner };
+      const at2 = { x: here.x + normal.x * outer, y: here.y + normal.y * outer };
+      const rect = oneWay(
         poly([
-          {
-            x: middle.x - tangent.x * reach - normal.x * half,
-            y: middle.y - tangent.y * reach - normal.y * half,
-          },
-          {
-            x: middle.x + tangent.x * reach - normal.x * half,
-            y: middle.y + tangent.y * reach - normal.y * half,
-          },
-          {
-            x: middle.x + tangent.x * reach + normal.x * half,
-            y: middle.y + tangent.y * reach + normal.y * half,
-          },
-          {
-            x: middle.x - tangent.x * reach + normal.x * half,
-            y: middle.y - tangent.y * reach + normal.y * half,
-          },
+          { x: at1.x - tangent.x * reach, y: at1.y - tangent.y * reach },
+          { x: at1.x + tangent.x * reach, y: at1.y + tangent.y * reach },
+          { x: at2.x + tangent.x * reach, y: at2.y + tangent.y * reach },
+          { x: at2.x - tangent.x * reach, y: at2.y - tangent.y * reach },
         ]),
       );
+      if (!loaded()) {
+        mine.push(rect);
+        continue;
+      }
+      // The stroke drawn with a pen only as wide as the gap is deep: what
+      // stays when the tool lifts on this side.
+      const keeps = Math.abs(inner) / Math.max(own, 1e-6);
+      const core = sweep({ ...stroke, pen: { ...stroke.pen, weight: stroke.pen.weight * keeps } });
+      mine.push(...subtract([rect], core, "winding"));
     }
+    /*
+     * And only where this stroke is the ink. Where it runs into another --
+     * a lead-in into its stem, a stem into its bowl -- the other stroke is
+     * still there under the lifted edge, and a gap laid across it left a
+     * white slit through the middle of the stem: the Casual Script's `i`,
+     * `b` and `u` were split down their stems.
+     */
+    if (mine.length === 0) return;
+    const others = strokes.filter((_, at) => at !== index).flatMap((one) => sweep(one));
+    gaps.push(...(loaded() && others.length > 0 ? subtract(mine, others, "winding") : mine));
   });
   return gaps;
 }
@@ -954,7 +996,7 @@ function pressWedges(
 
     const strip: Contour[] = [];
     for (const side of [1, -1] as const) {
-      const flank: Array<{ inner: Vec2; outer: Vec2 } | null> = [];
+      const flank: Array<{ inner: Vec2; outer: Vec2; edge: Vec2 } | null> = [];
       for (let at = 0; at < walked.length; at++) {
         flank.push(
           flankAt(walked, at, side, press.amount, press.at, opens, edges, half, stroke, own, walls),
@@ -976,22 +1018,49 @@ function pressWedges(
        * outer -- there is nothing to overlap and nothing to add up. The chords
        * are still chords, which is what the sample count above is for.
        */
-      let run: Array<{ inner: Vec2; outer: Vec2 }> = [];
-      const close = () => {
+      let run: Array<{ inner: Vec2; outer: Vec2; edge: Vec2 }> = [];
+      let first = 0;
+      /*
+       * And a band that stops short of the stroke's end stops by running out
+       * onto the flank, not square across it. Where a sample is left out --
+       * the ray found a cut, a neighbour, or the letter's far side -- the band
+       * broke there with the whole depth of the cut standing as a step, and
+       * on a contrast face that was a notch at every place the hairline turned
+       * into a bowl or a join: the Formal Script's `c`, `s`, the swashes of
+       * its capitals and the hook of its `J` were saw-toothed along their
+       * thins. Eased in over a few samples from each end the stroke itself
+       * does not have, the pressure comes and goes as a hand's does; at a
+       * real end of the stroke it is still cut to the tip.
+       */
+      const close = (after: number) => {
         if (run.length >= 2) {
+          const last = first + run.length - 1;
+          const eased = run.map((one, index) => {
+            const fromStart = first === 0 ? EASE : index;
+            const fromEnd = last === walked.length - 1 ? EASE : run.length - 1 - index;
+            const share = Math.min(1, fromStart / EASE, fromEnd / EASE);
+            return {
+              inner: {
+                x: one.edge.x + (one.inner.x - one.edge.x) * share,
+                y: one.edge.y + (one.inner.y - one.edge.y) * share,
+              },
+              outer: one.outer,
+            };
+          });
           strip.push(
             oneWay(
-              poly([...run.map((one) => one.inner), ...run.map((one) => one.outer).reverse()]),
+              poly([...eased.map((one) => one.inner), ...eased.map((one) => one.outer).reverse()]),
             ),
           );
         }
         run = [];
+        first = after;
       };
-      for (const edge of flank) {
+      flank.forEach((edge, index) => {
         if (edge) run.push(edge);
-        else close();
-      }
-      close();
+        else close(index + 1);
+      });
+      close(walked.length);
     }
     if (strip.length === 0) continue;
     /*
@@ -1051,7 +1120,7 @@ function flankAt(
   stroke: Stroke,
   own: Vec2[][] = [],
   walls: Vec2[][] = [],
-): { inner: Vec2; outer: Vec2 } | null {
+): { inner: Vec2; outer: Vec2; edge: Vec2 } | null {
   const before = walked[Math.max(0, at - 1)];
   const after = walked[Math.min(walked.length - 1, at + 1)];
   const dx = after.x - before.x;
@@ -1132,6 +1201,7 @@ function flankAt(
   const thin = Math.min(body, pen) * Math.min(press * lightness(when, u, opens), MOST_OF_A_STROKE);
   return {
     inner: { x: here.x + normal.x * (flank - thin), y: here.y + normal.y * (flank - thin) },
+    edge: { x: here.x + normal.x * flank, y: here.y + normal.y * flank },
     // Just past the edge that was measured, so the cut always starts in air.
     outer: {
       x: here.x + normal.x * (flank + half * 0.3),
@@ -1152,6 +1222,22 @@ function lightness(at: HeaviestAt, u: number, opens: { start: boolean; end: bool
   }
   if (at === "start") return opens.end ? u : 0;
   return opens.start ? 1 - u : 0;
+}
+
+/** The winding number of flattened outlines about a point: nought is paper. */
+function windingAt(outlines: Vec2[][], point: Vec2): number {
+  let total = 0;
+  for (const outline of outlines) {
+    for (let at = 0; at < outline.length; at++) {
+      const a = outline[at];
+      const b = outline[(at + 1) % outline.length];
+      const side = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+      if (a.y <= point.y) {
+        if (b.y > point.y && side > 0) total++;
+      } else if (b.y <= point.y && side < 0) total--;
+    }
+  }
+  return total;
 }
 
 /** How far a walked line runs from end to end. */
