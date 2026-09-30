@@ -360,7 +360,14 @@ export function assemble(tiles: Tiles, style: Style, kit: Kit): Assembled {
        * middle instead, the arm grows a diagonal spur into the counter.
        */
       const along = cell.ports.find((other) => other !== port && sameEdge(port, other));
-      if (along) straight(port, along, along);
+      /*
+       * Unless the stroke through that corner is a diagonal: carried on only
+       * by the cell across the corner, not by either cell beside it. The leg
+       * of an N or a K leaves the stem's cell at its corner, and run along the
+       * edge instead it came back as a nick in the stem with a gap between
+       * the stem and the leg.
+       */
+      if (along && !diagonalOnly(tiles, column, row, port)) straight(port, along, along);
       else
         strokes.push(
           stroke(
@@ -407,6 +414,16 @@ function continues(tiles: Tiles, column: number, row: number, port: Port): boole
   return MEETS[port].some((step) =>
     tiles.cells[cellKey(column + step.column, row + step.row)]?.ports.includes(step.port),
   );
+}
+
+/** Whether a corner port is carried on across the corner and by nothing beside it. */
+function diagonalOnly(tiles: Tiles, column: number, row: number, port: Port): boolean {
+  if (port.length !== 2) return false;
+  const carries = (step: { column: number; row: number; port: Port }): boolean =>
+    tiles.cells[cellKey(column + step.column, row + step.row)]?.ports.includes(step.port) ?? false;
+  const across = MEETS[port].filter((step) => step.column !== 0 && step.row !== 0);
+  const beside = MEETS[port].filter((step) => step.column === 0 || step.row === 0);
+  return across.some(carries) && !beside.some(carries);
 }
 
 /**
