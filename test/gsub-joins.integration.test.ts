@@ -178,13 +178,14 @@ suite("a joined face carries its joins into the file", () => {
          * lead-out still stops on the advance to the unit, and the pairs still
          * join at nothing on all four faces.
          *
-         * Two more on the written `r`. Its joins are hairlines now, and the
+         * One more on the written `r`. Its joins are hairlines now, and the
          * end of a hairline lead-out stands no further right than the tip of
          * the r's own arm, so the rightmost ink is the arm on one drawing and
          * the lead-out on the other -- and the arm, standing well above the
-         * seam, is the part the mid-word tilt moves furthest.
+         * seam, is the part the mid-word tilt moves furthest. It reads 4 on
+         * the Handwriting; every other letter reads 1 or less.
          */
-        const slack = WRITTEN_OUT.has(letter) ? 5 : 3;
+        const slack = WRITTEN_OUT.has(letter) ? 4 : 3;
         expect([
           name,
           Math.abs(widths[name] - right[name] - (widths[letter] - right[letter])) <= slack,
