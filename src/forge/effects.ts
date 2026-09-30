@@ -1039,10 +1039,18 @@ function pressWedges(
             const fromStart = first === 0 ? EASE : index;
             const fromEnd = last === walked.length - 1 ? EASE : run.length - 1 - index;
             const share = Math.min(1, fromStart / EASE, fromEnd / EASE);
+            // Eased out to a little clear of the edge rather than onto it: a
+            // band lying along the ink's own edge leaves the subtraction a
+            // sliver of no width, and the Formal Script's `)` came back
+            // crossing itself.
+            const clear = {
+              x: one.edge.x + (one.outer.x - one.edge.x) * 0.25,
+              y: one.edge.y + (one.outer.y - one.edge.y) * 0.25,
+            };
             return {
               inner: {
-                x: one.edge.x + (one.inner.x - one.edge.x) * share,
-                y: one.edge.y + (one.inner.y - one.edge.y) * share,
+                x: clear.x + (one.inner.x - clear.x) * share,
+                y: clear.y + (one.inner.y - clear.y) * share,
               },
               outer: one.outer,
             };
