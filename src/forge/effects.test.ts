@@ -3,7 +3,7 @@
  *
  * Three of these are here because the thing they check was wrong first, and
  * wrong in a way that looked plausible on a contour count and ruinous on the
- * page. The sheet in `scripts/tools.ts` is what found them; these are what keep
+ * page. The sheet in `scripts/dev/tools.ts` is what found them; these are what keep
  * them found.
  */
 import { beforeAll, describe, expect, it } from "vitest";

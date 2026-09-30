@@ -2,6 +2,11 @@
 
 This file gathers the summaries of the six polish branches (UI, Serif, Sans, script, cuts and casts, opened fonts), one section per area. The before and after pictures the branches made while the work was going on are not kept in the repository; where a summary named a picture, it now says in words what the picture showed, or the reference is left out. The branches started from commit 3050e21.
 
+The test counts and timings each section quotes are historical: each was
+counted on its own branch before the six were merged, and they do not add up to
+the merged suite. At the merge (90dfc86) the full `npx vitest run` held 3,296
+tests. Run it for the current count.
+
 ## Contents
 
 - [UI](#ui)
@@ -10,6 +15,7 @@ This file gathers the summaries of the six polish branches (UI, Serif, Sans, scr
 - [Script and hand bases](#script-and-hand-bases)
 - [Cuts and casts](#cuts-and-casts)
 - [Opened fonts under the Edit-mode controls](#opened-fonts-under-the-edit-mode-controls)
+- [Known limits](#known-limits)
 
 ## UI
 
@@ -126,8 +132,13 @@ browser or with a test before it was fixed.
 - **Contrast 0.9 pushes Sans ș past the descender**, and **x-height 640 closes
   the Serif rings** (Å, ů). The warnings report both correctly.
 - **`e2e/forge.spec.ts` "draws the symbols and writes them into the font"
-  fails with or without these changes.** The exported font's £ and = measure
-  like missing glyphs. This is a letter or export problem, not a UI one.
+  failed on this branch, with or without these changes.** The exported
+  font's £ and = measured like missing glyphs. The glyphs were there: the
+  test told a missing character by its width matching the font's `.notdef`,
+  and Geist's £ is as wide as that box to within a unit. The merge rewrote
+  the check to measure each character twice, with a monospace and then a
+  serif font behind the exported one, and call it missing only when the two
+  disagree. The test passes on the merged code.
 
 ### Tests
 
@@ -143,9 +154,10 @@ browser or with a test before it was fixed.
   letters are whole; the cap itself is unit-tested in `glyph-render.test.ts`.
 - Every commit passed `npx tsc -b --noEmit`, `npx biome check .` and
   `npx vitest run src/components src/state src/views src/forge/health.test.ts`
-  (577 tests at the end). `e2e/polish-ui.spec.ts` (run twice over) and
-  `e2e/workspace.spec.ts` pass in Chromium. `e2e/forge.spec.ts` passes except
-  for the one failure noted above. WebKit and Firefox are not installed in this
+  (577 tests at the end of the branch; historical). `e2e/polish-ui.spec.ts`
+  (run twice over) and `e2e/workspace.spec.ts` pass in Chromium.
+  `e2e/forge.spec.ts` passed except for the one failure noted above, which
+  the merge fixed in the test. WebKit and Firefox are not installed in this
   container, so those two projects could not run here; CI runs them.
 
 ## Serif (against Lora)
@@ -245,7 +257,7 @@ I went back over the whole branch looking for errors, fixed each one and checked
   The one exception is under "Found but not fixed".
 - Every test in `src/forge/serif-lora.test.ts` fails on the code before the fix it covers.
 - Every other base draws exactly as before at its defaults. I checked this by hashing every letter on every base at five weights, before and after each change to shared code. The humanist alternates chosen on other bases draw as before too, apart from the letters this branch redrew on purpose.
-- `npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/assemble src/library` all pass (1226 tests). The run takes about 3% longer than before the second pass, because of the fold checks on swollen bowls.
+- `npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/assemble src/library` all pass (1226 tests on the branch; historical). The run takes about 3% longer than before the second pass, because of the fold checks on swollen bowls.
 
 ### What still differs from Lora
 - **The j's spacing.** Lora's j has a negative left sidebearing (-88), so its tail runs under the letter before it. The engine keeps every letter's ink inside its advance, and a health check and two character-set tests enforce that. So our j's stem stands about 80 units further from the letter before it at the Regular, and about 60 at the Bold.
@@ -1456,7 +1468,7 @@ join position, and a read of pangrams set in each face, found more.
 
 Tests: `src/forge/script-polish.test.ts`, fifteen tests, each written to fail
 on the old code. `npx tsc -b --noEmit`, `npx biome check .` and
-`npx vitest run src/forge src/assemble src/library` (1216 tests) all pass.
+`npx vitest run src/forge src/assemble src/library` (1216 tests on the branch; historical) all pass.
 
 ### What remains
 
@@ -1625,7 +1637,7 @@ The new tests are in `src/forge/cuts-cast-polish.test.ts`, `src/forge/cut.test.t
 - The inline used to be kept out of opened fonts. Those tests now use the breaks, which are still skeleton-only.
 - A bowl's groove used to stay separate from the stem's. The test now checks instead that no wall pinches.
 
-`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1791 tests. One older test, the exchange test that cuts slots through a whole opened font, runs close to its 30-second limit on this machine: about 28.4 seconds alone, against 27.6 seconds before this pass. Under full-suite load it once went over.
+`npx tsc -b --noEmit`, `npx biome check .` and `npx vitest run src/forge src/font` all pass, with 1791 tests on the branch (historical). One older test, the exchange test that cuts slots through a whole opened font, runs close to its 30-second limit on this machine: about 28.4 seconds alone, against 27.6 seconds before this pass. Under full-suite load it once went over.
 
 ### Known leftovers
 
@@ -1652,15 +1664,11 @@ The cause: after the width scaling, the width control puts back the stem thickne
 
 The weight engine now takes a share of white to keep, and the width control asks for it. When the strokes are put back, they close only a little of the white they face, and give way where there is no room. This is how a condensed heavy cut is drawn. On the outside of a letter this is measured point by point. A counter instead keeps a minimum mean width (twice its area over its length round), and the whole counter backs off evenly, so it keeps its shape.
 
-Images: `condensed-heavy-lora-*`, `condensed-heavy-sample-*`.
-
 #### 2. Dots fused with their stems
 
 When weight was added, every other ink contour of a letter was ignored. That is right for strokes that overlap, but wrong for pieces drawn apart. At the heaviest weight the dots of i and j grew into their stems, so jij read as JIJ. The same happened to ! ? " = and ä.
 
 A contour now measures against the other ink contours that are clear of it. The paper between them keeps a share of itself as well as a minimum opening.
-
-Images: `dots-geist-*`.
 
 #### 3. Slab serifs
 
@@ -1673,8 +1681,6 @@ Images: `dots-geist-*`.
   - The top of a t, a stub on its crossbar, is left plain.
   - The tops of lowercase stems and of figures get a flag to the left, not a bar across.
 
-Images: `slabs-geist-*`.
-
 #### 4. Weight moved letters off the baseline
 
 The weight engine grows the outline in every direction. So a bolder letter dropped below the baseline and rose past its x-height or cap height by the weight: 60 units each way at the heaviest setting. A lighter letter floated and shrank. A single letter given its own weight fell out of the line.
@@ -1683,15 +1689,11 @@ After the weight, a letter is now pinned back to each edge it was drawn to: its 
 
 A mark placed by its middle, such as a hyphen or bullet, touches neither edge and stays where it is. A period or a quote goes back to the one edge it touches. As a side effect, bold horizontals come out a little lighter than bold stems, which is how a bold is drawn.
 
-Images: `heights-lora-*`.
-
 #### 5. Ball terminals and dots at light weights
 
 At the lightest setting, Lora's ball terminals (a, c, f, r, j, 2, 3, 5) and the dots of i and j came out the weight of the hairlines, as bumps and specks. A light cut keeps them full.
 
 Taking weight off, a ball now gives up half as much as a stroke does. A ball is recognised by its chords. A ray aimed 50° off straight across is shorter than the straight ray on a round blob, and longer across any stroke, bowl or rounded stroke end. A dot is a small, roughly square or round piece of ink standing clear of the rest; it is treated the same way.
-
-Images: `balls-lora-*`.
 
 #### 6. Side bearings after weight
 
@@ -1699,15 +1701,11 @@ A heavier letter was moved over by the weight, and its advance grew by twice the
 
 The ink's actual growth on each side is now measured, and the shift and the advance follow it. The advance reads this from a cache keyed on the glyph and its settings.
 
-Images: `sidebearings-sample-*`.
-
 #### 7. Steps at aperture tips
 
 At the heaviest weight, Lora's a, s and 2 had steps of about 10 units where the weight swallowed the end of an aperture: a run of short curve pieces left behind as the stroke closed up.
 
 Such a run is now laid along one round curve, joined smoothly to the outline either side of it, with the same number of points. Runs with a straight piece in them are left alone, so a stem foot stays straight. If the rounded run would make the outline cross itself, the run is left as it was.
-
-Images: `apertures-lora-*`.
 
 #### 8. Edges that share a baseline
 
@@ -1725,13 +1723,9 @@ Closing or opening a counter used to thin or thicken the walls round it by the w
 - **Stacked counters move together.** The two bowls of a B move their shared stem alike, and together. Moved one after the other, the stem leaned.
 - **Spacing.** The side bearings follow the measured change in the ink.
 
-Images: `middle-geist-*`, `middle-lora-*`.
-
 #### 10. Slabs on beaks
 
 Lora's S is all curve and measures thinner than its stems, so the tips of its beaks passed for stroke ends, and each got a bar. The top of Lora's 5 flares from a hairline arm into a beak, and a bar stood on that too. Stroke ends are now also measured against the font's stems, and an end much wider than the stroke just behind it counts as a beak, not an end.
-
-Images: `slabs-lora-*`.
 
 #### 11. Found by sweeping every glyph
 
@@ -1746,8 +1740,6 @@ The before and after comparisons covered about 28 letters. So I also swept every
   - A point belongs to the edge it was drawn on.
   - A light letter's edges may now be corrected outward, and a correction never carries an edge point past where it was drawn.
 
-Images: `condensed-diagonals-geist-*`, `crossbar-four-geist-*`, `dotless-j-geist-*`, `heights-light-lora-*`.
-
 #### 12. Found in closer screenshots
 
 - **Folded inside corners:** at weight 0.06 with width 0.7, the small inside corner where the tail of Geist's j meets its stem folded into a notch, and the y's did the same. Where a piece of outline now runs back the way it came, it is laid flat against the stem.
@@ -1757,8 +1749,6 @@ Images: `condensed-diagonals-geist-*`, `crossbar-four-geist-*`, `dotless-j-geist
 - **G spur:** its foot bar reached over the bowl it stands on. A slab no longer reaches out on a side where the stroke is joined to ink.
 - **Upright edges between stacked counters:** after the handover fix, the & serif still leaned 19 units at 1.4. Each straight upright run of the outline, however many points it has, now moves across whole, by the shift at its middle.
 - **Rim:** the boolean step that builds the rim could leave a tiny figure-eight in the outline of Lora's a and its six accented forms. Its area was right, so the existing retry never caught it. Now each solid's rim is rebuilt on a grid when it crosses itself: a thousandth of a unit, then a hundredth, then a tenth, each coarser than the last. The finished rim is checked once more after the counters are cut out and joined, and rebuilt once if it still crosses. This change is in `src/forge/cast.ts`, which you approved going into.
-
-Images: `folded-corners-geist-*`, `stacked-counters-lora-*`, `slab-flags-geist-*`, `slab-beak-sample-*`.
 
 #### 13. Review
 
@@ -1830,8 +1820,6 @@ Fixes:
   - A piece standing above another is now lifted to keep half the white it had, up to half an opening (18 units). The width's give keeps all of what it is handed, up to the same 18.
   - The crossbar control now stops a bar short of a separate piece. Geist's ť bar used to rise until it touched the caron; it now keeps half of the 22 units between them.
 
-Images: `light-joins-geist-*`, `light-joins-lora-*`, `parts-apart-geist-*`, `parts-apart-lora-*`.
-
 A ninth review tested on Lora Bold, a static font that ships its letters in overlapping pieces, and found that the new guards misfired there:
 - **Weight lost on overlapping ink.** The weight's check refused any new crossing between two contours, including two of ink. Two ink contours that overlap as drawn fill their union, however far into each other they grow. Refusing that took Lora Bold's heavy Ħ to 67% of the weight, Ł to 64% and Ŧ to 91%, about 40 glyphs in all. Ink contours that overlap or touch as drawn are now not asked; ink against a counter, and pieces that were apart, still are.
 - **Touching pieces couldn't be moved.** Lora Bold's Џ, Ŋ and џ are drawn with a piece standing on another, edge on edge. The smallest move turns that into a crossing, so they refused to lighten at all and kept all their ink. The same rule covers them.
@@ -1891,7 +1879,7 @@ A tenth review, of the ninth review's fixes and the five-font round, found the g
 
 Every accented letter's base in the eight fonts now comes out within 11 units of the same letter alone at 0.06, most within 1, and none of the eight fonts' plain letters moves further from where it was drawn than before. The sweep of all eight fonts under the 39 settings finds nothing new against the previous commit and no height further out by more than 10 units, and Crimson Pro 24 fewer heights off. 300 glyphs of Lora Bold at weight 0.06 take about 3.5 s, as the previous commit does on the same machine.
 
-Images: `accents-lorabold-*` (h, A, l and t with their accents, and Ŗ), `corners-outfit-*` (N, Ñ, ¼, ¾) and `corners-crimson-*` (Y, A, Δ, N, 4), each at rest, at weight 0.06, and at 0.06 condensed to 0.6.
+Checked by eye on Lora Bold's h, A, l and t with their accents, and Ŗ; Outfit's N, Ñ, ¼ and ¾; and Crimson Pro's Y, A, Δ, N and 4. Each was looked at at rest, at weight 0.06, and at 0.06 condensed to 0.6.
 
 **An eleventh review, and two faults from the list.** The review of the last two commits found three faults in the weight stage:
 - **A piece given up entirely lost its lift.** Before the weight stage takes weight off two pieces that cross, a floating piece is lifted clear to see what still crosses, and the lift is taken off every piece afterwards. A pair that had to give up all its weight came back as drawn, without the lift, and taking the lift off then left an accent below where it was drawn. It now comes back as drawn and still lifted. No letter in the eight fonts reaches that case, so this has no test that fails on the old code.
@@ -1917,7 +1905,7 @@ On the eight fonts, plain letters further from where they were drawn than a scan
 
 The sweep of all eight fonts under the 39 settings finds the same as before these four fixes: nothing new, and no height further out.
 
-Images: `tips-crimson-*` (1, parentheses, comma, ñ), `tips-lorabold-*` (parentheses, comma, ñ), at rest, at weight 0.06 and at 0.06 condensed to 0.6; `slabs-outfit-*` (¼ ¾) at rest, with slab 0.03, and with slab and weight 0.06.
+Checked by eye on Crimson Pro's 1, parentheses, comma and ñ and Lora Bold's parentheses, comma and ñ, at rest, at weight 0.06 and at 0.06 condensed to 0.6; and on Outfit's ¼ and ¾ at rest, with slab 0.03, and with slab and weight 0.06.
 
 ### Tests
 
@@ -1937,7 +1925,7 @@ Two of this round's tests pass on the code before it as well: the one of Outfit'
 
 Two old expectations in `weight.test.ts` described letters growing past the baseline and cap height; they now expect the letter to keep its heights. The middle-space expectations in `counter.test.ts` and `control.test.ts`, which had walls thickening or thinning by the whole change, now expect walls that keep their weight while the letter narrows or widens. The weight engine keeps each contour's point count, and slabs are still separate contours added to the letter.
 
-These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,945 tests.
+These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vitest run`, the whole suite of 2,945 tests on the branch (historical).
 
 ### What is left
 
@@ -1975,3 +1963,25 @@ These checks all pass: `npx tsc -b --noEmit`, `npx biome check .`, and `npx vite
 - **Chevrons at the heaviest weight.** The chevron of a ≥ or ≤ keeps its 18 units of white over the bar by rising, after giving up a quarter of its height. At weight 0.06 the symbol stands 145 to 155 units taller in Geist, Lora Bold, Plex and Work Sans, and 148 in Crimson Pro. Before this round the heights squeezed the chevron without that limit, and it rose 92 to 162 depending on the font, with the bar lighter.
 - **Two controls on one gap.** Each control keeps half of the white it is handed, so the crossbar and the heaviest weight together leave Geist's ť about 9 of its 22 units.
 - **Pointed ends.** At weight 0.06 the ends of a chevron's arms run out along their mitres, as the weight engine draws any sharp corner away from an edge line; that, and keeping the chevron clear of the bar, is most of the height the ≥ above gains.
+
+## Known limits
+
+The polish made two things much slower, and neither is fixed yet. Both are
+waiting on the speed work. The figures below are from the audit of the merge
+(90dfc86) against the commit the branches started from (3050e21), on one
+machine, so read them as proportions rather than as promises.
+
+- **The warnings walk.** The check behind the warnings bar
+  (`familyWalk` in `src/forge/health.ts`) draws and inspects every letter of
+  every weight. On a Draw face with nothing cut the whole walk takes about 1
+  to 2 seconds, where it took about a quarter of a second before. With a slot
+  or a split cut on, it takes 17 to 22 seconds, where it took 2 to 4. The page
+  runs it a few milliseconds at a time between frames, so the editor keeps
+  answering, but the warnings take that long to arrive or to clear after a
+  change.
+- **The variable export.** Writing a Draw face as one variable font takes
+  about 3 minutes, where it took about 1.5. The e2e test that ships an opened
+  font as a variable file went from 1.2 to 2.5 minutes. The static export is
+  unchanged at about 4.5 seconds.
+- **Weight on a large opened font** is slower too: the weight control over all
+  6,253 glyphs of DejaVu Sans took 97 seconds at 0.06, against 45 before.

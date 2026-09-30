@@ -312,7 +312,7 @@ of you, so there is nothing that needs saying.
 
 The step said "add keyboard shortcuts for everything, so an experienced user
 never needs the mouse". Measured before writing any of it, with the harness that
-already exists for this (`npx vite-node scripts/reach.ts`):
+already exists for this (`npx vite-node scripts/dev/reach.ts`):
 
 | kind | reachable by its own description |
 |---|---|

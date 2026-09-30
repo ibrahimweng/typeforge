@@ -500,7 +500,7 @@ on a group you are already in, which is documented where it is decided.
 # Trace, measured letter by letter — *two found, one fixed, four rejected*
 
 The sweep above was of the interface. This is of the engine under Trace, and it
-starts from the harness rather than from a screen: `scripts/trace.ts` reads a
+starts from the harness rather than from a screen: `scripts/dev/trace.ts` reads a
 font, recovers strokes from every lowercase letter, redraws them and measures
 how far the redrawing strays. Two fonts, because they fail differently — DejaVu
 Sans, which is straight lines and square cuts, and Dancing Script, which is
@@ -515,7 +515,7 @@ each cut off at the meeting point cover everything inside the turn twice over
 and leave the wedge outside it empty. That hollow was worth **a hundred and
 eight units on the `m`, seventy-three on the `t` and seventy on the `f`** — on
 a two-thousand-unit em, so half a millimetre at reading size, and plainly
-visible in `scripts/traceshot.ts`.
+visible in `scripts/dev/traceshot.ts`.
 
 Each stroke now runs on past the junction by its own half width, held back to
 wherever its full width leaves the ink. Both halves of that are needed. Without
@@ -654,7 +654,7 @@ which side, and it was read as though it did.
 
 `v` 60.3 units, `y` 59.3, `w` 53.9 -- all of it drawn **above the letter's own
 x-height** -- and the same fault at the terminals of the `c`, the `s` and the
-`r`. Visible in `scripts/traceshot.ts` as a triangle off the end of each.
+`r`. Visible in `scripts/dev/traceshot.ts` as a triangle off the end of each.
 
 This is the "angled cut's zero lead" recorded above as root-cause-found and
 fix-rejected, and the missing piece was that two separate readings fail
@@ -761,7 +761,7 @@ heading and every other arm at that meeting:
 The same junctions to two decimal places, and 100.6 units of error against 38.1.
 An angle the two letters share cannot be what tells them apart.
 
-**It is not a notch either.** `scripts/worst.ts` reports both directions
+**It is not a notch either.** `scripts/dev/worst.ts` reports both directions
 separately with the place each happens, as a percentage across and up the
 letter's own box. The `q`'s fault is not ink the redraw is missing:
 
@@ -850,7 +850,7 @@ at was named as what separates the `q` from the `d`, and measured, the two
 junctions agree to two decimal places.
 
 What found it was asking the harness which *direction* the error ran in.
-`scripts/worst.ts` reports ink the redraw is missing and ink it spills
+`scripts/dev/worst.ts` reports ink the redraw is missing and ink it spills
 separately, each with the place it happens as a percentage across and up the
 letter's own box. The first number this entry ever had, 100.6, is spilt ink on
 the stem side at mid-height, and the whole of the wrong diagnosis followed from
@@ -862,7 +862,7 @@ reading it as a notch.
 ## T6. The `e`, the worst letter left, and the slit that was never ink — *done*
 
 With the `q` and the `u` fixed, the `e` was the largest number in the alphabet
-at **93.6**, and the largest on five other faces besides. `scripts/worst.ts` put
+at **93.6**, and the largest on five other faces besides. `scripts/dev/worst.ts` put
 it at 9% across and 47% up, which is not the edge of the letter -- it is
 (207, 529), the middle of the left wall of the bowl, and that is solid ink. The
 harness measures a redraw point's distance to the source *outline*, so a

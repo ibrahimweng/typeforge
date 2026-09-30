@@ -535,23 +535,6 @@ export function isCutException(forge: Forge, letter: string, name?: CutName): bo
 }
 
 /**
- * What a change to this cut is about to reach, in letters.
- *
- * Said before the edit, as it is for the parts. A cut lands on every letter in
- * the font rather than on the ones that happen to have a part, so what this
- * mostly reports is how many letters are holding their own version.
- */
-export function cutReach(forge: Forge, name: CutName): { letters: string[]; held: string[] } {
-  const letters: string[] = [];
-  const held: string[] = [];
-  for (const letter of letterNames()) {
-    if (isCutException(forge, letter, name)) held.push(letter);
-    else letters.push(letter);
-  }
-  return { letters, held };
-}
-
-/**
  * Whether this document takes anything out of anything.
  *
  * The font's own cuts, and the letters that hold their own. Asked in one place

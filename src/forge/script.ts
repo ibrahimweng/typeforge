@@ -44,7 +44,7 @@
  *
  * This paragraph used to say that was the next piece of work and that the
  * exporter could not write the table. Both stopped being true and the comment
- * did not, which cost a reader a morning: `scripts/joinsub.ts` exports a face
+ * did not, which cost a reader a morning: `scripts/dev/joinsub.ts` exports a face
  * and shapes it, and `oa` has been coming out `o.medi a.init` for some time.
  */
 

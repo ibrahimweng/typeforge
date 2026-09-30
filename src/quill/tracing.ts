@@ -150,7 +150,7 @@ export async function traceFont(
    * Which is right: it separates the serifs from the sanses, puts the pen
    * nearly horizontal on both serifs -- where a transitional serif's thins
    * are -- and finds more of a blade in the Bold than the Regular, which is
-   * also true of the drawing. `scripts/loop.ts` checks it the other way, by
+   * also true of the drawing. `scripts/dev/loop.ts` checks it the other way, by
    * writing an alphabet with a known pen and reading it back: the angle comes
    * back within two degrees.
    *

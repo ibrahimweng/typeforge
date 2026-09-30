@@ -155,14 +155,6 @@ export interface GlyfPoint {
 }
 
 /**
- * Flatten a contour into the point list `glyf` expects.
- *
- * TrueType lets two off-curve points sit next to each other and implies an
- * on-curve point halfway between them. We drop the explicit point whenever it
- * really is the midpoint, which is what shipping fonts do and costs nothing to
- * read back.
- */
-/**
  * How the points are chosen, when it has to be the same choice every time.
  *
  * `pieces` fixes how many quadratics every curve becomes, instead of asking a
@@ -175,6 +167,14 @@ export interface PointChoice {
   pieces?: number;
 }
 
+/**
+ * Flatten a contour into the point list `glyf` expects.
+ *
+ * TrueType lets two off-curve points sit next to each other and implies an
+ * on-curve point halfway between them. We drop the explicit point whenever it
+ * really is the midpoint, which is what shipping fonts do and costs nothing to
+ * read back.
+ */
 export function contourToGlyfPoints(
   contour: Contour,
   tolerance = 0.5,
@@ -231,9 +231,39 @@ export function contourToGlyfPoints(
   return choice.pieces ? settled : dropImpliedOnCurvePoints(settled);
 }
 
+/** Put every coordinate on the integer grid a font file stores. */
+function roundToGrid(points: GlyfPoint[]): GlyfPoint[] {
+  return points.map((point) => ({
+    x: Math.round(point.x),
+    y: Math.round(point.y),
+    onCurve: point.onCurve,
+  }));
+}
+
 /**
- * Round to the integer grid a font file stores, then repair what rounding and
- * curve fitting left slightly off.
+ * How far past an endpoint a control may sit and still be treated as error
+ * rather than intention. Rounding to whole units accounts for one; fitting a
+ * cubic with quadratics accounts for the second.
+ */
+const MAX_SNAP_UNITS = 2;
+
+/**
+ * How far a control between two level ends may sit off their level and still
+ * be treated as error.
+ *
+ * Less than past one end, because pulling it level moves the middle of the
+ * curve by half as far as the control moves -- and where the ends are level
+ * that middle is the whole of the bulge. One unit moves the outline by half a
+ * unit, which is the tolerance the curve was fitted to and below the grid the
+ * file stores: nothing that could have been drawn on purpose. Two would
+ * flatten a bulge a whole unit high, and a bulge a unit high between two
+ * level points is a shape somebody drew -- the swell of a flat-topped arch,
+ * the belly of a nearly straight stroke.
+ */
+const MAX_LEVEL_SNAP_UNITS = 1;
+
+/**
+ * Repair what rounding and curve fitting left slightly off.
  *
  * Where a curve turns at its highest or lowest point, the control point beside
  * it is level with it, so the tangent there is flat. Rounding to whole units,
@@ -244,28 +274,11 @@ export function contourToGlyfPoints(
  * the point, which every outline checker reports and which leaves hinting
  * nothing exact to snap to.
  *
- * The test is where the turn lands, not how far the point drifted: if a curve
- * turns within the first or last two percent of its length, that is fitting
- * error rather than a drawn intention, so the control is pulled level with the
- * end it belongs to. A cap on the distance keeps a genuinely intended shape
- * safe from being flattened.
+ * So a control a unit or two past an end is pulled level with that end. A cap
+ * on the distance keeps a genuinely intended shape safe from being flattened,
+ * and the cap is tighter where the two ends are level, since there the control
+ * is the bulge rather than a slip past the turn.
  */
-/**
- * How far past an endpoint a control may sit and still be treated as error
- * rather than intention. Rounding to whole units accounts for one; fitting a
- * cubic with quadratics accounts for the second.
- */
-/** Put every coordinate on the integer grid a font file stores. */
-function roundToGrid(points: GlyfPoint[]): GlyfPoint[] {
-  return points.map((point) => ({
-    x: Math.round(point.x),
-    y: Math.round(point.y),
-    onCurve: point.onCurve,
-  }));
-}
-
-const MAX_SNAP_UNITS = 2;
-
 function snapRoundedControls(points: GlyfPoint[]): GlyfPoint[] {
   const rounded = points.map((point) => ({ ...point }));
   const count = rounded.length;
@@ -284,10 +297,11 @@ function snapRoundedControls(points: GlyfPoint[]): GlyfPoint[] {
       // then falls halfway along, which is no point at all.
       const low = Math.min(before[axis], after[axis]);
       const high = Math.max(before[axis], after[axis]);
+      const reach = low === high ? MAX_LEVEL_SNAP_UNITS : MAX_SNAP_UNITS;
 
-      if (control[axis] < low && low - control[axis] <= MAX_SNAP_UNITS) {
+      if (control[axis] < low && low - control[axis] <= reach) {
         control[axis] = low;
-      } else if (control[axis] > high && control[axis] - high <= MAX_SNAP_UNITS) {
+      } else if (control[axis] > high && control[axis] - high <= reach) {
         control[axis] = high;
       }
     }

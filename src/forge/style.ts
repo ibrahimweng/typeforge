@@ -3306,7 +3306,7 @@ export const MONOLINE_SCRIPT: Style = {
  *   bounce / x-height      0.033      0.000     0.017
  *
  * The middle column is what this face measures, not what it declares -- those
- * are two numbers, and `scripts/likeness.ts` is what keeps them honest.
+ * are two numbers, and `scripts/dev/likeness.ts` is what keeps them honest.
  *
  * Read off the letters rather than out of the tables, which matters on the two
  * that disagree: both fonts declare an ascender near the top of the em, and in
