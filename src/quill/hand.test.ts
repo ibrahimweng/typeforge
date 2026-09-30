@@ -127,7 +127,7 @@ describe("the pen a traced letter was written with", () => {
  * because nobody knows what pen DejaVu Serif was drawn with -- it was drawn
  * rather than written. Here there is a right answer.
  *
- * `scripts/loop.ts` is the same check over more letters, with the two numbers
+ * `scripts/dev/loop.ts` is the same check over more letters, with the two numbers
  * that say why the pen is reported and not used to re-fit the letters.
  */
 describe("a pen written, swept, and read back", () => {

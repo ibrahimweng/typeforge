@@ -153,7 +153,7 @@ has not moved.
 
 ### Done, and one thing found on the way
 
-`scripts/arches.ts` draws all four arches from one skeleton. The trace harness
+`scripts/dev/arches.ts` draws all four arches from one skeleton. The trace harness
 did not move: worst 93.6, mean of means 6.11, 1101 nodes, because every stroke
 the tracer recovers carries a round pen and a round pen is the one case where
 none of this changes anything.
@@ -408,7 +408,7 @@ Serif they point opposite ways:
 | wander **along** each stroke | 0.592 | **0.664** |
 
 **Written out with a pen known exactly and traced back, it is starker.**
-`scripts/loop.ts` writes an alphabet with a blade of 0.70 at 40°, sweeps it, and
+`scripts/dev/loop.ts` writes an alphabet with a blade of 0.70 at 40°, sweeps it, and
 hands the outlines to the tracer:
 
 ```
@@ -461,7 +461,7 @@ both ways, and the outline-blended one is visibly worse.
 
 ### Done, and the result is stronger than that
 
-`scripts/blend.ts` writes an `n` twice with the same pen, held at 40° and at
+`scripts/dev/blend.ts` writes an `n` twice with the same pen, held at 40° and at
 110°, and asks for the letter halfway between:
 
 ```

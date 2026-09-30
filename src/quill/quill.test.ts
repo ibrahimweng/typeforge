@@ -355,7 +355,7 @@ describe("the pen along the stroke", () => {
    *
    * Noordzij's three modes, swept from one skeleton, measured rather than
    * looked at: each has to differ from the plain pen, and differ from each
-   * other. `scripts/arches.ts` draws the same four as a picture.
+   * other. `scripts/dev/arches.ts` draws the same four as a picture.
    */
   it("draws Noordzij's three modes differently from one skeleton", () => {
     const spine = {

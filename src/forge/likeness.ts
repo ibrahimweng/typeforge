@@ -35,7 +35,7 @@
  * built to the same ceiling height.
  *
  * The measurements were taken by scanline off the reference files at a named
- * weight, by `scripts/likeness.ts`, which measures a drawn face the same way
+ * weight, by `scripts/dev/likeness.ts`, which measures a drawn face the same way
  * and prints the difference. So the targets and the check read one set of
  * numbers rather than two that drift.
  */

@@ -10,7 +10,7 @@
  * script.
  *
  * So the arrival is asserted rather than left to be noticed. The tolerances are
- * the same ones `scripts/likeness.ts` prints against, and they are loose on
+ * the same ones `scripts/dev/likeness.ts` prints against, and they are loose on
  * purpose: these are proportions a reader perceives, not a checksum. What the
  * test is for is the case where a measure moves by five times its tolerance
  * because something underneath changed, not the case where it moves in the

@@ -130,7 +130,7 @@ it starts between those two on every axis that separates them. `likeness.ts`
 holds what each of them measures and the settings that travel there, and
 
 ```bash
-npx vite-node scripts/likeness.ts
+npx vite-node scripts/dev/likeness.ts
 ```
 
 draws the face, measures it with the same ruler the references were measured
@@ -183,7 +183,7 @@ on into each other, and fit cubics to what is left. The width comes off the
 distance field, which is the same measurement as the stroke's half-width.
 
 ```bash
-FONT=/path/to/font.ttf npx vite-node scripts/trace.ts
+FONT=/path/to/font.ttf npx vite-node scripts/dev/trace.ts
 ```
 
 prints how far the redrawing strays from what it read, letter by letter. On a
@@ -380,8 +380,8 @@ The drawn letters have a sheet of their own, because a test can say a glyph is
 all one width — and nothing but an eye can say it looks like an ampersand:
 
 ```bash
-npx vite-node scripts/sheet.ts ampersand at percent
-SHEET_BASES=Sans,Display CELL=120 npx vite-node scripts/sheet.ts braceleft
+npx vite-node scripts/dev/sheet.ts ampersand at percent
+SHEET_BASES=Sans,Display CELL=120 npx vite-node scripts/dev/sheet.ts braceleft
 ```
 
 Exports are checked against **fontTools**, the reference implementation used
