@@ -81,6 +81,34 @@ const plain = (letter: string, style = SANS): Contour[] => drawLetter(letter, st
 const POINT_BUDGET = { rim: 120, everything: 125 };
 
 describe("the shadow", () => {
+  it("is given room in the advance on the side it is thrown to", () => {
+    // The letter is spaced by its face, and a shadow thrown sideways was drawn
+    // into the next letter's space: a Serif Black ran every letter into the
+    // one beside it.
+    for (const [face, angle] of [
+      ["Serif", -45],
+      ["Sans", 135],
+    ] as const) {
+      const base = BASES.find((one) => one.name === face)!;
+      const style = { ...base, pen: { ...base.pen, weight: 194 } };
+      const thrown = cast((one) => {
+        one.extrude = { on: true, distance: 1.2, angle };
+      });
+      for (const letter of ["H", "O", "a", "k"]) {
+        const plainly = drawLetter(letter, style)!;
+        const shadowed = drawLetter(letter, style, undefined, undefined, undefined, thrown)!;
+        const box = contoursBounds(shadowed.contours);
+        const was = contoursBounds(plainly.contours);
+        // No nearer its edges than the face was.
+        const side = Math.min(was.xMin, plainly.advanceWidth - was.xMax);
+        expect(box.xMin, `${face} ${letter}`).toBeGreaterThanOrEqual(side - 1);
+        expect(shadowed.advanceWidth - box.xMax, `${face} ${letter}`).toBeGreaterThanOrEqual(
+          side - 1,
+        );
+      }
+    }
+  });
+
   it("reaches as far as it is thrown, and no further", () => {
     const reach = 1.5;
     const thrown = put(
