@@ -2210,11 +2210,60 @@ function ballsFor(
      * from: dropped its full way, a c's two stood out across its aperture
      * and met.
      */
-    const reach = !written && held > 0 ? Math.min(1, fits / held) : 1;
-    const placed = {
+    let reach = !written && held > 0 ? Math.min(1, fits / held) : 1;
+    /*
+     * And where that still leaves the two balls of one stroke touching, set
+     * back further, into the stroke's own end, until they stand apart: a
+     * c's two, each at least as wide as the stroke it closes, met across an
+     * aperture the Psychedelic all but shuts, and the letter's head and
+     * foot were one blob. Set back along the stroke they part, since each
+     * end is running towards the other.
+     */
+    if (!written && !buried && !style.parts.ball.curved && twin && held > 0) {
+      const apart = (share: number): boolean => {
+        const one = {
+          x: at.x + outward.x * held * drop * share,
+          y: at.y + outward.y * held * drop * share,
+        };
+        const two = {
+          x: twin[1].x + twin[2].x * held * drop * share,
+          y: twin[1].y + twin[2].y * held * drop * share,
+        };
+        return Math.hypot(one.x - two.x, one.y - two.y) >= held * 2 + paper;
+      };
+      if (!apart(reach) && apart(-1 / drop)) {
+        let low = -1 / drop;
+        let high = reach;
+        for (let pass = 0; pass < 30; pass++) {
+          const mid = (low + high) / 2;
+          if (apart(mid)) low = mid;
+          else high = mid;
+        }
+        reach = low;
+      }
+    }
+    let placed = {
       x: at.x + outward.x * held * drop * reach,
       y: at.y + outward.y * held * drop * reach,
     };
+    /*
+     * And where the lines would hold it in across the way it runs -- the
+     * end of a parenthesis, running up into the cap line -- set back along
+     * the stroke instead, so it stays on the end it closes: held straight
+     * down, the Psychedelic's parentheses wore their balls inside their
+     * own curves.
+     */
+    if (!written && !buried && !style.parts.ball.curved) {
+      const over = placed.y + held - band.yMax;
+      const under = band.yMin + held - placed.y;
+      const back =
+        over > 0 && outward.y > 0.6
+          ? over / outward.y
+          : under > 0 && outward.y < -0.6
+            ? under / -outward.y
+            : 0;
+      if (back > 0) placed = { x: placed.x - outward.x * back, y: placed.y - outward.y * back };
+    }
     const kept = written
       ? placed
       : {
@@ -2847,8 +2896,20 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * wavy face wants: the letters it is drawn for have unbracketed serifs,
        * and what they do have is feet that ripple.
        */
+      /*
+       * And laid flat where an arm runs on along the line from the other side
+       * of the stroke -- the top and foot of an E's stem, the top of an F's:
+       * the arm waves away from the stem, and a wing waving the other way
+       * beside it put two troughs either side of the stem, which stood up
+       * between them as a spike. Flat, it reads as the arm carried on past
+       * the stem, as a slab E's corner does. The same pieces as a wave, so
+       * the letter has the same points at every weight.
+       */
+      const calm =
+        waving(style) &&
+        alongLine(at, facing, -side, inner, Math.max(thickness, inner), thickness, others);
       const shape: Contour[] = waving(style)
-        ? sweptWing(stroke, style, at, facing, side, from, tip, deep)
+        ? sweptWing(stroke, style, at, facing, side, from, tip, deep, calm)
         : [
             wing(
               /*
@@ -2999,6 +3060,36 @@ function crossesALine(
 const standingOn = (height: number, line: number, inner: number): boolean =>
   Math.abs(height - line) <= inner + Math.max(1, inner * 0.02);
 
+/** How much of its wave a wing laid flat keeps: enough to keep its pieces. */
+const CALM = 1e-3;
+
+/**
+ * Whether another stroke lies along the line a wing would run on, on the
+ * `side` given, from the stroke's own edge out to `reach`: an arm running on
+ * from a stem, rather than a bowl coming down beside it.
+ */
+function alongLine(
+  at: Vec2,
+  outward: Vec2,
+  side: number,
+  inner: number,
+  reach: number,
+  thickness: number,
+  others: Contour[],
+): boolean {
+  if (others.length === 0) return false;
+  const across = { x: -outward.y * side, y: outward.x * side };
+  const into = { x: -outward.x, y: -outward.y };
+  for (let u = inner + 1; u <= inner + reach; u += 2) {
+    const point = {
+      x: at.x + across.x * u + into.x * (thickness / 2),
+      y: at.y + across.y * u + into.y * (thickness / 2),
+    };
+    if (!others.some((contour) => contourContainsPoint(contour, point))) return false;
+  }
+  return true;
+}
+
 /** Whether this face has a wave for a flat run to follow. */
 function waving(style: Style): boolean {
   const { depth, along } = style.parts.wave;
@@ -3026,6 +3117,8 @@ function sweptWing(
   inner: number,
   tip: number,
   thickness: number,
+  // Laid flat, in the same pieces: see `calm` where the wings are drawn.
+  calm = false,
 ): Contour[] {
   const into = { x: -outward.x, y: -outward.y };
   // Travelling so that the left of the way it goes is the inside of the
@@ -3039,7 +3132,7 @@ function sweptWing(
   const spine = wavy(
     { segments: [{ kind: "line", from, to }], closed: false },
     length,
-    depth,
+    calm ? depth * CALM : depth,
     thickness / 2,
     where,
   );

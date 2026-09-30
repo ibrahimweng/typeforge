@@ -29,7 +29,14 @@
  */
 
 import type { Vec2 } from "@/font/types";
-import { BASES, blackness, type Style, weightAtBlackness } from "../style";
+import {
+  BASES,
+  blackness,
+  HEAVY_OPEN_FROM,
+  pastBlack,
+  type Style,
+  weightAtBlackness,
+} from "../style";
 import { LETTERS } from "../letters";
 import { bowlPoint, hasLength, spineEnd, spineStart, superQuarter } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -89,6 +96,19 @@ const small = (f: Frame, share = 0): number =>
 const large = (f: Frame, share = 0): number =>
   mixed(f.grownCapBowl, f.capBowl, share) / 280 / unstretched(f);
 
+/** How far apart the number sign's strokes move for the stem gained past the Black. */
+const CROSS_OPEN = 0.35;
+
+/**
+ * `small` and `large` as they were before the bowls were let out past the
+ * Black (see `ultra`), for a letter with no counter to keep open: the k's
+ * arm and leg stand where Geist's do at every weight.
+ */
+const smallShut = (f: Frame, share = 0): number =>
+  (mixed(f.grownBowl, f.bowl, share) - ultra(f)) / 199 / unstretched(f);
+const largeShut = (f: Frame, share = 0): number =>
+  (mixed(f.grownCapBowl, f.capBowl, share) - ultra(f)) / 280 / unstretched(f);
+
 /** Where the Sans sets its crossbar control: a bar drawn at Geist's height sits here. */
 const SANS_CROSSBAR = 0.52;
 
@@ -101,6 +121,14 @@ const thinned = (f: Frame, share: number): number => 1 - share * thinness(f);
 
 /** A turn, never tighter than the pen will go round. */
 const held = (f: Frame, radius: number): number => Math.max(radius, f.least);
+
+/**
+ * How much further out each side of a counter is set past the Black, on a
+ * face that keeps its counters open there (`metrics.heavyOpen`): the same
+ * share of the stem gained that `frame` lets its bowls out by. Nought up to
+ * the Black, so every measure taken off Geist is drawn as it was.
+ */
+const ultra = (f: Frame): number => pastBlack(f.style) * (f.style.metrics.heavyOpen ?? 0);
 
 /**
  * How much further out the right of a round capital stands than its older
@@ -221,7 +249,10 @@ export function grotesqueA(style: Style): Recipe {
   const past = Math.min(1, Math.max(0, t - 1));
 
   // The stem, and its foot turning out into the spur.
-  const stem = X(lerp(397, 437, 389));
+  // Past the Black, let out as the bowls are (`ultra`), or the stem ran
+  // into the bowl's counter from the right.
+  const open = ultra(f) * size;
+  const stem = X(lerp(397, 437, 389)) + 2 * open;
   const foot = f.sits(0);
   const crest = f.crest(f.x);
   // Its turn no taller than leaves the arch its own round above it.
@@ -235,7 +266,7 @@ export function grotesqueA(style: Style): Recipe {
   // its crest left of the middle, and its right side coming upright low, at
   // 324 on every weight.
   // Never nearer the stem than its turn will go round.
-  const crestX = Math.min(X(lerp(229, 277, 214)), stem - f.least);
+  const crestX = Math.min(X(lerp(229, 277, 214)) + open, stem - f.least);
   const tip = Math.min(X(9) + f.half, crestX - f.least);
   const cutY = Math.min(H(lerp(370, 362, 371)), crest - f.least);
   // And never below where the stem starts to turn out into its spur.
@@ -289,7 +320,7 @@ export function grotesqueA(style: Style): Recipe {
 
   const left = X(0) + across / 2;
   const bottom = -f.over + along / 2;
-  const middle = Math.max(X(lerp(183, 240, 171)), left + f.least);
+  const middle = Math.max(X(lerp(183, 240, 171)) + open, left + f.least);
   const right = stem - f.half + taper / 2;
   /*
    * The bowl leaves the stem at 0.56 of the x-height, and its counter meets
@@ -367,6 +398,16 @@ export function grotesqueA(style: Style): Recipe {
 }
 
 /**
+ * How much taller, in Geist's units, the quarter the Sans's g's tail turns
+ * up to its terminal on is at the Regular and the Thin than the Black's rule
+ * gives, easing out by the Black: Geist's tail is round under the bowl at
+ * every weight, and on the short quarter the inside of the Regular's ran flat
+ * along the descender. That took a quarter off the g's misfit at the Thin
+ * and the Regular.
+ */
+const G_ROUND = 48;
+
+/**
  * The single-storey g: a bowl whose right side is the stem, and the stem
  * carried on under the line and round in a flat hook to a terminal cut level
  * under the bowl's left side.
@@ -401,7 +442,9 @@ export function grotesqueG(style: Style): Recipe {
    * Ultra a square notch under the bowl.
    */
   const t = Math.min(heaviness(f) / 0.67, 1.5);
-  const leftY = Math.max(H(-25 + 45 * t), floor + f.least);
+  // The Sans's rounder towards the Thin: see `G_ROUND`.
+  const round = f.style.metrics.xGrows !== undefined ? G_ROUND * Math.max(0, 1 - t) : 0;
+  const leftY = Math.max(H(-25 + 45 * t + round), floor + f.least);
   const rightC = at(hookX, rightY);
   const leftC = at(hookX, leftY);
   const cut = Math.min(
@@ -707,7 +750,7 @@ export function grotesqueCapitalO(style: Style): Recipe {
 function capitalRing(f: Frame, narrower = 0): Stroke {
   const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
-  const wide = (lerp(649, 720, 614) - narrower) * k;
+  const wide = (lerp(649, 720, 614) - narrower) * k + 2 * ultra(f);
   const side = lerp(90, 201, 34) * k;
   const crown = lerp(84, 157, 32) * k;
   const over = f.style.metrics.overshoot;
@@ -737,7 +780,7 @@ export function grotesqueCapitalD(style: Style): Recipe {
   const f = frame(style);
   const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
-  const wide = lerp(561, 632, 530) * k;
+  const wide = lerp(561, 632, 530) * k + 2 * ultra(f);
   const side = lerp(90, 201, 34) * k;
   const crown = lerp(89, 170, 32) * k;
   const g = sidedFrame(f, side, crown);
@@ -805,7 +848,10 @@ const sansRound = (f: Frame, by: number): number => (f.style.metrics.xGrows !== 
  * Regular's misfit.
  */
 export function grotesqueCapitalB(style: Style): Recipe {
-  const f = frame(style);
+  // Lighter across past the Black, as the figures are: it stacks three
+  // horizontals in the cap height, and on the stems' pen an Ultra's upper
+  // counter was a slot.
+  const f = frame(lighterAcross(style));
   const [u, t] = spread(f);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
   const stem = f.edge;
@@ -824,7 +870,7 @@ export function grotesqueCapitalB(style: Style): Recipe {
         stem,
         f.hangs(f.cap),
         waist,
-        X(lerp(409, 392)) + roundGain(f, 7, 21),
+        X(lerp(409, 392)) + roundGain(f, 7, 21) + 2 * ultra(f),
         150 * u * sansRound(f, 1.25),
         f.curve,
         waistCurve,
@@ -843,7 +889,7 @@ export function grotesqueCapitalB(style: Style): Recipe {
         stem,
         waist - 0.5,
         f.sits(0),
-        X(lerp(439, 423)) + roundGain(f, 8, 23),
+        X(lerp(439, 423)) + roundGain(f, 8, 23) + 2 * ultra(f),
         160 * u * sansRound(f, 1.25),
         waistCurve,
       ),
@@ -878,7 +924,7 @@ export function grotesqueCapitalP(style: Style): Recipe {
               ? Math.min(6, atWeights(f, -10, -12, -8, 2, 6))
               : 0),
         ),
-        stem + lerp(419, 401) * u + roundGain(f, 7, 20, 12),
+        stem + lerp(419, 401) * u + roundGain(f, 7, 20, 12) + 2 * ultra(f),
         160 * u * sansRound(f, 1.3),
       ),
     ),
@@ -903,7 +949,7 @@ export function grotesqueR(style: Style): Recipe {
     f.style.metrics.xGrows !== undefined ? Math.max(atWeights(f, -15, -14, -12, -6, -8), -15) : 0;
   const waist = up(f, lerp(343, 330) + lower);
   const lobeHalf = held(f, (top - waist) / 2);
-  const gain = roundGain(f, 8, 22, 2);
+  const gain = roundGain(f, 8, 22, 2) + 2 * ultra(f);
   const right = X(lerp(423, 411)) + gain;
   // The Sans's round a fifth longer than first measured from the Regular on,
   // as Geist's is; its Thin's as it was.
@@ -1284,7 +1330,10 @@ export function grotesqueSeven(style: Style): Recipe {
  * the bowl -- so the run is smooth at every weight and has the same pieces.
  */
 export function grotesqueAmpersand(style: Style): Recipe {
-  const f = frame(lighterAcross(style));
+  // Past the Black gaining only half what the stem does, as the S does (see
+  // `stackedPen`): it stacks a loop over a bowl, and on the full pen an
+  // Ultra's crossing left a pinhole between the leg and the bowl.
+  const f = frame(lighterAcross(stackedPen(style, 0.5, HEAVY_OPEN_FROM)));
   const [wide, t] = spread(f);
   // At Geist's widths: it stood 14 wide at the Thin, 15 narrow at the
   // SemiBold and 11 wide at the Black.
@@ -2032,10 +2081,13 @@ function threeOf(style: Style, sans: boolean): Recipe {
   const lowerH = held(f, (waist - bottom) / 2);
   // Geist's upper bowl reaches further left as the weight grows (6 units at
   // the Regular, 15 at the Black) and 5 further right at the Black.
-  const upper = at(X(307) - (sans ? now(3, 5, 0) : 0), waist + upperH);
-  const lower = at(X(308), waist - lowerH);
-  const upperW = held(f, 188 * u + (sans ? now(3, 10, 0) : 0));
-  const lowerW = held(f, 213 * u);
+  // Past the Black, let out on the right as the bowls are (`ultra`): its
+  // counters were slots an Ultra's stem wide.
+  const open = ultra(f);
+  const upper = at(X(307) - (sans ? now(3, 5, 0) : 0) + open, waist + upperH);
+  const lower = at(X(308) + open, waist - lowerH);
+  const upperW = held(f, 188 * u + (sans ? now(3, 10, 0) : 0) + open);
+  const lowerW = held(f, 213 * u + open);
   /*
    * Geist cuts its top terminal lower as the weight grows: its end comes
    * down to 545 at the Regular and 508 at the Black, where cut at a fixed
@@ -2129,21 +2181,40 @@ export function grotesqueFour(style: Style): Recipe {
   // Geist Black's bar sits a little higher.
   // 7 units further left than first measured, with the bar running 86 past
   // it, as Geist's does: the stem stood 7 to 9 units right of Geist's.
-  const stem = X(454);
+  // Past the Black, let out as the bowls are (`ultra`), or the counter
+  // closed to a pinhole between the diagonal, the stem and the bar.
+  const stem = X(454) + 2 * ultra(f);
   const bar = up(f, lerp(188, 200.5));
   const pen = penReach(f.style.pen);
   const flank = Math.abs(reachAlong(at(1, 0), pen).x);
   const barEdge = bar + f.upright;
   const inkLeft = f.edge - f.half;
+  /*
+   * The Sans's diagonal lighter than its stem from the SemiBold on, as
+   * Geist's is (about 0.88 of it across at the Black), and past the Black
+   * gaining only half what the stem does: on the stem's pen the counter
+   * was two thirds of Geist Black's, and a pinhole past it.
+   */
+  const gained = pastBlack(f.style);
+  const light =
+    f.style.metrics.xGrows !== undefined ? Math.max(0.88, atWeights(f, 1, 1, 0.96, 0.92, 0.88)) : 1;
+  const diagonal = {
+    ...f.style.pen,
+    weight: (f.style.pen.weight - gained) * light + gained * 0.5 * light,
+  };
   // The diagonal's outer edge, from the bar's left end to the stem's head.
   const low = at(inkLeft, barEdge);
   const high = at(stem - flank, f.cap);
   const length = Math.hypot(high.x - low.x, high.y - low.y);
   const d = at((high.x - low.x) / length, (high.y - low.y) / length);
-  const shift = reachAlong(at(d.y, -d.x), pen);
+  const shift = reachAlong(at(d.y, -d.x), penReach(diagonal));
+  const slant = ink(
+    f,
+    straight(at(low.x + shift.x, low.y + shift.y), at(high.x + shift.x, high.y + shift.y)),
+  );
   return finish(f, [
     ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-    ink(f, straight(at(low.x + shift.x, low.y + shift.y), at(high.x + shift.x, high.y + shift.y))),
+    inherit(slant, { ...slant, pen: diagonal }),
     /*
      * The bar runs 86 past the stem's outside at every weight, as Geist's
      * does; measured from the stem's middle, a Black's bar was nearly flush
@@ -2200,8 +2271,9 @@ function fiveOf(style: Style, sans: boolean): Recipe {
   const [, now] = squaredNow(f);
   const crown = up(f, sans ? now(472, 452, 471) + atWeights(f, 1, 2, 4, 11, 16) : 473) - f.upright;
   const halfH = held(f, (crown - bottom) / 2);
-  const centre = at(X(311), bottom + halfH);
-  const halfW = held(f, 211 * u);
+  // Past the Black, let out on the right as the bowls are (`ultra`).
+  const centre = at(X(311) + ultra(f), bottom + halfH);
+  const halfW = held(f, 211 * u + ultra(f));
   // Where the bowl leaves the stem: inside it, a stem's width under its head.
   // Held on the bowl's upper left, where the stem is, at every weight.
   /*
@@ -2313,11 +2385,39 @@ function fiveOf(style: Style, sans: boolean): Recipe {
     const p = bowlPoint(centre, halfW, halfH, 1 - f.square, f.half, degrees, f.curve);
     return at(p.x * 2 - inside.x, p.y * 2 - inside.y);
   };
+  /*
+   * And the Sans's bowl is a sided pair (see `fiveBowl`), whose outer ring
+   * sits lower and rounder than the one bowl above: its start's outside
+   * corner stood out past the stem's left edge as a beak at an Ultra. So
+   * each ring of the pair is held clear too.
+   */
+  const pair = sans ? sidedPair(f, centre, halfH, figureCrown(f)) : null;
+  const pairOutside = (degrees: number): Vec2[] =>
+    pair
+      ? pair.bowls.map(([middle, half]) => {
+          const p = bowlPoint(
+            middle,
+            halfW,
+            half,
+            1 - f.square,
+            pair.g.half,
+            degrees,
+            fiveRound(f),
+          );
+          const nx = (p.x - middle.x) / (halfW * halfW);
+          const ny = (p.y - middle.y) / (half * half);
+          const length = Math.hypot(nx, ny) || 1;
+          const out = reachAlong(at(nx / length, ny / length), penReach(pair.g.style.pen));
+          // With a little to spare, for the ring's own drawn round.
+          return at(p.x + out.x - pair.g.half * 0.1, p.y + out.y);
+        })
+      : [];
   const lean = (stemTop.x - stemFoot.x) / (stemTop.y - stemFoot.y);
-  const clear = (degrees: number): boolean => {
-    const o = outsideAt(degrees);
-    return o.x >= foot.x - f.half + lean * (o.y - foot.y) - 0.5;
-  };
+  const clear = (degrees: number): boolean =>
+    [outsideAt(degrees), ...pairOutside(degrees)].every(
+      // The stem's own left edge, on its own lighter pen.
+      (o) => o.x >= foot.x - f.half * stemPen + lean * (o.y - foot.y) - 0.5,
+    );
   if (!clear(found)) {
     let a = 100;
     let b = found;
@@ -2354,7 +2454,15 @@ function fiveOf(style: Style, sans: boolean): Recipe {
         inherit(stem, { ...stem, pen: { ...stem.pen, weight: stem.pen.weight * stemPen } }))(
         ink(f, straight(stemTop, foot), BUTT, f.end),
       ),
-      ...fiveBowl(f, sans, centre, halfW, halfH, Math.min(leaves, 175)),
+      ...fiveBowl(
+        f,
+        sans,
+        centre,
+        halfW,
+        halfH,
+        Math.min(leaves, 175),
+        (y) => foot.x + f.half * stemPen + lean * (y - foot.y),
+      ),
     ],
     true,
   );
@@ -2370,6 +2478,10 @@ function fiveCut(f: Frame, sans: boolean): number {
   );
 }
 
+/** How full the Sans's five's bowl is: see `fiveBowl`. */
+const fiveRound = (f: Frame): number =>
+  Math.min(0.15, Math.max(0.1, atWeights(f, 0.1, 0.1, 0.1, 0.1, 0.15)));
+
 /** The five's bowl, from the stem round to its terminal: one, or a sided pair. */
 function fiveBowl(
   f: Frame,
@@ -2378,6 +2490,8 @@ function fiveBowl(
   halfW: number,
   halfH: number,
   leaves: number,
+  // Where the stem's inside edge stands at a height.
+  stemRight: (y: number) => number = () => -Infinity,
 ): Stroke[] {
   const cut = fiveCut(f, sans);
   if (!sans)
@@ -2397,10 +2511,35 @@ function fiveBowl(
    * still at its upper right and leaner at its upper left, which a quarter
    * drawn apart would follow at twice the nodes.)
    */
-  const round = Math.min(0.15, Math.max(0.1, atWeights(f, 0.1, 0.1, 0.1, 0.1, 0.15)));
+  const round = fiveRound(f);
   return bowls.map(([middle, half]) => {
     const to = angleAt(g, middle, halfW, half, cut, true) - 360;
-    const one = ink(g, bend({ ...g, curve: round }, middle, half, leaves, to, halfW), BUTT, f.end);
+    const run = bend({ ...g, curve: round }, middle, half, leaves, to, halfW);
+    /*
+     * Led in from inside the stem along the way it sets off, as far as
+     * takes the inside of its start back to the stem's inside edge: cut
+     * square where it left the stem, its inner corner stood out into the
+     * counter past the stem as a notch, most of all at the Black.
+     */
+    const start = spineStart(run);
+    const first = run.segments.find((one) => hasLength(one)) ?? run.segments[0];
+    const heading = headingAt(first, "start");
+    const inward = reachAlong(at(heading.y, -heading.x), penReach(g.style.pen));
+    const corner = at(start.x + inward.x, start.y + inward.y);
+    const lean = stemRight(1) - stemRight(0) || 0;
+    const out = corner.x - stemRight(corner.y);
+    const along = heading.x - lean * heading.y;
+    // Only as the weight grows towards the Black, where the notch was.
+    const heavy = Math.min(1, heavyT(f) / nowBlack());
+    const lead = Math.min(
+      f.half,
+      Math.max(1, Number.isFinite(out) && out > 0 && along > 0 ? (heavy * out) / along : 0),
+    );
+    const led = chain(
+      straight(at(start.x - heading.x * lead, start.y - heading.y * lead), start),
+      run,
+    );
+    const one = ink(g, led, BUTT, f.end);
     return inherit(one, { ...one, pen: g.style.pen });
   });
 }
@@ -2711,8 +2850,11 @@ function sixStrokes(
   const [, now] = squaredNow(f);
   const bowlTop = up(f, sans ? now(477, 448, 472) : 484) - f.upright;
   const radius = held(f, (bowlTop - bottom) / 2);
-  const centre = at(X(313), bottom + radius);
-  const wide = held(f, 207 * u);
+  // Past the Black, let out as the bowls are (`ultra`), or its counter was a
+  // slot between the hood's side and the bowl's.
+  const open = ultra(f);
+  const centre = at(X(313) + open, bottom + radius);
+  const wide = held(f, 207 * u + open);
   /*
    * The hood is a little wider than the bowl, its left side on the bowl's,
    * so it curves all the way down into it and its terminal reaches out over
@@ -2998,7 +3140,7 @@ export function grotesqueCapitalK(style: Style): Recipe {
     // does: fitted to its ink, that halved the UltraBlack's misfit.
     ...kay(
       f,
-      large(f, 1) * refit(f, 0.015, 0.03),
+      largeShut(f, 1) * refit(f, 0.015, 0.03),
       f.cap,
       136,
       [
@@ -3030,7 +3172,7 @@ export function grotesqueK(style: Style): Recipe {
     // Black.
     ...kay(
       f,
-      small(f, 1) * thinned(f, -0.035) * refit(f, -0.005, 0.034, -0.002),
+      smallShut(f, 1) * thinned(f, -0.035) * refit(f, -0.005, 0.034, -0.002),
       f.x,
       123,
       [sans ? atWeights(f, 165, 140, 155, 150, 150) : 133, 476, 530],
@@ -3281,8 +3423,8 @@ const CAPITAL_ESS_GAIN = 0.5;
  * Black the s and the S go on getting heavier, but more slowly than the
  * stems, as a Black's S is drawn a little lighter than its O in any case.
  */
-export function stackedPen(style: Style, gain: number): Style {
-  const from = weightAtBlackness(style, ESS_HELD_FROM);
+export function stackedPen(style: Style, gain: number, black = ESS_HELD_FROM): Style {
+  const from = weightAtBlackness(style, black);
   const { weight } = style.pen;
   if (!(weight > from)) return style;
   return { ...style, pen: { ...style.pen, weight: from + (weight - from) * gain } };
@@ -4762,7 +4904,7 @@ function capitalEss(f: Frame, fit: number): Stroke[] {
   return ess(f, {
     height: f.cap,
     geist: 710,
-    unit: large(f, 1) * (1 + fit),
+    unit: largeShut(f, 1) * (1 + fit),
     left: 118,
     // The Sans's fitted to the current Geist's, as the s's are: the upper
     // bowl 15 lower and 10 narrower at the Regular, 10 lower at the Black,
@@ -4825,10 +4967,17 @@ export function grotesqueDollar(style: Style): Recipe {
     up(f, 800),
     metrics.ascender + Math.max(pen.weight, metrics.unitsPerEm * 0.06) - 3,
   );
+  /*
+   * Never heavier than Geist's is against its stem at the Regular (74 on
+   * 84), on a face that has no Thin of Geist's to go to (`lightHeld`): held
+   * at the Regular's width, a Thin Display's bar stood two and a half times
+   * as heavy as the S it went through.
+   */
+  const light = f.style.metrics.lightHeld ? Infinity : pen.weight * (74 / 84);
   const bar = measured(
     f,
     straight(at(centre, up(f, -90)), at(centre, top)),
-    lerp(74, 86, 30) * (X(1) - X(0)),
+    Math.min(lerp(74, 86, 30), light) * (X(1) - X(0)),
   );
   return finish(f, [...strokes, bar], true);
 }
@@ -5127,7 +5276,10 @@ export function grotesqueCapitalA(style: Style): Recipe {
     up(f, 245 + (215 - 245) * Math.min(t, 1.5)) +
     (f.style.parts.crossbar.height - SANS_CROSSBAR) * f.cap +
     // And Geist Thin's 5 higher, where the Sans's stood 5 low.
-    (sans ? Math.max(0, atWeights(f, 5, 0, 0, 0, 0)) : 0);
+    (sans ? Math.max(0, atWeights(f, 5, 0, 0, 0, 0)) : 0) -
+    // Past the Black lower again, as the bowls are let out (`ultra`): the
+    // head's counter closed to a notch under the apex.
+    2 * ultra(f);
   // Across the legs at that height, and buried in each.
   const across = (stroke: Stroke) => {
     const one = stroke.spine.segments[0];
@@ -5410,10 +5562,18 @@ export function grotesqueNumberSign(style: Style): Recipe {
   const pen = (weight: number) => ({ ...f.style.pen, weight, contrast: 0, angle: 0 });
   const slope = held(0.183, 0.144, 0.186);
   const uprightW = stem * held(0.84, 0.91, 1);
-  const barW = stem * held(0.84, 0.79, 1);
+  /*
+   * Past the Black the bars gain only half what the stem does, and the
+   * uprights and the bars move apart by a third of what it gains, whatever
+   * the face does with its bowls: an Ultra's counter was a slot a fifth of
+   * the Black's.
+   */
+  const gained = pastBlack(f.style);
+  const apart = gained * CROSS_OPEN;
+  const barW = (stem - gained * 0.5) * held(0.84, 0.79, 1);
   const lean = (x: number, y: number) => X(x) + slope * y;
   const left = along(72.5, 134.5, 72);
-  const right = along(278.5, 387.5, 269);
+  const right = along(278.5, 387.5, 269) + (2 * apart) / u;
   // Each bar's end at Geist's width: the sign stood 13 narrow at the Thin,
   // 14 wide at the Regular and 10 narrow at UltraBlack.
   const over = held(88, 70, 110) * u + uprightW / 2 + atWeights(f, 6.5, -7, 0.5, 5, -0.5);
@@ -5443,8 +5603,8 @@ export function grotesqueNumberSign(style: Style): Recipe {
   return finish(f, [
     upright(left),
     upright(right),
-    bar(up(f, held(232, 220, 231))),
-    bar(up(f, held(475, 482, 476))),
+    bar(up(f, held(232, 220, 231)) - apart),
+    bar(up(f, held(475, 482, 476)) + apart),
   ]);
 }
 
@@ -5467,7 +5627,8 @@ export function grotesqueAsterisk(style: Style): Recipe {
     thinness(f) > 0 ? lerp(a, b, thin) : a + (b - a) * t;
   // Not widened at the Thin with the letters: Geist Thin's is as wide as its
   // Regular's, where it stood 13 units wider.
-  const u = large(f, 1) * thinned(f, 0.038);
+  // Nor let out past the Black with the bowls: it has no counter.
+  const u = largeShut(f, 1) * thinned(f, 0.038);
   // Past the Black the arms grow a little longer and no heavier against the
   // stem, or an Ultra's closed into a hexagon: past the current Black, where
   // grown from the UltraBlack on it stood 22 units wide at the Black.
@@ -5590,7 +5751,10 @@ function solid(...spines: Spine[]): Spine {
 
 export function grotesqueAt(style: Style): Recipe {
   const f = frame(style);
-  const u = large(f, 1);
+  // Not let out past the Black with the bowls (`ultra`): its ring is drawn
+  // in pieces that come and go with its size, and let out it lost two
+  // points at an Ultra, so the weight axis could not run through it.
+  const u = largeShut(f, 1);
   const X = (x: number) => f.edge + (x - 86.5) * u;
   /*
    * Measured off Geist Regular and Black. At the Black the a moves right
@@ -5816,7 +5980,10 @@ export function grotesqueE(style: Style): Recipe {
   // Geist's height, moved with the crossbar control from where the face has it.
   // Past the Black the bar comes down a little, so the eye over it stays open.
   const past = Math.min(1, Math.max(0, t - 1) / 1.24);
-  const bar = H(272 - 15 * past) + (f.style.parts.crossbar.height - SANS_CROSSBAR) * f.x;
+  // And lower again past the Black proper, as the bowls are let out there
+  // (`ultra`): an Ultra's eye was a third of a stem.
+  const bar =
+    H(272 - 15 * past) + (f.style.parts.crossbar.height - SANS_CROSSBAR) * f.x - ultra(f) * 0.6;
   // And past the Black the foot is cut lower too, or the aperture between
   // it and the bar closed to a crack across the letter.
   // The Sans's a little lower, 8 at the Thin and 4 at the Regular to the

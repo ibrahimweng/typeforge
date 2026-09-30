@@ -8,7 +8,7 @@
 
 import { spineEnd } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
-import { blackness, type Style } from "../style";
+import { blackness, pastBlack, stemBlack, type Style } from "../style";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
 import { stackedPen } from "./grotesque";
@@ -131,13 +131,37 @@ function solidus(f: Frame, side: 1 | -1): Stroke {
 }
 
 /**
+ * The style a mark is drawn with past the Black, on a face that keeps its
+ * counters open there (`metrics.heavyOpen`): gaining only half what the stem
+ * does, as the grotesque's stacked letters do (see `stackedPen` in
+ * `grotesque.ts`). On the stem's pen an Ultra Geometric's ampersand stood a
+ * sixth of the cap height over every capital, and its parentheses were
+ * slabs with barely a curve left inside them. The style as it was up to the
+ * Black, and on every other face.
+ */
+function stacked(style: Style): Style {
+  const gained = pastBlack(style);
+  if (!(gained > 0)) return style;
+  return { ...style, pen: { ...style.pen, weight: style.pen.weight - gained * 0.5 } };
+}
+
+/**
  * How far a bracket's arms reach from its upright. On a text face, past the
  * upright by at least most of a stem: at Black the arms were otherwise stubs
  * and the bracket read as a bar.
  */
 function bracketReach(f: Frame): number {
   const w = f.arch * 0.52;
-  return bookish(f) ? Math.max(w, f.half + f.arch * 0.36) : w;
+  const least = f.half + f.arch * 0.36;
+  if (bookish(f)) return Math.max(w, least);
+  /*
+   * And on a face that keeps its counters open at a heavy weight
+   * (`metrics.heavyOpen`), brought out to the same from a Bold to a Black:
+   * a heavy Geometric's arms reached less than half a pen past the upright,
+   * and past the Black they stopped inside it and the bracket was a slab.
+   */
+  const heavy = Math.min(1, Math.max(0, (stemBlack(f.style) - 0.5) / 0.4));
+  return w + Math.max(0, least - w) * heavy;
 }
 
 /**
@@ -500,7 +524,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   },
 
   parenleft: (style) => {
-    const f = frame(style);
+    const f = frame(stacked(style));
     if (bookish(f)) return finish(f, crescent(f, 1));
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge + radius, f.cap * 0.4);
@@ -508,7 +532,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   },
 
   parenright: (style) => {
-    const f = frame(style);
+    const f = frame(stacked(style));
     if (bookish(f)) return finish(f, crescent(f, -1));
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge - radius + f.arch * 0.32, f.cap * 0.4);
@@ -1306,7 +1330,8 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * the same nodes at every weight.
    */
   ampersand: (style) => {
-    const f = frame(style);
+    // A loop over a bowl has less room than a single bowl: see `stacked`.
+    const f = frame(stacked(style));
     const C = f.cap;
     const pinned = (run: Spine, pieces: number): Spine => ({
       ...run,
@@ -1336,7 +1361,14 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const R = Math.max(wantR * fits, f.half * Math.max(1.5 + 0.25 * black, 1.85), f.least);
     const r = Math.max(wantr * fits, f.half * Math.max(1.15 + 0.5 * black, 1.5), f.least);
     const bowlAt = at(f.edge + R, f.dip(0) + R);
-    const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - 0.35 * black));
+    const risen = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - 0.35 * black));
+    /*
+     * On a face that keeps its counters open at a heavy weight
+     * (`metrics.heavyOpen`), past the Black the loop is held under the cap
+     * line and moves further out to the right instead: risen, an Ultra
+     * Geometric's loop stood a sixth of the cap height over every capital.
+     */
+    const loopY = pastBlack(f.style) > 0 ? Math.min(risen, f.crest(C) - r) : risen;
     const rise = loopY - bowlAt.y;
     const clear = (r + R) * 1.08;
     const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
