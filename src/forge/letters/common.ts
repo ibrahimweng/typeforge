@@ -2070,7 +2070,16 @@ export function stopRadius(f: Frame): number {
    */
   if (drops(f)) {
     const regular = f.x * 0.087;
-    return Math.min(f.half * 1.345, regular * 1.345 + Math.max(0, f.half - regular) * 0.5);
+    const drawn = Math.min(f.half * 1.345, regular * 1.345 + Math.max(0, f.half - regular) * 0.5);
+    /*
+     * And a light text serif's keeps a body over its pen, as a light face's
+     * stops do: at a pen of 30 the Serif's were specks 40 across, beside
+     * letters whose serifs and drops read at that size. Kept to six tenths
+     * of the Regular's there, run in to the whole of it at the Regular.
+     */
+    if (f.style.parts.slab.shape !== "wedge" || !bookish(f)) return drawn;
+    const share = 0.4 + 0.6 * Math.min(1, (f.half * 2) / (regular * 2));
+    return Math.max(drawn, regular * 1.345 * share);
   }
   const c = ownContrast(f);
   const radius = Math.max(

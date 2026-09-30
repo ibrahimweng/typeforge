@@ -1188,6 +1188,20 @@ export const SERIF: Style = {
     question: "humanist",
     ampersand: "humanist",
     R: "humanist",
+    // Lora's signs: see `letters/humanist.ts`.
+    plus: "humanist",
+    equal: "humanist",
+    divide: "humanist",
+    multiply: "humanist",
+    less: "humanist",
+    greater: "humanist",
+    underscore: "humanist",
+    numbersign: "humanist",
+    percent: "humanist",
+    bracketleft: "humanist",
+    bracketright: "humanist",
+    braceleft: "humanist",
+    braceright: "humanist",
   },
   /*
    * A text face's proportions rather than the sans's.
@@ -1224,7 +1238,20 @@ export const SERIF: Style = {
      * seven units over the stem's head at the heaviest.
      */
     risingHairline: true,
-    risingOwn: ["z", "Z", "slash", "A", "one"],
+    // Nor the signs, which draw their own: Lora's number sign, percent,
+    // multiplication sign and angle brackets are as heavy rising as falling.
+    risingOwn: [
+      "z",
+      "Z",
+      "slash",
+      "A",
+      "one",
+      "numbersign",
+      "percent",
+      "multiply",
+      "less",
+      "greater",
+    ],
     // Lora's word space, 263 at the Regular and the Bold, a little more past it.
     wordSpace: [263 / 500, 280 / 500],
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
@@ -1325,7 +1352,9 @@ export const SERIF: Style = {
       g: [1.03, 0.06],
       h: [0.76, 0.88],
       i: [1.06, 0.97],
-      j: [0.21, 2.18],
+      // The j's tail runs under the letter before it, as Lora's does (-88):
+      // held inside its advance, its stem stood 80 units off that letter.
+      j: [-2.35, 2.18],
       k: [0.76, 0.21],
       l: [0.74, 1],
       m: [1.06, 0.94],
@@ -1342,7 +1371,13 @@ export const SERIF: Style = {
       x: [0.65, 0.32],
       y: [0.21, 0.12],
       z: [1.18, 1.29],
-      A: [-0.19, -0.34],
+      /*
+       * The diagonal capitals and the J hang past their sides as Lora's do,
+       * and are held six units further in by a Black: past a Bold the
+       * capitals' extra room no longer paid for the overhang, and they met
+       * the letters either side of them.
+       */
+      A: [-0.19, -0.34, "half", [0, 0], [6, 6]],
       B: [1.22, 0.75],
       C: [0.95, 0.48],
       D: [1.22, 0.95],
@@ -1351,7 +1386,7 @@ export const SERIF: Style = {
       G: [0.98, 0.22],
       H: [1.22, 1.22],
       I: [1.22, 1.22],
-      J: [-0.19, 0.48],
+      J: [-0.19, 0.48, "half", [0, 0], [6, 0]],
       K: [1.22, -0.25],
       L: [1.22, 0.22],
       M: [0.89, 0.6],
@@ -1359,14 +1394,14 @@ export const SERIF: Style = {
       O: [0.95, 0.89],
       P: [1.22, 0.36],
       Q: [0.95, -0.11],
-      R: [1.22, -0.34],
+      R: [1.22, -0.34, "half", [0, 0], [0, 6]],
       S: [1.31, 0.89],
       T: [0.25, 0.28],
       U: [0.51, 0.48],
-      V: [-0.19, -0.34],
-      W: [-0.19, -0.34],
-      X: [-0.14, -0.34],
-      Y: [-0.19, -0.34],
+      V: [-0.19, -0.34, "half", [0, 0], [6, 6]],
+      W: [-0.19, -0.34, "half", [0, 0], [6, 6]],
+      X: [-0.14, -0.34, "half", [0, 0], [0, 6]],
+      Y: [-0.19, -0.34, "half", [0, 0], [6, 6]],
       Z: [0.86, 1.01],
       zero: [1.65, 1.62],
       one: [0.53, 1.03],
@@ -1393,6 +1428,20 @@ export const SERIF: Style = {
       slash: [0.62, 0.59],
       at: [1.47, 1.24],
       yen: [0.82, 0.79],
+      // Lora's signs, measured off its Regular.
+      numbersign: [0.97, 1],
+      percent: [1.06, 1.03],
+      bracketleft: [2.32, 0.35],
+      bracketright: [0.35, 2.32],
+      braceleft: [0.21, 0.35],
+      braceright: [0.35, 0.21],
+      underscore: [1.68, 1.68],
+      plus: [1.24, 1.24],
+      equal: [1.24, 1.24],
+      divide: [1.24, 1.24],
+      multiply: [2.6, 2.6],
+      less: [1, 1.5],
+      greater: [1.24, 1.26],
     },
     proportions: {
       a: 1.069,
@@ -1456,6 +1505,8 @@ export const SERIF: Style = {
     fit: 1,
     figures: "proportional",
     heavyCounter: 1.3,
+    // Lora hangs its j's tail under the letter before it: see `sides`.
+    overhangs: { j: 0.09 },
   },
   parts: {
     ...PLAIN.parts,
