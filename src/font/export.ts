@@ -339,14 +339,7 @@ async function resolvedGlyphs(
   return out;
 }
 
-/**
- * One master, reduced to the points it would have written.
- *
- * Put through the same builder as the default, with the same tolerance and the
- * same fixed splitting, because a delta is the difference between two point
- * lists and the two have to have been made the same way. Everything else the
- * builder produces is thrown away.
- */
+/** One master's outlines, as the file will have them, and its advances. */
 async function masterOutlines(
   typeface: Typeface,
   context: { mergeOverlaps: boolean; roles: Roles },
@@ -371,6 +364,14 @@ async function masterOutlines(
   return { resolved, advances };
 }
 
+/**
+ * One master, reduced to the points it would have written.
+ *
+ * Put through the same builder as the default, with the same tolerance and the
+ * same fixed splitting, because a delta is the difference between two point
+ * lists and the two have to have been made the same way. Everything else the
+ * builder produces is thrown away.
+ */
 function masterOf(
   at: Record<string, number>,
   outlines: Awaited<ReturnType<typeof masterOutlines>>,

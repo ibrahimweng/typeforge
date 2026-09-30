@@ -345,20 +345,28 @@ function apart(one: Vec2[], other: Vec2[], enough: number): number {
 const aparts = new WeakMap<Vec2[], WeakMap<Vec2[], Map<number, number>>>();
 
 function apartKept(one: Vec2[], other: Vec2[], enough: number): number {
-  let from = aparts.get(one);
-  if (!from) {
-    from = new WeakMap();
-    aparts.set(one, from);
-  }
-  let answers = from.get(other);
-  if (!answers) {
-    answers = new Map();
-    from.set(other, answers);
-  }
-  let answer = answers.get(enough);
+  const answers = (a: Vec2[], b: Vec2[]): Map<number, number> => {
+    let from = aparts.get(a);
+    if (!from) {
+      from = new WeakMap();
+      aparts.set(a, from);
+    }
+    let found = from.get(b);
+    if (!found) {
+      found = new Map();
+      from.set(b, found);
+    }
+    return found;
+  };
+  const ours = answers(one, other);
+  let answer = ours.get(enough);
   if (answer === undefined) {
+    // Asked the other way round -- the other contour weighed against this
+    // one -- the answer is the same: every step of `apart` treats its two
+    // outlines alike.
     answer = apart(one, other, enough);
-    answers.set(enough, answer);
+    ours.set(enough, answer);
+    answers(other, one).set(enough, answer);
   }
   return answer;
 }

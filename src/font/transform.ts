@@ -379,7 +379,7 @@ function resolveExactly(glyph: Glyph, typeface: Typeface): Contour[] {
     // Whether a contour is ink or a hole decides which way it has to move, and
     // that cannot be read off its winding: DejaVu winds the outer contour of I
     // clockwise and the outer contour of o the other way.
-    const outer = classifyContours(contours);
+    const outer = rolesOf(contours);
     // The letter as it stands, for measuring how much room each point has.
     const around = {
       obstacles: contours.map((contour) => flattenContour(contour, 12)),
@@ -586,7 +586,7 @@ function resolveExactly(glyph: Glyph, typeface: Typeface): Contour[] {
     contours = keptClear(unweightedContours, contours, typeface.unitsPerEm, CLEAR_KEPT, true);
   }
   if (params.cornerRadius > 0) {
-    const outer = classifyContours(contours);
+    const outer = rolesOf(contours);
     contours = contours.map((contour, index) =>
       applyCornerRadius(contour, params.cornerRadius, outer[index]),
     );
@@ -628,7 +628,7 @@ function resolveExactly(glyph: Glyph, typeface: Typeface): Contour[] {
      */
     const give = widthGive(typeface, params);
     if (Math.abs(give) > 0.5) {
-      const outer = classifyContours(contours);
+      const outer = rolesOf(contours);
       const around = {
         obstacles: contours.map((contour) => flattenContour(contour, 12)),
         roles: outer,
@@ -897,6 +897,35 @@ function cornerAt(node: GlyphNode, previous: GlyphNode, next: GlyphNode): boolea
 }
 
 /**
+ * Which of a letter's contours are ink and which are counters, kept against
+ * the contours themselves.
+ *
+ * Weighing a letter asks it of the letter as drawn at nearly every step --
+ * the weight, the pieces, what floats, what stands side by side, what the
+ * heights settle back to -- and each asked it again by nesting every contour
+ * in every other. The contours are made for the letter and nothing changes
+ * them, so the answer is the same each time.
+ */
+const roleBook = new WeakMap<Contour, Array<{ of: Contour[]; roles: boolean[] }>>();
+
+function rolesOf(contours: Contour[]): boolean[] {
+  if (contours.length === 0) return classifyContours(contours);
+  let shelf = roleBook.get(contours[0]);
+  if (!shelf) {
+    shelf = [];
+    roleBook.set(contours[0], shelf);
+  }
+  const kept = shelf.find(
+    (one) =>
+      one.of.length === contours.length && one.of.every((contour, at) => contour === contours[at]),
+  );
+  if (kept) return kept.roles;
+  const roles = classifyContours(contours);
+  shelf.push({ of: [...contours], roles });
+  return roles;
+}
+
+/**
  * How close two contours come, and where: `closestApproach`, kept against the
  * two of them.
  *
@@ -954,7 +983,7 @@ function keptApart(
     drawn,
     FINE_STEPS,
     new WeakMap(),
-    classifyContours(asDrawn),
+    rolesOf(asDrawn),
     asDrawn,
   );
   const apart = spacing ? sideBySide(drawn, asDrawn, spacing.em, spacing.kept) : [];
@@ -1024,7 +1053,7 @@ function slabsApart(
   weighAll: (shares: number[]) => Contour[],
 ): number[] {
   const shares = drawnSlabs.map(() => 1);
-  const outer = classifyContours(drawn);
+  const outer = rolesOf(drawn);
   if (outer.filter(Boolean).length < 2) return shares;
   const { pieceOf } = piecesOf(drawn, em, outer);
   if (new Set(pieceOf.filter((_, index) => outer[index])).size < 2) return shares;
@@ -1107,7 +1136,7 @@ function sideBySide(
   em: number,
   kept: number,
 ): Array<{ one: number; other: number; need: number }> {
-  const outer = classifyContours(asDrawn);
+  const outer = rolesOf(asDrawn);
   if (outer.filter(Boolean).length < 2) return [];
   const { near, pieceOf, stands } = piecesOf(asDrawn, em, outer);
   const reach = em * CLEAR_OPENING * 4;
@@ -1202,7 +1231,7 @@ function clearOf(
   squeeze: boolean,
 ): { contours: Contour[]; lifts: number[] } {
   const lifts = weighed.map(() => 0);
-  const outer = classifyContours(drawn);
+  const outer = rolesOf(drawn);
   if (outer.filter(Boolean).length < 2) return { contours: weighed, lifts };
   const { boxes, near, pieceOf, pieces, inkOf, stands } = piecesOf(drawn, em, outer);
   /*
@@ -1333,7 +1362,7 @@ function clearOf(
  * taken for an accent -- and each counter goes with the smallest ink round a
  * point inside it; a piece stands if any of its ink reaches the baseline.
  */
-function piecesOf(drawn: Contour[], em: number, outer = classifyContours(drawn)) {
+function piecesOf(drawn: Contour[], em: number, outer = rolesOf(drawn)) {
   const boxes = drawn.map((contour) => contoursBounds([contour]));
   const near = (a: number, b: number, by: number) =>
     !(
@@ -2152,7 +2181,7 @@ function keepHeights(
       contours,
       FINE_STEPS,
       new WeakMap(),
-      classifyContours(asDrawn),
+      rolesOf(asDrawn),
       asDrawn,
       floats,
     );
@@ -2494,7 +2523,7 @@ function applyCounterScale(contours: Contour[], factor: number, floor: number): 
    * whole letter instead -- leaving the counter exactly the same size relative
    * to the letter, which is the one thing the control exists to change.
    */
-  const outer = classifyContours(contours);
+  const outer = rolesOf(contours);
   const walls = contours.map((contour) => flattenContour(contour, 8));
   // Each outline laid out once for every check of every counter's trials.
   const layouts: Layouts = new WeakMap();
