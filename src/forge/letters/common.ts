@@ -30,7 +30,7 @@ import {
   superQuarter,
   wavy,
 } from "../shapes";
-import { blackness, heavier, spacingOf, type Style, terminalFor } from "../style";
+import { blackness, heavier, pastBlack, spacingOf, type Style, terminalFor } from "../style";
 import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
 import { contoursIntersect } from "@/font/outline";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
@@ -735,6 +735,17 @@ export function frame(drawn: Style): Frame {
   const across = Math.abs(reachAlong(at(1, 0), penReach(pen)).x);
   const inkRound = (h: number): number =>
     metrics.heavyFloor === undefined ? h : Math.max(h + upright - across, least);
+  /*
+   * And past the Black, on a face that keeps its counters open there
+   * (`metrics.heavyOpen`), each bowl let out by a share of the stem it has
+   * gained: held to the Black's width, the stems grew into the counters
+   * from both sides and an Ultra's o, b and 6 were slits between two stems.
+   * The arches with them on a face whose counters are not closed and held
+   * by `heavyCounter` (see `narrowed`), or the fat face's o stood wider
+   * than its n.
+   */
+  const open = pastBlack(style) * (metrics.heavyOpen ?? 0);
+  const archOpen = metrics.heavyCounter ? 0 : open;
   return {
     style,
     half,
@@ -745,18 +756,20 @@ export function frame(drawn: Style): Frame {
     asc: metrics.ascender,
     desc: metrics.descender,
     over: metrics.overshoot,
-    arch: Math.max(
-      ((metrics.counterWidth + archWeight) / 2) * lightGrow * heldReach(style) * metrics.width,
-      least,
-      // A joined hand's arches open with its bowls at a Black: see `heldOpen`.
-      style.parts.script.on ? heldOpen(style, bowlH0, upright) : 0,
-    ),
-    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH0, upright)),
-    grownBowl: Math.max(
-      (heavierHeld ? bowlH0 : bowlAcross) * wide,
-      least,
-      heldOpen(style, bowlH0, upright),
-    ),
+    arch:
+      Math.max(
+        ((metrics.counterWidth + archWeight) / 2) * lightGrow * heldReach(style) * metrics.width,
+        least,
+        // A joined hand's arches open with its bowls at a Black: see `heldOpen`.
+        style.parts.script.on ? heldOpen(style, bowlH0, upright) : 0,
+      ) + archOpen,
+    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH0, upright)) + open,
+    grownBowl:
+      Math.max(
+        (heavierHeld ? bowlH0 : bowlAcross) * wide,
+        least,
+        heldOpen(style, bowlH0, upright),
+      ) + open,
     crown: (metrics.xHeight + grownX) * style.parts.shoulder.crest,
     aside,
     bowlH,
@@ -772,8 +785,8 @@ export function frame(drawn: Style): Frame {
      * pen and three quarters there is no capital left to draw, so that is the
      * floor, and a heavy cut widens rather than closing up.
      */
-    capBowl: Math.max(capAcross * wide, half * 1.7),
-    grownCapBowl: Math.max((heavierHeld ? capBowlH : capAcross) * wide, half * 1.7),
+    capBowl: Math.max(capAcross * wide, half * 1.7) + open,
+    grownCapBowl: Math.max((heavierHeld ? capBowlH : capAcross) * wide, half * 1.7) + open,
     capBowlH,
     square: style.parts.bowl.squareness,
     superness: style.parts.bowl.superness ?? 0,
@@ -3851,10 +3864,17 @@ export function twoBowls(f: Frame, top: number, reach: number): Stroke[] {
   const cross = Math.min(f.half * 0.2, f.upright * light * 0.45);
   const upperR = Math.max((high - upper) / 2 + cross, f.least);
   const lowerR = Math.max((upper - base) / 2 + cross, f.least);
+  /*
+   * And past the Black, on a face that keeps its counters open there, run
+   * out further again by as much as its bowls are let out on each side
+   * (`metrics.heavyOpen`): the lobes are shorter than a bowl, and the fat
+   * face's upper counter was a slot between the stem and the round.
+   */
+  const open = pastBlack(f.style) * (f.style.metrics.heavyOpen ?? 0);
   return [
     ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
-    lighter(lobe(f, stem, high - upperR * 2, high, reach * 0.98), light),
-    lighter(lobe(f, stem, base, base + lowerR * 2, reach * 1.14), light),
+    lighter(lobe(f, stem, high - upperR * 2, high, reach * 0.98 + open), light),
+    lighter(lobe(f, stem, base, base + lowerR * 2, reach * 1.14 + open), light),
   ];
 }
 
@@ -4130,7 +4150,10 @@ export function figureWidth(frame: Frame): number {
  * on top of its own bowl.
  */
 export function heavyFigure(frame: Frame): number {
-  return frame.gain * 0.8;
+  // And past the Black on a face that keeps its counters open, both sides
+  // let out as its bowls are: see `metrics.heavyOpen`.
+  const open = pastBlack(frame.style) * (frame.style.metrics.heavyOpen ?? 0);
+  return frame.gain * 0.8 + open * 2;
 }
 
 // ---------------------------------------------------------------------------

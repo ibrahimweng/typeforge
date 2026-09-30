@@ -162,6 +162,20 @@ export interface Metrics {
    */
   heavyFloor?: number;
   /**
+   * Past the Black (a blackness of `HEAVY_OPEN_FROM`, the Sans at Geist
+   * Black's stem of 194), how much of the stem gained each bowl's half-width
+   * takes back, so its counter stays about as open as the Black's rather
+   * than closing to a slit between two stems: see `pastBlack`. Left out, the
+   * bowls past the Black are drawn as before.
+   */
+  heavyOpen?: number;
+  /**
+   * Where `heavyOpen` starts, as `stemBlack` counts weight, on a face drawn
+   * heavy to begin with: `HEAVY_OPEN_FROM` when left out. The Display's own
+   * pen is nearly a Black already, and its counters are what is left.
+   */
+  heavyOpenFrom?: number;
+  /**
    * Below the pen `from`, each bowl and arch is held as wide through its
    * middle as at `from`, widening by `grow` of it over the whole way to no pen
    * at all: see `frame` in `letters/common.ts`. Left out, a lighter pen widens
@@ -793,6 +807,7 @@ export const SANS: Style = {
     figures: "proportional",
     heavyCounter: 1.3,
     heavyContrast: 0.42,
+    heavyOpen: 0.35,
     capitalContrast: 0.61,
     // Geist Thin's capitals and figures stand on stems of 32 to its lowercase's 30.
     capitalThin: 0.067,
@@ -1541,7 +1556,15 @@ export const DISPLAY: Style = {
    * they turn. Set tight it reads as one block of colour, which is what it was
    * invented to do.
    */
-  metrics: { ...PLAIN.metrics, xHeight: 575, counterWidth: 285, sidebearing: 34, width: 1.02 },
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 575,
+    counterWidth: 285,
+    sidebearing: 34,
+    width: 1.02,
+    heavyOpen: 0.6,
+    heavyOpenFrom: 0.5,
+  },
   pen: { weight: 205, contrast: 0.55, angle: 0 },
   // The apex cut flat, which its own hint says is what a heavy face does to
   // keep the top of an A from going black.
@@ -1602,6 +1625,13 @@ export const GEOMETRIC: Style = {
     counterWidth: 380,
     sidebearing: 58,
     heavyCounter: 1.4,
+    /*
+     * Its bowls let out only a little past the Black, for the same reason:
+     * its o keeps its round and closes from the inside. What it keeps open
+     * there are the letters that stack or cross their strokes -- the 4, the
+     * #, the & and the brackets (see `pastBlack`).
+     */
+    heavyOpen: 0.05,
     /*
      * And closing further than that past the Black: a pen a quarter of the
      * em wide leaves an o no rounder than its counter lets it, and held to a
@@ -2002,7 +2032,7 @@ export const GROTESQUE: Style = {
   name: "Grotesque",
   family: "sans",
   blurb: "A sans that has closed up: tight apertures, high shoulders, squared bowls.",
-  metrics: { ...PLAIN.metrics, xHeight: 535, width: 0.97, counterWidth: 318 },
+  metrics: { ...PLAIN.metrics, xHeight: 535, width: 0.97, counterWidth: 318, heavyOpen: 0.2 },
   pen: { weight: 104, contrast: 0.06, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -3503,6 +3533,36 @@ export function blackness(style: Style): number {
   const span = Math.max(TEXT_STEM + BLACK_SPAN - from, BLACK_SPAN / 4);
   return Math.min(Math.max((pen.weight / metrics.xHeight - from) / span, 0), 1.5);
 }
+
+/**
+ * How heavy a face that keeps its counters open at a heavy weight
+ * (`metrics.heavyOpen`) is drawn, as `blackness` counts it but always from
+ * the text stem: nought at a text weight, one at about a Black, on to one
+ * and a half. `blackness` starts a face drawn heavy (the Display) at its own
+ * weight, which is right for how it grows but not for how much room its
+ * counters have left: the Display's own pen already stands where the
+ * Sans's Black does against its x-height. Nought on every other face.
+ */
+export function stemBlack(style: Style): number {
+  const { pen, metrics } = style;
+  if (!metrics.heavyOpen || metrics.xHeight <= 0) return 0;
+  if (pen.black !== undefined) return pen.black;
+  return Math.min(Math.max((pen.weight / metrics.xHeight - TEXT_STEM) / BLACK_SPAN, 0), 1.5);
+}
+
+/**
+ * How much stem a weight has gained past the Black, in units: nought up to
+ * `HEAVY_OPEN_FROM` (the Sans at Geist Black's 194) and on with the pen from
+ * there, as `stemBlack` counts it. Nought on a face that does not open its
+ * bowls past the Black (`metrics.heavyOpen`).
+ */
+export function pastBlack(style: Style): number {
+  const from = style.metrics.heavyOpenFrom ?? HEAVY_OPEN_FROM;
+  return Math.max(0, stemBlack(style) - from) * BLACK_SPAN * style.metrics.xHeight;
+}
+
+/** Where `pastBlack` starts: the Sans's blackness at a pen of 194. */
+export const HEAVY_OPEN_FROM = 0.885;
 
 /**
  * The pen at which a face reaches a given `blackness`: the same measure turned
