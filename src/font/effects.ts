@@ -160,7 +160,7 @@ export interface Effects {
 }
 
 /*
- * Settled against `scripts/tools.ts` rather than chosen, and the roughening's
+ * Settled against `scripts/dev/tools.ts` rather than chosen, and the roughening's
  * two numbers moved a long way in the process. A short wavelength gives a
  * gritty edge that costs four hundred points a letter and disappears at
  * anything under about forty points on the page; a long one gives a wander

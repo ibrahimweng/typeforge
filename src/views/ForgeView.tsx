@@ -862,6 +862,14 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
  */
 const PROOF_RUN = 7;
 
+/**
+ * How many glyphs the font draws, for the proof's size estimate: read off the
+ * letters themselves rather than written down, so adding a glyph moves it. It
+ * was a hard-coded 452, and stayed there when the typographic punctuation
+ * took it to 469.
+ */
+const GLYPH_COUNT = letterNames().length;
+
 function Proof({ letter }: { letter: string }): React.JSX.Element | null {
   const state = useForge();
   const effects = effectsOf(state.forge);
@@ -1006,7 +1014,7 @@ function Proof({ letter }: { letter: string }): React.JSX.Element | null {
       <p className="pt-1 text-2xs leading-snug text-muted-foreground" data-forge-proof-cost>
         {made === null
           ? "Drawing\u2026"
-          : `${made.points} points. About ${Math.round((made.points * 452 * 10) / 1024)}KB across the font.`}
+          : `${made.points} points. About ${Math.round((made.points * GLYPH_COUNT * 10) / 1024)}KB across the font.`}
       </p>
       <p className="text-2xs leading-snug text-muted-foreground">
         On this letter only until you export.
