@@ -13,6 +13,7 @@ import { cn } from "../../../lib/utils";
 import {
   clampSliderValue,
   applySliderValueLabelUnit,
+  keyStep,
   formatSliderValueWithUnit,
   getSliderControlValue,
   parseSliderValueLabel,
@@ -98,8 +99,45 @@ export function SliderControl({
     return formatSliderValueWithUnit(nextValue, step, unit);
   }
 
+  /*
+   * The arrow keys move by a share of the range, not by the step.
+   *
+   * The step is how finely a value can be set -- by a drag, or typed -- and on
+   * the parameters that is as fine as a two-thousandth of the range. Handed to
+   * the keys as well, twelve presses took Weight from 0 to 0.006, and the
+   * slider's own large step was a flat ten, which on a range of two put Shift
+   * straight to the end. So a press is a hundredth of the range and Shift a
+   * tenth, each rounded to the step so the value still lands on one.
+   */
+  function onKeyDownCapture(event: React.KeyboardEvent): void {
+    if (disabled || variant !== "continuous") return;
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    // Only the slider's own thumb: the value label beside it steps by its own keys.
+    if (!(event.target as HTMLElement | null)?.closest?.('[data-slot="slider"]')) return;
+    const direction =
+      event.key === "ArrowRight" || event.key === "ArrowUp" || event.key === "PageUp"
+        ? 1
+        : event.key === "ArrowLeft" || event.key === "ArrowDown" || event.key === "PageDown"
+          ? -1
+          : 0;
+    if (direction === 0) return;
+    const range = max - min;
+    const large = event.shiftKey || event.key === "PageUp" || event.key === "PageDown";
+    const by = keyStep(range * (large ? 0.1 : 0.01), step);
+    event.preventDefault();
+    event.stopPropagation();
+    const moved = currentValue + direction * by;
+    const snapped = step > 0 ? min + Math.round((moved - min) / step) * step : moved;
+    commitValue(Number(snapped.toFixed(6)), getLiveHistoryMeta());
+    finishLiveHistoryGroup();
+  }
+
   return (
-    <Field className={cn("min-w-0 gap-1!", className)} data-disabled={disabled}>
+    <Field
+      className={cn("min-w-0 gap-1!", className)}
+      data-disabled={disabled}
+      onKeyDownCapture={onKeyDownCapture}
+    >
       <div className="flex w-full min-w-0 items-center justify-between gap-3">
         <ControlFieldLabel>{name}</ControlFieldLabel>
         <div className="inline-flex h-5 shrink-0 items-center gap-1.5">

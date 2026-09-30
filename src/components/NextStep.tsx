@@ -87,7 +87,7 @@ export function NextStep({
       if (!drawn.canUndo)
         return {
           id: "forge-touch",
-          said: "Pick a style on the right, then drag Weight to make it yours.",
+          said: "Pick a style under Start from, then drag Weight to make it yours.",
         };
       return {
         id: "forge-hand",

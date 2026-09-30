@@ -262,7 +262,7 @@ export function WritingPanel({ glyphName }: { glyphName: string }): React.JSX.El
 
   return (
     <div className="flex flex-col gap-2" data-writing-panel>
-      <h3 className="text-xs font-medium text-foreground">Writing</h3>
+      {/* No heading of its own: the section it sits in is already called Writing. */}
 
       {/*
         What typing in the three fields above will actually reach.

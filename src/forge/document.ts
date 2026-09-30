@@ -32,6 +32,7 @@ import {
   type Port,
   type Tiles,
 } from "./kit";
+import { drawnTiles } from "./kit-alphabet";
 import { joiningHigh, joiningWithout, recipeOf } from "./letters";
 import type { Ends } from "./script";
 import type { Imported } from "./exchange";
@@ -677,7 +678,13 @@ export function layOut(forge: Forge, letters?: string[]): Forge {
   const kit = kitOf(forge);
   const glyphs = { ...kit.glyphs };
   for (const letter of letters ?? letterNames()) {
-    const recipe = recipeOf(letter, formOf(forge, letter));
+    // Drawn for the grid where there is a drawing for it: see `kit-alphabet.ts`.
+    const drawn = drawnTiles(letter, kit.grid);
+    if (drawn) {
+      glyphs[letter] = drawn;
+      continue;
+    }
+    const recipe = recipeOf(letter, gridForm(formOf(forge, letter)));
     if (!recipe) continue;
     const style = styleFor(letter, forge);
     // Laid out at the letter's own width, as it is drawn: see `proportioned`.
@@ -686,6 +693,26 @@ export function layOut(forge: Forge, letters?: string[]): Forge {
     else delete glyphs[letter];
   }
   return withKit(forge, { glyphs });
+}
+
+/**
+ * The form a letter is laid onto the grid from.
+ *
+ * The measured forms -- the grotesque's and the geometric's, which the Sans
+ * and the Geometric take by default -- are copied off real faces: a c whose
+ * terminals nearly close, an s on a flat spine, a G with a spur, an M with its
+ * vertex cut level. Every one of those details is smaller than a cell, and a
+ * grid can only keep or drop it, so it drops the aperture of the c and keeps
+ * a spur as a hook: the c came back as an o, the s and S as an 8 and a delta.
+ * The plain skeletons say only where the strokes go, which is all a grid can
+ * use, so those are what the cells are laid from. Any other form -- a two
+ * storey g, a footed one -- is a different letter rather than a finer drawing
+ * of the same one, and is laid out as chosen.
+ */
+const MEASURED_FORMS = new Set(["grotesque", "geometric"]);
+
+function gridForm(form: string): string {
+  return MEASURED_FORMS.has(form) ? "" : form;
 }
 
 /** Every cut that some letter has been told to differ in. */

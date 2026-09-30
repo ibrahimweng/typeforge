@@ -95,5 +95,11 @@ export const SIDE_PANEL = "w-56 lg:w-64 xl:w-72";
  * Draw, Assemble and Trace each put their entire document in this column --
  * there is no second panel and no inspector beside it -- so it carries more
  * and is given more. The steps are the same ones, moved up by a size.
+ *
+ * And on a phone it is not beside anything. Two thirds of a 390-pixel screen
+ * went to the panel and the letter was drawn eighty-six pixels wide, so below
+ * `md` the panel goes under the work at the full width and the two scroll
+ * together (see the stacking in `App.tsx`).
  */
-export const WIDE_PANEL = "w-64 lg:w-72 xl:w-80";
+export const WIDE_PANEL =
+  "w-64 lg:w-72 xl:w-80 max-md:w-full max-md:border-l-0 max-md:border-t max-md:border-border";

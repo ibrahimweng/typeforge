@@ -22,6 +22,7 @@ import * as React from "react";
 
 import { enterStaggered } from "@/anim/motion";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
+import { BASE_COUNT, inWords } from "@/forge/base-count";
 import { libraryStore } from "@/state/library-store";
 import { store } from "@/state/useStore";
 import { cn } from "@/cn";
@@ -97,7 +98,7 @@ export function StartScreen(): React.JSX.Element {
             first
             mark="draw"
             title="Draw one from a style"
-            said="Pick one of twenty families and a whole alphabet is drawn for you. Change the weight and the proportions until it looks like yours."
+            said={`Pick one of ${inWords(BASE_COUNT)} styles and a whole alphabet is drawn for you. Change the weight and the proportions until it looks like yours.`}
             onGo={() => store.askForMode("forge")}
           />
           <Route

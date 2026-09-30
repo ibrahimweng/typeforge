@@ -22,7 +22,8 @@
 import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { builtFrom, letterNames, overhangOf } from "./build";
-import { draw, familyOf, weighted, type Forge } from "./document";
+import { draw, familyOf, formOf, weighted, type Forge } from "./document";
+import { joinEnds } from "./letters";
 import { nameOfWeight, weightsOf } from "./family";
 
 export interface Trouble {
@@ -223,8 +224,23 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
     under ||= low;
     // Or past the letter's own side by more than the face lets it hang there:
     // see `metrics.overhangs`.
+    //
+    //
+    // Not on a joined face's letters that are entered from the left: the
+    // lead-in of a lowercase letter reaching back into the one before is the
+    // join, and the hairline swash a written capital enters by is drawn to
+    // hang there. Warning about either flagged every lowercase letter of every
+    // script, a hundred and forty at a time, and hid the few that meant it.
     const hang = overhangOf(letter, forge.style);
-    if (leftEdge(drawn.contours, forge, bounds) < (hang > 0 ? -hang : em * 0.005))
+    const parts = builtFrom(letter);
+    const joinedInto =
+      forge.style.parts.script.on &&
+      (joinEnds(parts ? parts.base : letter).entry || formOf(forge, letter) === "written");
+    if (
+      !joinedInto &&
+      leftEdge(drawn.contours, forge, bounds, parts ? () => draw(parts.base, forge) : null) <
+        (hang > 0 ? -hang : em * 0.005)
+    )
       touching.push(letter);
   }
 
@@ -297,10 +313,26 @@ function* walk(forge: Forge): Generator<void, Trouble[], void> {
  * and where an accent sits on a leaning letter is the letter's business, not
  * the spacing's.
  */
-function leftEdge(contours: Contour[], forge: Forge, bounds = contoursBounds(contours)): number {
+function leftEdge(
+  contours: Contour[],
+  forge: Forge,
+  bounds = contoursBounds(contours),
+  base: (() => { contours: Contour[] } | null) | null = null,
+): number {
   const { slant, xHeight, ascender } = forge.style.metrics;
   if (!slant) return bounds.xMin;
-  const among = contours.filter((contour) => contoursBounds([contour]).yMin < ascender);
+  /*
+   * And a mark standing above the letter it is on, which is the same thing
+   * lower down: the grave on an I stands under the ascender but over the
+   * capital, and stood upright it swung left of the I's origin by its height
+   * times the lean. The letter before leans just as far at that height, so
+   * nothing is met there -- and every accented I of the Marker and the Brush
+   * was reported as touching.
+   */
+  const under = base?.();
+  const roof = under && under.contours.length > 0 ? contoursBounds(under.contours).yMax : ascender;
+  const top = Math.min(ascender, roof);
+  const among = contours.filter((contour) => contoursBounds([contour]).yMin < top);
   const lean = Math.tan((slant * Math.PI) / 180);
   const pivot = xHeight / 2;
   const back = (point: { x: number; y: number }) => ({

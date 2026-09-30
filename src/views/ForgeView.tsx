@@ -865,7 +865,13 @@ const PROOF_RUN = 7;
 function Proof({ letter }: { letter: string }): React.JSX.Element | null {
   const state = useForge();
   const effects = effectsOf(state.forge);
-  const [open, setOpen] = React.useState(true);
+  // Folded to its button on a phone, where the open card is most of the stage
+  // and sat over the letter it was proofing.
+  const [open, setOpen] = React.useState(
+    () =>
+      typeof window === "undefined" ||
+      !(window.matchMedia?.("(max-width: 767px)")?.matches ?? false),
+  );
 
   /*
    * Worked out when the font holds still, like the health check and for the

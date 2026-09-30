@@ -325,8 +325,13 @@ export function assemble(tiles: Tiles, style: Style, kit: Kit): Assembled {
      * the middle, they are a straight line -- and drawn as a turn instead,
      * every horizontal arm in the font came back as a row of V's.
      */
+    // Not a diagonal that only passes through a corner, though: two arms of a
+    // Y arriving at the top corners of its stem are a fork, not a bar.
+    const diagonal = (port: Port): boolean => diagonalOnly(tiles, column, row, port);
     for (const port of [...spare]) {
-      const along = spare.find((other) => other !== port && sameEdge(port, other));
+      const along = spare.find(
+        (other) => other !== port && sameEdge(port, other) && !diagonal(port) && !diagonal(other),
+      );
       if (spare.includes(port) && along) {
         straight(port, along);
         take(port, along);
@@ -360,7 +365,14 @@ export function assemble(tiles: Tiles, style: Style, kit: Kit): Assembled {
        * middle instead, the arm grows a diagonal spur into the counter.
        */
       const along = cell.ports.find((other) => other !== port && sameEdge(port, other));
-      if (along) straight(port, along, along);
+      /*
+       * Unless the stroke through that corner is a diagonal: carried on only
+       * by the cell across the corner, not by either cell beside it. The leg
+       * of an N or a K leaves the stem's cell at its corner, and run along the
+       * edge instead it came back as a nick in the stem with a gap between
+       * the stem and the leg.
+       */
+      if (along && !diagonalOnly(tiles, column, row, port)) straight(port, along, along);
       else
         strokes.push(
           stroke(
@@ -407,6 +419,16 @@ function continues(tiles: Tiles, column: number, row: number, port: Port): boole
   return MEETS[port].some((step) =>
     tiles.cells[cellKey(column + step.column, row + step.row)]?.ports.includes(step.port),
   );
+}
+
+/** Whether a corner port is carried on across the corner and by nothing beside it. */
+function diagonalOnly(tiles: Tiles, column: number, row: number, port: Port): boolean {
+  if (port.length !== 2) return false;
+  const carries = (step: { column: number; row: number; port: Port }): boolean =>
+    tiles.cells[cellKey(column + step.column, row + step.row)]?.ports.includes(step.port) ?? false;
+  const across = MEETS[port].filter((step) => step.column !== 0 && step.row !== 0);
+  const beside = MEETS[port].filter((step) => step.column === 0 || step.row === 0);
+  return across.some(carries) && !beside.some(carries);
 }
 
 /**
@@ -462,7 +484,14 @@ function bend(from: Vec2, corner: Vec2, to: Vec2, radius: number, penHalf: numbe
 
   const halfTurn = between / 2;
   const arm = Math.min(distanceBetween(corner, from), distanceBetween(corner, to));
-  const fits = Math.min(radius, arm * Math.tan(halfTurn));
+  /*
+   * Held a thousandth short of the whole arm. A turn that takes all of it ends
+   * its arc exactly on the port, and a ring built only of such turns -- the o
+   * of the grid alphabet, a rounded square -- came out of the fuse as one
+   * solid with no counter. A thousandth of the arm is a tenth of a unit, and
+   * leaves each end a straight stub the fuse has no trouble joining.
+   */
+  const fits = Math.min(radius, arm * Math.tan(halfTurn) * 0.999);
   if (fits <= penHalf * 1.02) return square;
 
   const back = fits / Math.tan(halfTurn);

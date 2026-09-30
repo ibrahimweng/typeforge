@@ -80,3 +80,12 @@ export function getSliderControlValue(nextValue: number | readonly number[]): nu
 
   return typeof resolvedValue === "number" ? resolvedValue : undefined;
 }
+
+/**
+ * A share of a slider's range as one key press: never finer than the step, and
+ * always a whole number of steps so the value still lands on one.
+ */
+export function keyStep(share: number, step: number): number {
+  if (!(step > 0)) return share;
+  return Math.max(step, Math.round(share / step) * step);
+}

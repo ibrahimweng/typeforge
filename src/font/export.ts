@@ -243,11 +243,23 @@ export async function exportFont(
         });
 
   const base = `${typeface.meta.familyName}-${typeface.meta.styleName}`.replace(/\s+/g, "");
+  /*
+   * A varying font is named for its family and its axes, as Draw names the
+   * ones it writes and as every foundry does: `Family[wght].ttf`. Named for
+   * its default master instead, it downloaded under exactly the name of the
+   * static Regular written a moment before, and the browser either replaced
+   * one with the other or tacked a (1) on.
+   */
+  const varying = options.variable
+    ? `${typeface.meta.familyName.replace(/[^A-Za-z0-9]+/g, "") || "Untitled"}[${options.variable.axes
+        .map((axis) => axis.tag)
+        .join(",")}]`
+    : null;
   return {
     bytes,
     format: options.format,
     fidelity,
-    fileName: `${base || "Untitled"}.${options.format}`,
+    fileName: `${varying ?? (base || "Untitled")}.${options.format}`,
     notes,
     held,
   };
@@ -868,9 +880,7 @@ function applyAlternates(
    */
   const preserving = tables.has("GSUB") && !rebuilt;
   if (preserving && !changed) {
-    notes.push(
-      "The font's own ligatures and alternates were kept as they arrived. Nothing here changed them.",
-    );
+    notes.push(KEPT_FEATURES);
     return;
   }
   if (preserving) {
@@ -882,6 +892,19 @@ function applyAlternates(
   }
   tables.set("GSUB", gsub);
 }
+
+/**
+ * Said of a preserve export that left the source font's features alone.
+ *
+ * A note rather than a warning: nothing went wrong and nothing needs doing, so
+ * the dialog shows it plainly and does not stay open for it. Named so the
+ * dialog can tell it from the notes that do ask for something.
+ */
+export const KEPT_FEATURES =
+  "The font's own ligatures and alternates were kept as they arrived. Nothing here changed them.";
+
+/** Notes that report what happened rather than anything to act on. */
+export const NEUTRAL_NOTES: ReadonlySet<string> = new Set([KEPT_FEATURES]);
 
 /**
  * Turn the document's kerning into a `GPOS` table.

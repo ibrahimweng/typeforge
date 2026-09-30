@@ -97,6 +97,17 @@ suite("a font shipped from the weights somebody drew", () => {
   })();
 
   it(
+    "is named for its family and its axis, not for its default master",
+    async () => {
+      // Named for the Regular it downloaded over the static Regular's file.
+      const { fileName } = await built;
+      expect(fileName).toMatch(/\[wght\]\.ttf$/);
+      expect(fileName).not.toMatch(/-/);
+    },
+    FONT_SUITE_TIMEOUT,
+  );
+
+  it(
     "puts the axis where the weights were drawn, not where a slider ends",
     async () => {
       const report = inspectVariable((await built).bytes, ["n"], [{ wght: 400 }]);
