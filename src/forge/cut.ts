@@ -515,12 +515,14 @@ function withoutWedges(shape: Contour[], strokes: Stroke[], knife: Contour[]): C
           other.yMax + thin > box.yMin,
       );
       if (!near) continue;
-      const core = eroded([piece], thin * 0.2);
-      if (core.reduce((total, one) => total + Math.abs(contourArea(one)), 0) >= 1) continue;
       // Made thin by the knife, not drawn thin: the knife's edge runs along it.
       // The crotch where a bowl leaves its stem tapers the same way uncut, and
-      // a band meets it only at its ends.
-      if (onKnife(piece, lines) > 0.3) wedges.push(piece);
+      // a band meets it only at its ends. Asked first, since it is a measure
+      // along a polyline and the thinness below is an erosion.
+      if (onKnife(piece, lines) <= 0.3) continue;
+      const core = eroded([piece], thin * 0.2);
+      if (core.reduce((total, one) => total + Math.abs(contourArea(one)), 0) >= 1) continue;
+      wedges.push(piece);
     }
   }
   if (wedges.length === 0) return shape;
@@ -622,12 +624,25 @@ function withoutNotches(shape: Contour[], knife: Contour[], depth: number): Cont
  */
 function withoutSlivers(shape: Contour[], knife: Contour[], reach: number): Contour[] {
   if (knife.length === 0 || reach < 1) return shape;
-  const opened = outlined(eroded(shape, reach), reach);
-  const residue = subtract(shape, opened, "winding").filter(
+  const boxes = knife.map((one) => contoursBounds([one]));
+  /*
+   * Only the pieces that could hold one are opened. The opening is the
+   * dearest thing a cut does -- a score of booleans round the whole letter --
+   * and asked of all of it, it was two thirds of the time a slotted letter
+   * took while changing one letter in twenty-five. A letter the slots have
+   * parted is several pieces, and a disc that fits in the ink fits in one of
+   * them, so each piece opens on its own and the ones that cannot lose
+   * anything need not be opened at all: see `mightSliver`.
+   */
+  const suspect = inkPieces(shape)
+    .filter((piece) => mightSliver(piece, reach, boxes))
+    .flat();
+  if (suspect.length === 0) return shape;
+  const opened = outlined(eroded(suspect, reach), reach);
+  const residue = subtract(suspect, opened, "winding").filter(
     (one) => contourArea(one) > reach * reach * 2,
   );
   if (residue.length === 0) return shape;
-  const boxes = knife.map((one) => contoursBounds([one]));
   const near = residue.filter((one) => {
     const box = contoursBounds([one]);
     return boxes.some(
@@ -645,6 +660,193 @@ function withoutSlivers(shape: Contour[], knife: Contour[], reach: number): Cont
   const inkOf = (contours: Contour[]) =>
     contours.reduce((total, contour) => total + contourArea(contour), 0);
   return inkOf(trimmed) > inkOf(shape) * 0.97 ? trimmed : shape;
+}
+
+/**
+ * A letter's contours grouped into the pieces of ink they draw: each outline
+ * that stands on its own, with everything inside it -- its counters, and
+ * anything standing in those.
+ */
+function inkPieces(shape: Contour[]): Contour[][] {
+  const usable = shape.filter((contour) => contour.nodes.length >= 2);
+  const areas = usable.map((contour) => contourArea(contour));
+  const within = (inner: number, outer: number): boolean =>
+    inner !== outer && contourContainsPoint(usable[outer], usable[inner].nodes[0].point);
+  // The outlines no other solid holds.
+  const tops = usable
+    .map((_, index) => index)
+    .filter((index) => areas[index] > 0)
+    .filter((index) => !usable.some((_, other) => areas[other] > 0 && within(index, other)));
+  const groups: Contour[][] = tops.map((top) => [usable[top]]);
+  usable.forEach((contour, index) => {
+    if (tops.includes(index)) return;
+    const holder = tops.findIndex((top) => within(index, top));
+    // Anything nothing holds -- a counter left without its letter -- is a
+    // piece of its own, and is looked at as one.
+    if (holder < 0) groups.push([contour]);
+    else groups[holder].push(contour);
+  });
+  return groups;
+}
+
+/**
+ * Whether opening a piece of ink by `reach` could leave anything the sliver
+ * sweep would take beside one of the knives' `boxes`: false where it cannot.
+ *
+ * What an opening fails to give back is ink no disc of the reach fits in, and
+ * a piece of that worth the sweep's notice -- more than twice the reach
+ * squared -- needs one of three things: two walls closer than twice the reach
+ * running against each other (a thin stroke, a shaving), a corner sharper than
+ * forty-five degrees (the rounding off a square corner is a tenth of that
+ * area, a forty-five degree one about three fifths), or a counter narrow
+ * enough that the growth back holds off its walls (see `outlined`). All three
+ * are read off the flattened outline with room to spare, walls facing across
+ * the paper counted as well as across the ink, and a piece that shows any of
+ * them is opened as before.
+ *
+ * Only the outline near a knife is looked at, since only what lies against a
+ * knife is meant to go. The sweep used to judge that by the box round what
+ * it found, and a film of no width left along an edge by the booleans could
+ * carry that box from the knife to the far end of a letter: a Didone E cut
+ * with breaks lost the top of its stem that way. Of some fifty-seven thousand
+ * letters drawn across every base, cut and two weights, all but one in a
+ * hundred come out exactly as before; the rest differ where the sweep took
+ * such a film, or something standing well clear of the knife.
+ */
+function mightSliver(piece: Contour[], reach: number, boxes: Bounds[]): boolean {
+  const near = reach * 2 * 1.25 + 1;
+  // Only what stands where a knife passed is ever taken: see `withoutSlivers`.
+  const margin = reach * 2 + near;
+  const byKnife = (xMin: number, xMax: number, yMin: number, yMax: number): boolean =>
+    boxes.some(
+      (box) =>
+        box.xMin - margin < xMax &&
+        box.xMax + margin > xMin &&
+        box.yMin - margin < yMax &&
+        box.yMax + margin > yMin,
+    );
+  const outlines = piece.map((contour) => flattenContour(contour, 12));
+
+  /*
+   * A counter is grown back in by less than the reach when it is narrow for
+   * its length -- three tenths of its mean depth -- and one with ink standing
+   * in it is measured less the ink. Either leaves a ring round it that the
+   * growth never reached.
+   */
+  for (const [index, contour] of piece.entries()) {
+    const area = contourArea(contour);
+    if (area >= 0) continue;
+    const box = contoursBounds([contour]);
+    if (!byKnife(box.xMin, box.xMax, box.yMin, box.yMax)) continue;
+    const island = piece.some(
+      (other) =>
+        other !== contour &&
+        contourArea(other) > 0 &&
+        contourContainsPoint(contour, other.nodes[0].point),
+    );
+    if (island) return true;
+    const points = outlines[index];
+    let round = 0;
+    for (let at = 0; at < points.length; at++) {
+      const a = points[at];
+      const b = points[(at + 1) % points.length];
+      round += Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    if ((-area * 2 * 0.3) / Math.max(round, 1e-9) < near) return true;
+  }
+
+  // Every edge near a knife, filed in a grid of squares `near` across.
+  const ax: number[] = [];
+  const ay: number[] = [];
+  const bx: number[] = [];
+  const by: number[] = [];
+  const ux: number[] = [];
+  const uy: number[] = [];
+  for (const points of outlines) {
+    for (let at = 0; at < points.length; at++) {
+      const a = points[at];
+      const b = points[(at + 1) % points.length];
+      const length = Math.hypot(b.x - a.x, b.y - a.y);
+      if (length < 1e-9) continue;
+      if (!byKnife(Math.min(a.x, b.x), Math.max(a.x, b.x), Math.min(a.y, b.y), Math.max(a.y, b.y)))
+        continue;
+      ax.push(a.x);
+      ay.push(a.y);
+      bx.push(b.x);
+      by.push(b.y);
+      ux.push((b.x - a.x) / length);
+      uy.push((b.y - a.y) / length);
+    }
+  }
+  const count = ax.length;
+  if (count === 0) return false;
+  let left = Infinity;
+  let bottom = Infinity;
+  for (let at = 0; at < count; at++) {
+    left = Math.min(left, ax[at], bx[at]);
+    bottom = Math.min(bottom, ay[at], by[at]);
+  }
+  const cellOf = (value: number, from: number) => Math.floor((value - from) / near);
+  const filed = new Map<number, number[]>();
+  const key = (column: number, row: number) => column * 65536 + row;
+  for (let at = 0; at < count; at++) {
+    for (
+      let column = cellOf(Math.min(ax[at], bx[at]), left);
+      column <= cellOf(Math.max(ax[at], bx[at]), left);
+      column++
+    )
+      for (
+        let row = cellOf(Math.min(ay[at], by[at]), bottom);
+        row <= cellOf(Math.max(ay[at], by[at]), bottom);
+        row++
+      ) {
+        const list = filed.get(key(column, row));
+        if (list) list.push(at);
+        else filed.set(key(column, row), [at]);
+      }
+  }
+  const toSegment = (px: number, py: number, at: number): number => {
+    const dx = bx[at] - ax[at];
+    const dy = by[at] - ay[at];
+    const length = dx * dx + dy * dy;
+    const t =
+      length > 0 ? Math.max(0, Math.min(1, ((px - ax[at]) * dx + (py - ay[at]) * dy) / length)) : 0;
+    return Math.hypot(px - (ax[at] + dx * t), py - (ay[at] + dy * t));
+  };
+  const side = (px: number, py: number, at: number) =>
+    (bx[at] - ax[at]) * (py - ay[at]) - (by[at] - ay[at]) * (px - ax[at]);
+  const crossing = (one: number, other: number): boolean =>
+    side(ax[other], ay[other], one) * side(bx[other], by[other], one) <= 0 &&
+    side(ax[one], ay[one], other) * side(bx[one], by[one], other) <= 0;
+  const seen = new Int32Array(count).fill(-1);
+  for (let at = 0; at < count; at++) {
+    const c0 = cellOf(Math.min(ax[at], bx[at]), left) - 1;
+    const c1 = cellOf(Math.max(ax[at], bx[at]), left) + 1;
+    const r0 = cellOf(Math.min(ay[at], by[at]), bottom) - 1;
+    const r1 = cellOf(Math.max(ay[at], by[at]), bottom) + 1;
+    for (let column = c0; column <= c1; column++)
+      for (let row = r0; row <= r1; row++) {
+        const list = filed.get(key(column, row));
+        if (!list) continue;
+        for (const other of list) {
+          if (other <= at || seen[other] === at) continue;
+          seen[other] = at;
+          // Running more than a hundred and thirty-five degrees apart: walls
+          // that face each other, or the two sides of a corner sharper than
+          // forty-five.
+          if (ux[at] * ux[other] + uy[at] * uy[other] > -Math.SQRT1_2) continue;
+          if (crossing(at, other)) return true;
+          const apart = Math.min(
+            toSegment(ax[at], ay[at], other),
+            toSegment(bx[at], by[at], other),
+            toSegment(ax[other], ay[other], at),
+            toSegment(bx[other], by[other], at),
+          );
+          if (apart < near) return true;
+        }
+      }
+  }
+  return false;
 }
 
 /**

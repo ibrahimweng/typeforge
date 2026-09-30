@@ -204,38 +204,49 @@ function rayToEdge(from: Vec2, heading: Vec2, a: Vec2, b: Vec2): number {
  * of it along `heading`, and just reaches the edge from a to b.
  */
 function ballTouch(from: Vec2, heading: Vec2, a: Vec2, b: Vec2): number {
-  const d = sub(a, from);
-  const e = sub(b, a);
-  const dd = d.x * d.x + d.y * d.y;
-  const de = d.x * e.x + d.y * e.y;
-  const ee = e.x * e.x + e.y * e.y;
-  const dn = d.x * heading.x + d.y * heading.y;
-  const en = e.x * heading.x + e.y * heading.y;
-  const radius = (x: number): number => {
-    const ahead = dn + x * en;
-    // Half a unit clear of the start, which is the outline it sits on.
-    if (ahead <= 1e-9) return Infinity;
-    const squared = dd + 2 * x * de + x * x * ee;
-    if (squared < 0.25) return Infinity;
-    return squared / (2 * ahead);
-  };
-  let best = Math.min(radius(0), radius(1));
+  // Written out rather than through `sub` and a closure: this is asked of
+  // every wall near every sample, and the garbage it made was a sixth of
+  // what a variable export spent. The arithmetic is the same, step for step.
+  const dx = a.x - from.x;
+  const dy = a.y - from.y;
+  const ex = b.x - a.x;
+  const ey = b.y - a.y;
+  const dd = dx * dx + dy * dy;
+  const de = dx * ex + dy * ey;
+  const ee = ex * ex + ey * ey;
+  const dn = dx * heading.x + dy * heading.y;
+  const en = ex * heading.x + ey * heading.y;
+  let best = Math.min(ballRadius(0, dd, de, ee, dn, en), ballRadius(1, dd, de, ee, dn, en));
   // Where the radius along the edge is least: a quadratic in x.
   const qa = ee * en;
   const qb = 2 * ee * dn;
   const qc = 2 * de * dn - en * dd;
-  const roots: number[] = [];
   if (Math.abs(qa) < 1e-12) {
-    if (Math.abs(qb) > 1e-12) roots.push(-qc / qb);
+    if (Math.abs(qb) > 1e-12) {
+      const x = -qc / qb;
+      if (x > 0 && x < 1) best = Math.min(best, ballRadius(x, dd, de, ee, dn, en));
+    }
   } else {
     const disc = qb * qb - 4 * qa * qc;
     if (disc >= 0) {
       const root = Math.sqrt(disc);
-      roots.push((-qb + root) / (2 * qa), (-qb - root) / (2 * qa));
+      const x1 = (-qb + root) / (2 * qa);
+      const x2 = (-qb - root) / (2 * qa);
+      if (x1 > 0 && x1 < 1) best = Math.min(best, ballRadius(x1, dd, de, ee, dn, en));
+      if (x2 > 0 && x2 < 1) best = Math.min(best, ballRadius(x2, dd, de, ee, dn, en));
     }
   }
-  for (const x of roots) if (x > 0 && x < 1) best = Math.min(best, radius(x));
   return best;
+}
+
+/** The radius of that circle through the point `x` of the way along the edge. */
+function ballRadius(x: number, dd: number, de: number, ee: number, dn: number, en: number): number {
+  const ahead = dn + x * en;
+  // Half a unit clear of the start, which is the outline it sits on.
+  if (ahead <= 1e-9) return Infinity;
+  const squared = dd + 2 * x * de + x * x * ee;
+  if (squared < 0.25) return Infinity;
+  return squared / (2 * ahead);
 }
 
 interface Vertex {
@@ -621,6 +632,18 @@ export function applyWeight(
         const edge = r === row - ring || r === row + ring;
         for (let c = column - ring; c <= column + ring; c += edge ? 1 : ring * 2 || 1) {
           if (c < 0 || c >= columns) continue;
+          /*
+           * Nothing behind the sample can stop it: a ray finds a wall only
+           * ahead of where it starts, and the circle has its centre ahead
+           * and meets nothing behind. So a square lying wholly behind is
+           * passed over -- about half of them, for a sample looking out
+           * into the paper, which finds no wall at all and so asks every
+           * square out to the horizon. A wall filed there that reaches
+           * ahead is filed in a square ahead as well.
+           */
+          const aheadX = (heading.x > 0 ? gridX + (c + 1) * cell : gridX + c * cell) - from.x;
+          const aheadY = (heading.y > 0 ? gridY + (r + 1) * cell : gridY + r * cell) - from.y;
+          if (aheadX * heading.x + aheadY * heading.y < -1e-7) continue;
           for (const index of filed[r * columns + c]) {
             if (asked[index] === asking) continue;
             asked[index] = asking;
@@ -642,6 +665,13 @@ export function applyWeight(
             // facing the same way is the near side, the sample's own outline.
             const facing = wall.normal.x * heading.x + wall.normal.y * heading.y;
             if (facing >= 0) continue;
+            // Nor one wholly behind the sample, which neither the ray nor the
+            // circle can reach.
+            if (
+              (wall.a.x - from.x) * heading.x + (wall.a.y - from.y) * heading.y <= 0 &&
+              (wall.b.x - from.x) * heading.x + (wall.b.y - from.y) * heading.y <= 0
+            )
+              continue;
             if (bolder && wall.middle >= 0) {
               const apart = Math.abs(wall.middle - position) % total;
               if (Math.min(apart, total - apart) < window) continue;
@@ -1033,24 +1063,58 @@ export function applyWeight(
   };
   const erode = 0.3;
   const blur = 0.8;
+  /*
+   * The samples as far as `radius` from one, in the order they are stored.
+   *
+   * Found by walking out from it both ways round the outline rather than by
+   * asking every sample: `order` runs round the outline with `tau` rising
+   * along it and each run of it in one piece, so the samples near one are
+   * the ones either side of it, up to the first that is too far. Asking all
+   * of them of every one was the square of the samples a contour -- a tenth
+   * of the time a variable export of an opened font spent. Handed back in
+   * stored order, so the sums below add the same numbers in the same order
+   * as asking all of them did, and come out the same to the last bit.
+   */
+  const place = new Array<number>(samples.length);
+  order.forEach((index, k) => {
+    place[index] = k;
+  });
+  const stamp = new Int32Array(samples.length);
+  let asks = 0;
+  const nearby = (index: number, radius: number): number[] => {
+    const size = order.length;
+    const found = [index];
+    asks++;
+    stamp[index] = asks;
+    for (const step of [1, -1]) {
+      for (let k = 1; k < size; k++) {
+        const other = order[(((place[index] + step * k) % size) + size) % size];
+        if (within(other, index) > radius) break;
+        if (stamp[other] === asks) continue;
+        stamp[other] = asks;
+        found.push(other);
+      }
+    }
+    return found.sort((a, b) => a - b);
+  };
   const spread = samples.map((sample, index) => {
     let least = sample.by;
-    samples.forEach((other, k) => {
-      if (within(k, index) <= erode) least = Math.min(least, other.by);
-    });
+    for (const k of nearby(index, erode)) {
+      if (within(k, index) <= erode) least = Math.min(least, samples[k].by);
+    }
     return least;
   });
   const average = (values: number[], radius: number) =>
     samples.map((_, index) => {
       let sum = 0;
       let weight = 0;
-      samples.forEach((_, k) => {
+      for (const k of nearby(index, radius)) {
         const tent = 1 - within(k, index) / radius;
         if (tent > 0) {
           sum += values[k] * tent;
           weight += tent;
         }
-      });
+      }
       return weight ? sum / weight : values[index];
     });
   const smooth = average(spread, blur);
@@ -1813,25 +1877,98 @@ function cutLoops(trace: Vertex[], total: number, window: number, limit: number)
      * that share no part of the outline are cut in the same round.
      */
     const found: Cut[] = [];
+    /*
+     * The edges filed in a grid by the boxes round them, so each edge is only
+     * tried against the few whose boxes meet its own -- the only ones it can
+     * cross -- rather than against every edge within the window ahead of it,
+     * which on a heavy master is a hundred and more. They are still tried in
+     * the order the walk along the outline would reach them, and only as far
+     * as it would go, so the loop found is the same one.
+     */
+    const xMin = new Float64Array(size);
+    const xMax = new Float64Array(size);
+    const yMin = new Float64Array(size);
+    const yMax = new Float64Array(size);
+    let spanX = 0;
+    let spanY = 0;
+    let gridX = Infinity;
+    let gridY = Infinity;
+    let gridRight = -Infinity;
+    let gridTop = -Infinity;
+    for (let k = 0; k < size; k++) {
+      const p = vertices[k].point;
+      const q = vertices[(k + 1) % size].point;
+      xMin[k] = Math.min(p.x, q.x);
+      xMax[k] = Math.max(p.x, q.x);
+      yMin[k] = Math.min(p.y, q.y);
+      yMax[k] = Math.max(p.y, q.y);
+      spanX += xMax[k] - xMin[k];
+      spanY += yMax[k] - yMin[k];
+      gridX = Math.min(gridX, xMin[k]);
+      gridY = Math.min(gridY, yMin[k]);
+      gridRight = Math.max(gridRight, xMax[k]);
+      gridTop = Math.max(gridTop, yMax[k]);
+    }
+    // About two edges across, and never so fine that one long edge is filed
+    // in more than a few thousand squares.
+    const cell = Math.max(
+      ((spanX + spanY) / Math.max(size, 1)) * 2,
+      Math.max(gridRight - gridX, gridTop - gridY) / 64,
+      1e-6,
+    );
+    const filed = new Map<number, number[]>();
+    const cellOf = (value: number, from: number) => Math.floor((value - from) / cell);
+    const key = (column: number, row: number) => column * 1048576 + row;
+    for (let k = 0; k < size; k++) {
+      for (let column = cellOf(xMin[k], gridX); column <= cellOf(xMax[k], gridX); column++)
+        for (let row = cellOf(yMin[k], gridY); row <= cellOf(yMax[k], gridY); row++) {
+          const list = filed.get(key(column, row));
+          if (list) list.push(k);
+          else filed.set(key(column, row), [k]);
+        }
+    }
+    const stamp = new Int32Array(size).fill(-1);
     for (let i = 0; i < size; i++) {
       const a = vertices[i].point;
       const a2 = vertices[(i + 1) % size].point;
-      const left = Math.min(a.x, a2.x);
-      const right = Math.max(a.x, a2.x);
-      const low = Math.min(a.y, a2.y);
-      const high = Math.max(a.y, a2.y);
-      for (let span = 2; span <= size - 2; span++) {
+      const left = xMin[i];
+      const right = xMax[i];
+      const low = yMin[i];
+      const high = yMax[i];
+      // The edges whose boxes meet this one's, by how far ahead they are.
+      const spans: number[] = [];
+      for (let column = cellOf(left, gridX); column <= cellOf(right, gridX); column++)
+        for (let row = cellOf(low, gridY); row <= cellOf(high, gridY); row++) {
+          const list = filed.get(key(column, row));
+          if (!list) continue;
+          for (const j of list) {
+            if (stamp[j] === i) continue;
+            stamp[j] = i;
+            const span = (j - i + size) % size;
+            if (span < 2 || span > size - 2) continue;
+            if (xMax[j] < left || xMin[j] > right || yMax[j] < low || yMin[j] > high) continue;
+            spans.push(span);
+          }
+        }
+      if (spans.length === 0) continue;
+      spans.sort((one, other) => one - other);
+      // As far ahead as the walk would have gone: up to the first edge past
+      // the window, whether or not any edge beyond it came back within it.
+      let reached = 1;
+      for (const span of spans) {
+        while (reached < span) {
+          reached++;
+          if (
+            ahead(vertices[(i + 1) % size].along, vertices[(i + reached) % size].along) > window
+          ) {
+            reached = Infinity;
+            break;
+          }
+        }
+        if (reached === Infinity) break;
         const j = (i + span) % size;
-        if (ahead(vertices[(i + 1) % size].along, vertices[j].along) > window) break;
         const b = vertices[j].point;
         const b2 = vertices[(j + 1) % size].point;
-        if (
-          Math.max(b.x, b2.x) < left ||
-          Math.min(b.x, b2.x) > right ||
-          Math.max(b.y, b2.y) < low ||
-          Math.min(b.y, b2.y) > high
-        )
-          continue;
         const hit = segmentsCross(a, a2, b, b2);
         if (!hit) continue;
         // A loop the offset made is small, of the order of the weight squared;

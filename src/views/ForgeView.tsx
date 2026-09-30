@@ -1249,26 +1249,40 @@ function Warnings({ revision }: { revision: number }): React.JSX.Element | null 
     // still the whole alphabet's worth of drawing per frame.
     if (!state.resting) return;
     let live = true;
-    let asked = 0;
+    /*
+     * Picked up again as the next task rather than at the next frame.
+     *
+     * Waiting for a frame between slices left the thread idle for the rest
+     * of every frame: a slice is a few milliseconds and a frame sixteen, so
+     * the walk ran at half speed or less on a page with nothing else to do --
+     * and where a letter costs tens of milliseconds, as a cut one does, the
+     * walk took two frames a letter. Firefox, slower at the booleans, took
+     * longer than a test would wait for the warnings of a slotted font. A
+     * task posted to a channel runs as soon as the browser has done what was
+     * waiting -- input, and a frame when one is due -- so the page answers as
+     * it did and the walk takes the time it costs.
+     */
+    const channel = new MessageChannel();
     const waited = window.setTimeout(() => {
       const walking = familyWalk(state.settled);
       // A slice short enough to fit in a frame with the drawing, so the page
       // keeps answering while the font is being looked over.
-      const slice = () => {
-        asked = 0;
+      channel.port1.onmessage = () => {
+        if (!live) return;
         const until = performance.now() + SLICE;
         let step = walking.next();
         while (!step.done && performance.now() < until) step = walking.next();
         if (!live) return;
         if (step.done) setFound({ of: state.settled, troubles: step.value });
-        else asked = window.requestAnimationFrame(slice);
+        else channel.port2.postMessage(null);
       };
-      asked = window.requestAnimationFrame(slice);
+      channel.port2.postMessage(null);
     }, STILL);
     return () => {
       live = false;
       window.clearTimeout(waited);
-      if (asked) window.cancelAnimationFrame(asked);
+      channel.port1.onmessage = null;
+      channel.port1.close();
     };
   }, [state.settled, state.resting, revision]);
 
