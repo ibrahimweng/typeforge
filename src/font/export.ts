@@ -495,7 +495,8 @@ async function exportTrueType(
 ): Promise<Uint8Array> {
   /*
    * Every outline the file needs, the masters' too, worked out across the
-   * cores the browser has before anything is written -- see `resolve-pool.ts`.
+   * cores there are -- a browser's workers, or Node's threads -- before
+   * anything is written: see `resolve-pool.ts`.
    * Null where there is nothing costly to work out, or nowhere to work it out
    * but here, and then each is resolved as it is reached, as it always was.
    */
