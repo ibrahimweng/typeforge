@@ -41,6 +41,8 @@ import { shiftCrossbar, shiftShoulders } from "./anatomy";
 import { pixelate } from "./pixel";
 import { addSlabs, weighSlabs } from "./slab";
 import { applyWeight, SIDEWAYS } from "./embolden";
+import { type Anchor, type Anchors, drafted, isDraft, remember } from "./draft";
+import { PARAMS } from "@/components/param-specs";
 import { anyCast, type Cast } from "./cast";
 import { anyCut, type Cuts } from "./cuts";
 import type { CutScale } from "@/forge/cut";
@@ -154,6 +156,109 @@ export function isReshaped(glyph: Glyph, typeface: Typeface): boolean {
  * last so they act on the finished shape.
  */
 export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[] {
+  if (isDraft(typeface.params)) {
+    const draft = draftOf(glyph, typeface);
+    if (draft) return draft.contours;
+  }
+  const contours = resolveExactly(glyph, typeface);
+  keepAnchor(glyph, typeface, contours);
+  return contours;
+}
+
+/**
+ * The weights each letter was last exactly drawn at, for drawing the steps of
+ * a gesture between them -- see `draft.ts`. Held against the glyph, so a letter
+ * that is edited or dropped takes its own with it.
+ */
+const anchorBook = new WeakMap<Glyph, Anchors>();
+
+/**
+ * Everything a letter's drawing depends on but its weight, or null where a
+ * draft is not to be drawn at all: a letter holding its own weight does not
+ * follow the family's, and a cut or a cast is a boolean over the outline that
+ * does not move point for point.
+ */
+function anchorKey(glyph: Glyph, typeface: Typeface): string | null {
+  if (glyph.params?.weight !== undefined) return null;
+  if (anyCut(effectiveCuts(glyph, typeface)) || anyCast(effectiveCast(glyph, typeface)))
+    return null;
+  const params = effectiveParams(glyph, typeface);
+  return [
+    growthKey(glyph, typeface, { ...params, weight: 0 }),
+    JSON.stringify(typeface.metrics ?? null),
+  ].join("|");
+}
+
+/** Remember a letter exactly drawn at a weight, for the drafts that may follow. */
+function keepAnchor(glyph: Glyph, typeface: Typeface, contours: Contour[]): void {
+  const weight = effectiveParams(glyph, typeface).weight;
+  if (weight === 0) return;
+  const key = anchorKey(glyph, typeface);
+  if (key === null) return;
+  let anchors = anchorBook.get(glyph);
+  if (anchors?.key !== key) {
+    anchors = { key, list: [] };
+    anchorBook.set(glyph, anchors);
+  }
+  remember(anchors, { weight, contours, advance: exactAdvance(glyph, typeface) });
+}
+
+/** A step of a gesture drawn from the weights remembered, or null to draw it exactly. */
+function draftOf(
+  glyph: Glyph,
+  typeface: Typeface,
+): { contours: Contour[]; advance: number } | null {
+  const weight = effectiveParams(glyph, typeface).weight;
+  if (weight === 0) return null;
+  const key = anchorKey(glyph, typeface);
+  const anchors = key === null ? undefined : anchorBook.get(glyph);
+  if (!anchors || anchors.key !== key) return null;
+  const exactlyAt = (at: number): Anchor => {
+    const known = anchors.list.find((one) => one.weight === at);
+    if (known) return known;
+    const moved = { ...typeface, params: { ...typeface.params, weight: at } };
+    const made = {
+      weight: at,
+      contours: resolveExactly(glyph, moved),
+      advance: exactAdvance(glyph, moved),
+    };
+    remember(anchors, made);
+    return made;
+  };
+  const plain = () => exactlyAt(0);
+  const draft = drafted(anchors, weight, plain);
+  if (draft) return draft;
+  /*
+   * Nothing known far enough out on this side: the letter is weighed exactly
+   * once, some way further on than asked -- a gesture keeps going the way it
+   * started -- and this step and the next few are drawn short of that. Weighed
+   * where asked, a run of arrow presses outwards weighed every letter again at
+   * every other press.
+   */
+  const { min, max } = weightRange(typeface.unitsPerEm);
+  const out = Math.max(Math.abs(weight) * DRAFT_AHEAD, typeface.unitsPerEm * DRAFT_LEAST);
+  const ahead = Math.min(max, Math.max(min, Math.sign(weight) * out));
+  if (ahead === weight) return null;
+  exactlyAt(ahead);
+  return drafted(anchors, weight, plain);
+}
+
+/**
+ * How much further out than asked a draft weighs a letter exactly, and at the
+ * least how far out, as a share of the em: the first press of an arrow key is
+ * a step of a two-thousandth of an em, and a letter weighed three steps out
+ * was weighed again three presses later.
+ */
+const DRAFT_AHEAD = 3;
+const DRAFT_LEAST = 0.015;
+
+/** The lightest and heaviest the weight control goes, in font units. */
+function weightRange(unitsPerEm: number): { min: number; max: number } {
+  const spec = PARAMS.find((one) => one.key === "weight");
+  return { min: (spec?.min ?? -0.04) * unitsPerEm, max: (spec?.max ?? 0.06) * unitsPerEm };
+}
+
+function resolveExactly(glyph: Glyph, typeface: Typeface): Contour[] {
   // Components first: a composite draws nothing of its own, so its outline is
   // whatever its parts contribute. Parameters then apply to the finished shape,
   // which keeps a family-wide change from being applied twice to a component.
@@ -618,6 +723,14 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
  * widened one set with its letters overlapping.
  */
 export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
+  if (isDraft(typeface.params)) {
+    const draft = draftOf(glyph, typeface);
+    if (draft) return draft.advance;
+  }
+  return exactAdvance(glyph, typeface);
+}
+
+function exactAdvance(glyph: Glyph, typeface: Typeface): number {
   const params = effectiveParams(glyph, typeface);
   return Math.max(
     0,
