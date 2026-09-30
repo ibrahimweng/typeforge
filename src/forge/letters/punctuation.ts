@@ -1397,7 +1397,22 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * line and moves further out to the right instead: risen, an Ultra
      * Geometric's loop stood a sixth of the cap height over every capital.
      */
-    const loopY = pastBlack(f.style) > 0 ? Math.min(risen, f.crest(C) - r) : risen;
+    const foot = Math.max(C * 0.14, f.half * 1.9);
+    const line = f.sits(0);
+    const kneeY = line + foot * (1 - Math.SQRT1_2);
+    /*
+     * But never so low that the diagonal, leaving the loop at forty-five
+     * degrees, starts below its own knee: held under the cap line, the
+     * display face's loop at an 800 came down beside the bowl, the diagonal
+     * ran back uphill into the foot, and the letter changed its points
+     * along the weight axis. There the loop rises again, as it always did
+     * at the limit of the axis.
+     */
+    const lowest = kneeY + r * Math.SQRT1_2 + f.half * 0.5;
+    const loopY =
+      pastBlack(f.style) > 0
+        ? Math.max(Math.min(risen, f.crest(C) - r), Math.min(risen, lowest))
+        : risen;
     const rise = loopY - bowlAt.y;
     const clear = (r + R) * 1.08;
     const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
@@ -1414,9 +1429,6 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     // The diagonal leaves the loop at forty-five degrees and turns out along
     // the baseline into its foot.
     const from = pointOn(loopAt, r, 225);
-    const foot = Math.max(C * 0.14, f.half * 1.9);
-    const line = f.sits(0);
-    const kneeY = line + foot * (1 - Math.SQRT1_2);
     const knee = at(from.x + (from.y - kneeY), kneeY);
     const heel = at(knee.x + foot * Math.SQRT1_2, line);
     // The arm: up and a little to the right out of the bowl, to about half
