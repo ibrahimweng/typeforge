@@ -165,6 +165,13 @@ export interface GlyfPoint {
  */
 export interface PointChoice {
   pieces?: number;
+  /**
+   * The pieces of the contour to leave out, by index: see `stillPieces` in
+   * `export.ts`. A piece left out writes no points, and the next one starts
+   * where it would have ended -- which, for a piece that is one point in
+   * every master, is where it started.
+   */
+  still?: boolean[];
 }
 
 /**
@@ -190,6 +197,7 @@ export function contourToGlyfPoints(
     const a = nodes[i];
     const b = nodes[(i + 1) % nodes.length];
 
+    if (choice.still?.[i]) continue;
     if (!a.handleOut && !b.handleIn) {
       points.push({ x: b.point.x, y: b.point.y, onCurve: true });
       continue;

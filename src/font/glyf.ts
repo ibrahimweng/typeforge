@@ -61,6 +61,8 @@ export interface GlyfBuildInput {
    * arrangement cannot be expressed as a plain reference.
    */
   composite?: CompositeRef[];
+  /** For each contour, the pieces of it to leave out: see `PointChoice.still`. */
+  still?: boolean[][];
 }
 
 export interface CompositeRef {
@@ -163,8 +165,16 @@ export function buildGlyfTables(
       continue;
     }
 
-    const pointsPerContour = drawable.map((contour) =>
-      contourToGlyfPoints(contour, tolerance, pieces ? { pieces } : {}),
+    const pointsPerContour = glyph.contours.flatMap((contour, index) =>
+      contour.nodes.length > 0
+        ? [
+            contourToGlyfPoints(
+              contour,
+              tolerance,
+              pieces ? { pieces, still: glyph.still?.[index] } : {},
+            ),
+          ]
+        : [],
     );
     const total = pointsPerContour.reduce((sum, points) => sum + points.length, 0);
     if (total === 0) {
