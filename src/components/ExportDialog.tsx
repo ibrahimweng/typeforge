@@ -11,7 +11,13 @@ import * as React from "react";
 
 import { enter, refuse } from "@/anim/motion";
 import { CoachMark } from "@/components/CoachMark";
-import { exportFont, toDownloadBlob, type ExportFidelity, type ExportFormat } from "@/font/export";
+import {
+  exportFont,
+  NEUTRAL_NOTES,
+  toDownloadBlob,
+  type ExportFidelity,
+  type ExportFormat,
+} from "@/font/export";
 import { varyByDrawnVersions, varyByWeight } from "@/font/masters";
 import { store, useAppState } from "@/state/useStore";
 import { ufoNameFor, zipUfo } from "@/ufo/intake";
@@ -131,12 +137,19 @@ export function ExportDialog({ onClose }: { onClose: () => void }): React.JSX.El
 
       downloadBlob(toDownloadBlob(result), result.fileName);
 
-      setNotes(result.notes);
+      /*
+       * Only the notes that ask for something keep the dialog open. The one
+       * that says the source font's features were left alone reports nothing
+       * wrong, and shown in the amber box after every preserve export it read
+       * as a warning about a file that was fine.
+       */
+      const asking = result.notes.filter((note) => !NEUTRAL_NOTES.has(note));
+      setNotes(asking);
       store.setStatus({
         message: `Exported ${result.fileName} (${formatBytes(result.bytes.length)})`,
         tone: "success",
       });
-      if (result.notes.length === 0) onClose();
+      if (asking.length === 0) onClose();
     } catch (error) {
       if (panelRef.current) refuse(panelRef.current);
       store.setStatus({
