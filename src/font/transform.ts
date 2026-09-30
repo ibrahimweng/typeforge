@@ -160,9 +160,28 @@ export function resolveGlyphContours(glyph: Glyph, typeface: Typeface): Contour[
     const draft = draftOf(glyph, typeface);
     if (draft) return draft.contours;
   }
+  const known = anchorAt(glyph, typeface);
+  if (known) return known.contours;
   const contours = resolveExactly(glyph, typeface);
   keepAnchor(glyph, typeface, contours);
   return contours;
+}
+
+/**
+ * The letter as it was exactly drawn at this very weight, with everything
+ * else the same, if it is remembered: the end of a gesture lands where one
+ * step of it was weighed exactly, and a press of Home or End goes back to
+ * where the last one went. That is the exact letter already, and is not
+ * weighed again.
+ */
+function anchorAt(glyph: Glyph, typeface: Typeface): Anchor | undefined {
+  const anchors = anchorBook.get(glyph);
+  if (!anchors) return undefined;
+  const weight = effectiveParams(glyph, typeface).weight;
+  if (weight === 0) return undefined;
+  const found = anchors.list.find((one) => one.weight === weight);
+  if (!found || anchors.key !== anchorKey(glyph, typeface)) return undefined;
+  return found;
 }
 
 /**
@@ -727,7 +746,7 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
     const draft = draftOf(glyph, typeface);
     if (draft) return draft.advance;
   }
-  return exactAdvance(glyph, typeface);
+  return anchorAt(glyph, typeface)?.advance ?? exactAdvance(glyph, typeface);
 }
 
 function exactAdvance(glyph: Glyph, typeface: Typeface): number {
