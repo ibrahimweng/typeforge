@@ -1,5 +1,5 @@
 import type { Vec2 } from "@/font/types";
-import { joinWeight, LETTERS, writtenLead } from "../letters";
+import { joinInk, joinWeight, LETTERS, writtenLead } from "../letters";
 import { seamsOf } from "../script";
 import { alongSpine, bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -267,7 +267,9 @@ function entering(
   radius: number,
   lead: Lead,
   least: number,
-): { lead: Spine; body: Spine } {
+  // The heading, in degrees, on which the nib draws its thinnest line.
+  thinnest = 0,
+): { lead: Spine; body: Spine; rise: Spine; fall: Spine } {
   const down = (FIRST_LEG * Math.PI) / 180;
   const centre = at(apex.x, apex.y - radius);
   const on = (angle: number): Vec2 =>
@@ -385,12 +387,28 @@ function entering(
     middle.y - bendRadius * Math.cos(heading),
   );
   const from = at(begins.x - way.x * back, begins.y - way.y * back);
+  // Where round the crown the pen runs on its thinnest heading, kept clear of
+  // both ends of the turn.
+  const handover = Math.min(Math.max(90 + thinnest, 90 - FIRST_LEG + 16), 90 + upDegrees - 16);
   return {
     lead: chain(
       straight(from, begins),
       turn(middle, bendRadius, (heading * 180) / Math.PI - 90, (up * 180) / Math.PI - 90),
     ),
     body: chain(straight(joins, start), over, leg),
+    /*
+     * The same path in two strokes: the up-stroke, drawn as the join it
+     * carries on from is, and the down-stroke, drawn with the nib. In one
+     * stroke the nib was at its heaviest the moment it left the lead-in, and
+     * every written `n` stood a black wedge on the end of the hairline it was
+     * entered by. They change hands in the turn over the crown, where the nib
+     * runs along its own thinnest line -- narrower there than the hairline --
+     * so its square end lies inside the up-stroke, and the up-stroke carries
+     * on a little past it to cover it, ending round (see the n below): a
+     * square end there stood out of the nib as a flag on the crown.
+     */
+    rise: chain(straight(joins, start), turn(centre, radius, 90 + upDegrees, handover - 6)),
+    fall: chain(turn(centre, radius, handover, 90 - FIRST_LEG), leg),
   };
 }
 
@@ -421,8 +439,14 @@ function unjoinedFlick(f: Frame, centre: Vec2): Stroke[] {
   return [ink(f, bowed(f, at(to.x - to.y / Math.tan(up), 0), to, 0.1), f.end, BUTT)];
 }
 
+/** The heading, from -90 to 90 degrees, on which a pen draws its thinnest line. */
+function thinnestHeading(pen: Style["pen"]): number {
+  if (pen.contrast <= 0) return 0;
+  return ((((pen.angle + 90) % 180) + 180) % 180) - 90;
+}
+
 function leadIn(f: Frame, spine: Spine) {
-  return [lighter(ink(f, spine, BUTT, BUTT), joinWeight(f.style))];
+  return [joinInk(f, spine)];
 }
 
 /**
@@ -725,16 +749,22 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         // own apex: a wide turn there is an arch, and an `n` with two of those
         // is an `m` with a leg missing.
         const radius = Math.max(f.x * 0.045, f.least);
-        const { lead, body } = entering(
+        const { lead, body, rise, fall } = entering(
           at(f.edge, f.crown),
           radius,
           writtenLead("n", style),
           // The tightest the lead-in's own pen goes round.
           f.half * joinWeight(style) * 1.15,
+          thinnestHeading(style.pen),
         );
         const stands = spineEnd(body);
         return {
-          ...finish(f, [...leadIn(f, lead), ink(f, body, BUTT, BUTT), arch(f, stands.x, f.x)]),
+          ...finish(f, [
+            ...leadIn(f, lead),
+            joinInk(f, rise, { kind: "round" }),
+            ink(f, fall, BUTT, BUTT),
+            arch(f, stands.x, f.x),
+          ]),
           entered: true,
         };
       },
@@ -1900,11 +1930,16 @@ const COLUMN_SERIF = 4;
  *
  * Only on the capitals whose first stroke starts at the top left at every
  * weight: the stems, the diagonals and the bars. On the round ones there is no
- * such start to land on, and on the `G` and the `J` there is one at some
- * weights and not at others -- a letter with a stroke at one weight and not at
- * the next cannot follow a weight axis.
+ * such start to land on, and on the `G` there is one at some weights and not
+ * at others -- a letter with a stroke at one weight and not at the next cannot
+ * follow a weight axis.
+ *
+ * The `J` takes one. Its one stroke starts at the head of its stem at every
+ * weight, as the `I`'s does, and left without the swash it was a leaning
+ * hairline with a curl at its foot: beside the written `I` on the Formal
+ * Script it read as a piece of a letter rather than a letter.
  */
-const WRITTEN_CAPITALS = "BDEFHIKLMNPRTUVWXYZ".split("") as LetterName[];
+const WRITTEN_CAPITALS = "BDEFHIJKLMNPRTUVWXYZ".split("") as LetterName[];
 for (const name of WRITTEN_CAPITALS) {
   if (!ALTERNATES[name]) ALTERNATES[name] = [];
   ALTERNATES[name].push({

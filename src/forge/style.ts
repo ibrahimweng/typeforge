@@ -2267,7 +2267,7 @@ export const TYPEWRITER: Style = {
  * capitals in `alternates.ts`.
  */
 const WRITTEN_CAPITALS = Object.fromEntries(
-  "BDEFHIKLMNPRTUVWXYZ".split("").map((letter) => [letter, "written"]),
+  "BDEFHIJKLMNPRTUVWXYZ".split("").map((letter) => [letter, "written"]),
 );
 
 export const HANDWRITING: Style = {

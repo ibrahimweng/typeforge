@@ -1099,8 +1099,27 @@ function loopsOn(spines: Spine[], room: Room, script: Script): Loop[] {
      * than its descender -- bowed by the same share came out narrower than the
      * pen, and the `y` and the `q` hung a black drop off the line.
      */
+    /*
+     * Opened past whatever the run itself bows into it, too. A descender's eye
+     * is struck along its own run, and on a face that bows its runs the `y`'s
+     * straight tail comes out an S whose belly lies across the eye's chord: on
+     * the Handwriting and the Formal Script the eye was left a slit between
+     * the two, and the ink pooled where they met filled it -- the `y` ended in
+     * a black drop. So the eye is bowed out by as far again as the run leans
+     * into it.
+     */
+    const leansIn = rising ? 0 : leaning(run, start, drawnTip);
     const open = room.half * 1.5 + room.x * 0.08;
-    const shape = Math.max(0, Math.min(0.5, Math.max(script.eye, open / Math.max(deep, 1e-6))));
+    /*
+     * Held short of a half: at a half the eye is a semicircle, and which way a
+     * semicircle turns is a coin toss in `bowed` -- a heavy `y` threw its eye
+     * over to the right of its tail.
+     */
+    const cleared = Math.min(0.46, (open + leansIn) / Math.max(deep, 1e-6));
+    const shape = Math.max(
+      0,
+      Math.min(0.5, Math.max(script.eye, open / Math.max(deep, 1e-6), cleared)),
+    );
     /*
      * And an eye narrower than the pen drawing it is a blob rather than an eye,
      * which is the same thing `wide` guards at the other end. What has to clear
@@ -1202,6 +1221,27 @@ function reaching(
     }
   }
   return lands(available, 0) ? { much: available, over: 0 } : { much: deep, over: 0 };
+}
+
+/**
+ * How far a run strays across the chord of a descender's eye, into the side
+ * the eye bows out to (`bowed` with a negative share), over the chord's own
+ * length. Nothing where it stays on the far side.
+ */
+function leaning(run: Spine, from: Vec2, to: Vec2): number {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const chord = Math.hypot(dx, dy);
+  if (chord < 1e-9) return 0;
+  const way = at(dx / chord, dy / chord);
+  const out = at(way.y, -way.x);
+  let most = 0;
+  for (const point of alongSpine(run, SAMPLES)) {
+    const along = (point.x - from.x) * way.x + (point.y - from.y) * way.y;
+    if (along < 0 || along > chord) continue;
+    most = Math.max(most, (point.x - from.x) * out.x + (point.y - from.y) * out.y);
+  }
+  return most;
 }
 
 /** Whether this run passes under the point, for a loop to stand on it. */
