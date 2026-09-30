@@ -956,10 +956,11 @@ export function draw(letter: string, forge: Forge): Drawn | null {
      * which sat in the middle of the word solid. A cut is a decision about the
      * font, and a letter that has joined the font is in it.
      *
-     * Four of the six reach it. The other two are made out of the skeleton --
-     * a groove is the spine swept again, a break is where two spines meet --
-     * and there is no skeleton here, so they do nothing. Said in the panel
-     * rather than left to be discovered.
+     * Five of the six reach it. The other is made out of the skeleton -- a
+     * break is where two spines meet -- and there is no skeleton here, so it
+     * does nothing (`FROM_SKELETON` in `font/cuts.ts`). The groove used to be
+     * the other: it is the letter shrunk by a wall now, which any outline can
+     * be. Said in the panel rather than left to be discovered.
      *
      * Measured against the font's own pen, because the letter has none: a slot
      * through the ampersand is the thickness a slot is in this font.
