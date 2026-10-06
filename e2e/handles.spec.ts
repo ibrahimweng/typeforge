@@ -277,11 +277,18 @@ test("says which letters a setting has closed up", async ({ page }) => {
   await expect(warnings).toBeVisible();
   await expect(warnings.getByText("Counters closing up")).toBeVisible();
 
-  // And the letters it names are a way of getting to them. The percent is the
-  // one that closes here: the Sans eight, drawn as Geist's now, keeps both its
-  // counters open.
-  await warnings.locator('[data-forge-warning-letter="percent"]').click();
-  await expect(page.locator("[data-forge-stage]")).toHaveAttribute("data-forge-stage", "percent");
+  // The Sans eight, drawn as Geist's, keeps both its counters open here, and
+  // the percent does too now that the sans faces open their counters past the
+  // Black. So neither may be named.
+  await expect(warnings.locator('[data-forge-warning-letter="eight"]')).toHaveCount(0);
+  await expect(warnings.locator('[data-forge-warning-letter="percent"]')).toHaveCount(0);
+
+  // And the letters it does name are a way of getting to them.
+  const named = warnings.locator("[data-forge-warning-letter]").first();
+  const letter = await named.getAttribute("data-forge-warning-letter");
+  expect(letter).toBeTruthy();
+  await named.click();
+  await expect(page.locator("[data-forge-stage]")).toHaveAttribute("data-forge-stage", letter as string);
 });
 
 /**
