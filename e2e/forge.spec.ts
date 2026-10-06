@@ -6,7 +6,7 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 
 import { expect, test } from "@playwright/test";
 
@@ -694,41 +694,12 @@ test("draws the typographic punctuation and writes it into the font", async ({ p
   ]);
   const bytes = readFileSync((await download.path())!);
 
-  // In the file under the names every other font uses, mapped from the right
-  // characters -- as read by fontTools rather than by this application, which
-  // would only be agreeing with itself.
-  const saved = test.info().outputPath("typographic.otf");
-  writeFileSync(saved, bytes);
-  const named = JSON.parse(
-    execFileSync("python3", [
-      "-c",
-      "import json,sys;from fontTools.ttLib import TTFont;m=TTFont(sys.argv[1]).getBestCmap();" +
-        "print(json.dumps([m.get(ord(c)) for c in sys.argv[2]]))",
-      saved,
-      text,
-    ]).toString(),
-  );
-  expect(named).toEqual([
-    "quoteleft",
-    "quoteright",
-    "quotedblleft",
-    "quotedblright",
-    "quotesinglbase",
-    "quotedblbase",
-    "guilsinglleft",
-    "guilsinglright",
-    "endash",
-    "emdash",
-    "ellipsis",
-    "bullet",
-    "minus",
-    "Euro",
-    "trademark",
-    "dagger",
-    "daggerdbl",
-  ]);
-
-  // And set by the browser from the font rather than from whatever is behind it.
+  /*
+   * Set by the browser from the font rather than from whatever is behind it --
+   * a reader that is not this application. The names and codepoints the glyphs
+   * go out under are checked in `src/forge/typographic.test.ts`; the browser
+   * job has no Python libraries to read them with here.
+   */
   const measured = await page.evaluate(
     async ({ data, text }) => {
       const face = new FontFace("Typographic", new Uint8Array(data).buffer as ArrayBuffer);
@@ -846,32 +817,50 @@ test("draws a Condensed beside the Bold and downloads both sliders", async ({ pa
     dialog.locator("[data-download-family]").click(),
   ]);
   expect(download.suggestedFilename()).toBe("Untitled[wdth,wght].ttf");
-  const saved = test.info().outputPath("widths.ttf");
-  await download.saveAs(saved);
+  const bytes = readFileSync((await download.path())!);
 
-  const read = JSON.parse(
-    execFileSync("python3", [
-      "-c",
-      [
-        "import json, sys",
-        "from fontTools.ttLib import TTFont",
-        "from fontTools.varLib.instancer import instantiateVariableFont",
-        "f = TTFont(sys.argv[1])",
-        "names = f['name']",
-        "axes = [a.axisTag for a in f['fvar'].axes]",
-        "instances = [names.getDebugName(i.subfamilyNameID) for i in f['fvar'].instances]",
-        "wide = {}",
-        "for at in ({'wght': 700, 'wdth': 100}, {'wght': 700, 'wdth': 75}):",
-        "    v = instantiateVariableFont(TTFont(sys.argv[1]), at)",
-        "    wide[str(at['wdth'])] = v['hmtx']['n'][0]",
-        "print(json.dumps({'axes': axes, 'instances': instances, 'wide': wide}))",
-      ].join("\n"),
-      saved,
-    ]).toString(),
+  // The axes, read straight out of the file's fvar table.
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const tag = (at: number) => String.fromCharCode(...bytes.subarray(at, at + 4));
+  let fvar = -1;
+  for (let entry = 0; entry < view.getUint16(4); entry += 1) {
+    const at = 12 + entry * 16;
+    if (tag(at) === "fvar") fvar = view.getUint32(at + 8);
+  }
+  expect(fvar).toBeGreaterThan(0);
+  const axesAt = fvar + view.getUint16(fvar + 4);
+  const axisSize = view.getUint16(fvar + 10);
+  const axes = Array.from({ length: view.getUint16(fvar + 8) }, (_, i) =>
+    tag(axesAt + i * axisSize),
   );
-  expect(read.axes).toEqual(["wght", "wdth"]);
-  expect(read.instances).toEqual(["Condensed", "Condensed Bold", "Regular", "Bold"]);
-  expect(read.wide["75"]).toBeLessThan(read.wide["100"] * 0.9);
+  expect(axes).toEqual(["wght", "wdth"]);
+
+  /*
+   * And the sliders move the letters in a renderer that is not this
+   * application: the browser sets "n" from the file, Bold, at the Normal and at
+   * the Condensed. The instance names and the corners are checked against
+   * fontTools in `test/varying-widths.integration.test.ts`, where the export
+   * tests keep it; the browser job has no Python libraries.
+   */
+  const wide = await page.evaluate(
+    async (data) => {
+      const face = new FontFace("Widths", new Uint8Array(data).buffer as ArrayBuffer);
+      await face.load();
+      document.fonts.add(face);
+      const at = (width: number) => {
+        const span = document.createElement("span");
+        span.textContent = "n";
+        span.style.cssText = `font: 200px Widths; font-variation-settings: "wght" 700, "wdth" ${width}; position: absolute; white-space: pre;`;
+        document.body.append(span);
+        const measured = span.getBoundingClientRect().width;
+        span.remove();
+        return measured;
+      };
+      return { normal: at(100), condensed: at(75) };
+    },
+    [...bytes],
+  );
+  expect(wide.condensed).toBeLessThan(wide.normal * 0.9);
   expect(errors).toEqual([]);
 });
 
