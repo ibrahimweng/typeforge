@@ -35,6 +35,7 @@ import {
   capped,
   BUTT,
   enclosing,
+  endLetter,
   frame,
   type Frame,
   inherit,
@@ -153,8 +154,13 @@ export function recipeOf(name: LetterName, form?: string): ((style: Style) => Re
   return (style: Style) => {
     // Carried so that a symbol built out of a letter draws the same letter the
     // font does: an ordinal on a font with the single-storey a is that a.
-    beginLetter(form);
-    return connected(name, build(style), style);
+    // And handed back after, for a letter drawn inside another: see `endLetter`.
+    const was = beginLetter(form);
+    try {
+      return connected(name, build(style), style);
+    } finally {
+      endLetter(was);
+    }
   };
 }
 

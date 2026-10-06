@@ -4784,7 +4784,23 @@ export function bent(f: Frame, spine: Spine): Stroke {
  * because the two things it sets live here, and a module can only assign
  * the bindings it declares.
  */
-export function beginLetter(form: string | undefined): void {
+export function beginLetter(form: string | undefined): string | undefined {
+  const was = borrowing;
   pending = [];
   borrowing = form;
+  return was;
+}
+
+/**
+ * Says the form of the letter that was being drawn before this one again.
+ *
+ * What `recipeOf` does after every letter, so that a letter drawn inside
+ * another -- the T and M of a trade mark, set in this face's own forms --
+ * hands the form back when it is done. Left set, the trade mark's grotesque M
+ * was the form the next symbol asked its letter for: a `$` or an `ª` drawn
+ * straight after it borrowed the grotesque S or a, which is not this face's
+ * letter.
+ */
+export function endLetter(was: string | undefined): void {
+  borrowing = was;
 }
