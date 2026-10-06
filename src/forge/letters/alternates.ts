@@ -1400,7 +1400,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const f = frame(style);
         const stem = f.edge;
         const span = f.arch * 1.7;
-        const waist = f.x * 0.42;
+        /*
+         * On a joined face, lower: the lead-in comes up into the loop of the
+         * stem from the lower left on much the slope the arm leaves it by,
+         * and with the arm springing from the middle of the x-height the two
+         * met the stem a little apart and read as one line struck through it.
+         * Sprung from lower down, the arm stands clear below where the
+         * lead-in arrives, as a written k's does.
+         */
+        const waist = f.x * (style.parts.script.on ? 0.3 : 0.42);
         const foot = stem + span;
         /*
          * Where the leg stops falling and starts standing.

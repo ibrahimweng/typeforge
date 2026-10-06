@@ -381,8 +381,13 @@ export function joinWeight(style: Style): number {
 /** How much of the pen's level width a join is drawn with: see `joinInk`. */
 const JOIN_UNDER = 0.94;
 
-export function joinInk(f: Frame, spine: Spine, end: Terminal = BUTT): Stroke {
-  const stroke = lighter(ink(f, spine, BUTT, end), joinWeight(f.style));
+export function joinInk(
+  f: Frame,
+  spine: Spine,
+  end: Terminal = BUTT,
+  start: Terminal = BUTT,
+): Stroke {
+  const stroke = lighter(ink(f, spine, start, end), joinWeight(f.style));
   const { across, along, angle } = penReach(stroke.pen);
   const level = JOIN_UNDER * 2 * Math.hypot(across * Math.sin(angle), along * Math.cos(angle));
   // A round pen is one width every way already, and its joins were never
@@ -714,7 +719,15 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * push the two ends through each other. The buried end is square because
    * nothing can see it.
    */
-  if (plan.entry) strokes.push(joinInk(f, plan.entry));
-  if (plan.exit) strokes.push(joinInk(f, plan.exit));
+  /*
+   * And round where it meets the letter. A join turns where it reaches the
+   * stroke it leaves or arrives on, and a square end turned that way stood
+   * its corner out past the side of the stroke: a step at the foot of every
+   * `c`, of a `k`'s leg and of a written `r`. The pen's own round end lies
+   * inside the stroke whichever way the join turns.
+   */
+  const meets: Terminal = { kind: "round" };
+  if (plan.entry) strokes.push(joinInk(f, plan.entry, meets));
+  if (plan.exit) strokes.push(joinInk(f, plan.exit, BUTT, meets));
   return { ...recipe, strokes, width: plan.width };
 }

@@ -308,7 +308,210 @@ function dagger(style: Style, bars: number[]): Recipe {
   ]);
 }
 
+// ---------------------------------------------------------------------------
+// The per mille and the florin
+// ---------------------------------------------------------------------------
+
+/**
+ * The white between the per mille's two lower rings.
+ *
+ * Geist's rings stand 80 apart at the Thin, 60 at the Regular and 49 at the
+ * Black: closing as the pen grows, and then held, as a sixth of the x-height
+ * less most of the half pen, and never under a tenth of the x-height.
+ */
+function ringGap(f: Frame): number {
+  return Math.max(f.xOwn * 0.17 - f.half * 0.7, f.xOwn * 0.093);
+}
+
+/** How far a florin leans, as Geist's and Lora's do: about five degrees. */
+const FLORIN_LEAN = 5;
+
+/** A stroke turned about a point, anticlockwise by `degrees`. */
+function rotatedStroke(stroke: Stroke, about: Vec2, degrees: number): Stroke {
+  const turn = (degrees * Math.PI) / 180;
+  const cos = Math.cos(turn);
+  const sin = Math.sin(turn);
+  const to = (point: Vec2): Vec2 =>
+    at(
+      about.x + (point.x - about.x) * cos - (point.y - about.y) * sin,
+      about.y + (point.x - about.x) * sin + (point.y - about.y) * cos,
+    );
+  const spine: Spine = {
+    closed: stroke.spine.closed,
+    segments: stroke.spine.segments.map((segment) =>
+      segment.kind === "line"
+        ? { ...segment, from: to(segment.from), to: to(segment.to) }
+        : {
+            ...segment,
+            centre: to(segment.centre),
+            startAngle: segment.startAngle + turn,
+            endAngle: segment.endAngle + turn,
+          },
+    ),
+  };
+  return inherit(stroke, { ...stroke, spine });
+}
+
+/** The first straight run of a spine, and its index. */
+function firstStraight(spine: Spine): number {
+  return spine.segments.findIndex(
+    (segment) =>
+      segment.kind === "line" &&
+      Math.abs(segment.to.y - segment.from.y) > Math.abs(segment.to.x - segment.from.x),
+  );
+}
+
+/**
+ * The florin: this face's own f, leaning, its hook turned over at the foot.
+ *
+ * Geist's is its f with a second hook, the first turned half a turn, standing
+ * on the baseline and leaning five degrees; Lora's is the italic f, carried
+ * down to the descender. So the f's stem and hook are taken, turned half a
+ * turn about a point on the stem, and the two straight runs trimmed to where
+ * they overlap, so the stem is one run with a hook at each end -- standing on
+ * the line on a face that draws a plain f, carried down to the descender on a
+ * text face. A face whose f already descends is a florin already, and is
+ * only leaned. The bar stays level, and moves with the stem it crosses.
+ */
+function florin(f: Frame, letter: Stroke[]): Stroke[] {
+  if (letter.length === 0) return letter;
+  const heights = letter.map((stroke) => {
+    const box = inkBox([stroke]);
+    return box.yMax - box.yMin;
+  });
+  const which = heights.indexOf(Math.max(...heights));
+  const stem = letter[which];
+  const bars = letter.filter((_, index) => index !== which);
+  const straightAt = firstStraight(stem.spine);
+  const ink = inkBox([stem]);
+  const was = inkBox([stem]);
+  const standing = was.yMin > -f.half && !bookish(f);
+  const make = (lower: number): Stroke[] => {
+    let strokes = [stem];
+    let about = at(0, (ink.yMin + ink.yMax) / 2);
+    if (straightAt >= 0) {
+      const run = stem.spine.segments[straightAt] as Extract<
+        Spine["segments"][number],
+        { kind: "line" }
+      >;
+      const x = run.from.x;
+      about = at(x, about.y);
+      const low = Math.min(run.from.y, run.to.y);
+      const high = Math.max(run.from.y, run.to.y);
+      if (ink.yMin > -f.half) {
+        /*
+         * Turned about the middle of the ink on a face that stands its
+         * florin on the line, and about a point that puts the turned hook on
+         * the descender on a text face.
+         *
+         * And never so high that the two straight runs no longer overlap: at
+         * a heavy weight the f's hook takes most of its height, and turned
+         * about the middle of its ink the two runs missed each other and the
+         * trimmed one ran backwards through itself. A little overlap always,
+         * so the runs keep their points at every weight.
+         */
+        const wanted = bookish(f) ? (ink.yMax + f.desc * 1.08) / 2 : (ink.yMin + ink.yMax) / 2;
+        const middle = Math.min(wanted - lower, high - Math.max(2, f.half * 0.25));
+        about = at(x, middle);
+        const turned = turnedStroke(stem, about);
+        // Each straight run trimmed at its free end to the other's, so the
+        // two overlap and nothing stands out of either.
+        const trim = (stroke: Stroke, lowest: number, highest: number): Stroke => {
+          const segments = stroke.spine.segments.map((segment, index) => {
+            if (index !== straightAt || segment.kind !== "line") return segment;
+            const clamp = (y: number) => Math.min(Math.max(y, lowest), highest);
+            return { ...segment, from: at(segment.from.x, clamp(segment.from.y)) };
+          });
+          return inherit(stroke, {
+            ...stroke,
+            spine: { ...stroke.spine, segments },
+            start: { kind: "butt" },
+          });
+        };
+        strokes = [
+          trim(stem, Math.max(low, 2 * middle - high), high),
+          trim(turned, 2 * middle - high, Math.min(2 * middle - low, high)),
+        ];
+      }
+    }
+    const leaned = strokes.map((stroke) => rotatedStroke(stroke, about, -FLORIN_LEAN));
+    const slide = (y: number): number => (y - about.y) * Math.sin((FLORIN_LEAN * Math.PI) / 180);
+    const level = bars.map((bar) => {
+      const box = inkBox([bar]);
+      return shovedStroke(bar, slide((box.yMin + box.yMax) / 2), 0);
+    });
+    // Stood back on the line the f stood on, where it does not descend.
+    const now = inkBox(leaned);
+    return shoved([...leaned, ...level], 0, standing ? was.yMin - now.yMin : 0);
+  };
+  /*
+   * Leaned, the hooks' far ends come down: Geist's florin is as tall as its
+   * f, so the turn is taken a little lower until it is again.
+   */
+  const first = make(0);
+  if (!standing) return first;
+  const short = was.yMax - was.yMin - (inkBox(first).yMax - inkBox(first).yMin);
+  return short > 0.5 ? make(short / 2) : first;
+}
+
 export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
+  /*
+   * The per mille: the percent with a second ring beside its lower one, as
+   * Geist's is to the unit -- the same ring, and as far from the first as
+   * Geist sets it.
+   */
+  perthousand: outOf("percent", (f, percent) => {
+    const strokes = percent();
+    // The rings are the closed runs, and the lower one is the one further
+    // down; the slash is what is left. Asked of the runs rather than of
+    // their sizes, which at a heavy weight put a ring taller than the slash.
+    const centre = (stroke: Stroke): number => {
+      const box = inkBox([stroke]);
+      return (box.yMin + box.yMax) / 2;
+    };
+    const rings = strokes.filter((stroke) => stroke.spine.closed);
+    if (rings.length === 0) return { strokes };
+    const lowest = Math.min(...rings.map(centre));
+    const lower = rings.filter((ring) => centre(ring) <= lowest + 1);
+    const ring = inkBox(lower);
+    const gap = ringGap(f);
+    const width = ring.xMax - ring.xMin;
+    /*
+     * A monospaced face sets every glyph in one column, and a per mille a
+     * ring wider than its percent would widen the column and every letter in
+     * the font with it. There its two lower rings are drawn smaller, side by
+     * side in the room the percent's one had, as a typewriter's are. And on
+     * any face never past an em and a half: at a heavy weight of a wide face
+     * the three rings ran two ems across.
+     */
+    const whole = inkBox(strokes);
+    const limit = f.style.metrics.monospaced
+      ? whole.xMax
+      : Math.max(whole.xMax, f.style.metrics.unitsPerEm * 1.5);
+    const share = Math.min(1, (limit - ring.xMin) / (2 * width + gap));
+    // Drawn the same way whether it is taken down or not, so the glyph has
+    // the same points on both sides of the weight where it starts to be.
+    const about = at(ring.xMin, ring.yMin);
+    const small = lower.map((stroke) => scaledStroke(stroke, share, about));
+    return {
+      strokes: [
+        ...strokes.map((stroke) =>
+          lower.includes(stroke) ? small[lower.indexOf(stroke)] : stroke,
+        ),
+        ...shoved(small, (width + gap) * share, 0),
+      ],
+      // Spaced as the percent is, which is set as a round letter.
+      round: true,
+    };
+  }),
+
+  florin: outOf("f", (f, letter) => ({
+    strokes: florin(
+      f,
+      setInside(() => letter()),
+    ),
+  })),
+
   /*
    * The quotes. The low ones are the comma itself, exactly as Geist's and
    * Lora's are; the high ones are the comma raised, and the opening ones the

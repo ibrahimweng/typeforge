@@ -176,6 +176,12 @@ export interface Metrics {
    */
   heavyOpenFrom?: number;
   /**
+   * Past the Black, how much of the stem gained a round stroke gives up at its
+   * sides, its outside held where it was: see `rounds.ts`. For a face that
+   * keeps its rounds round (`heavyFloor`) and so cannot let its bowls out.
+   */
+  heavyThin?: number;
+  /**
    * Below the pen `from`, each bowl and arch is held as wide through its
    * middle as at `from`, widening by `grow` of it over the whole way to no pen
    * at all: see `frame` in `letters/common.ts`. Left out, a lighter pen widens
@@ -1791,6 +1797,12 @@ export const GEOMETRIC: Style = {
      * #, the & and the brackets (see `pastBlack`).
      */
     heavyOpen: 0.05,
+    /*
+     * So it opens them from the inside instead: its round strokes give up a
+     * share of the stem gained at their sides, their outsides held, and an
+     * Ultra's o, e and 6 keep a counter rather than a slot (see `rounds.ts`).
+     */
+    heavyThin: 1.2,
     /*
      * And closing further than that past the Black: a pen a quarter of the
      * em wide leaves an o no rounder than its counter lets it, and held to a

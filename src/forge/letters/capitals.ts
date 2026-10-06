@@ -6,7 +6,7 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
-import { bowlPoint, spineEnd } from "../shapes";
+import { alongSpine, bowlPoint, spineEnd } from "../shapes";
 import { blackness, type Style } from "../style";
 import {
   barWeight,
@@ -478,18 +478,28 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const half = f.capBowl * 0.95;
     const middle = f.edge + half;
-    return finish(f, [
-      ink(f, straight(at(middle, 0), at(middle, f.cap)), f.end, BUTT),
-      thin(
-        f,
-        straight(
-          at(middle - half, f.hangs(f.cap, f.bar)),
-          at(middle + half, f.hangs(f.cap, f.bar)),
-        ),
-        f.end,
-        f.end,
-      ),
-    ]);
+    const arm = thin(
+      f,
+      straight(at(middle - half, f.hangs(f.cap, f.bar)), at(middle + half, f.hangs(f.cap, f.bar))),
+      f.end,
+      f.end,
+    );
+    /*
+     * On a face whose arm waves, the stem stops inside the arm where the arm
+     * crosses it, rather than on the cap line: the wave rides under the line,
+     * and a stem carried up to it stood square in the troughs either side of
+     * it, poking up between them.
+     */
+    const waved = arm.spine.segments.length > 1;
+    const top = waved
+      ? Math.min(
+          ...alongSpine(arm.spine, 600)
+            .filter((point) => Math.abs(point.x - middle) <= f.half)
+            .map((point) => point.y),
+          f.cap,
+        )
+      : f.cap;
+    return finish(f, [ink(f, straight(at(middle, 0), at(middle, top)), f.end, BUTT), arm]);
   },
 
   U: (style) => {

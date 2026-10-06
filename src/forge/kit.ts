@@ -26,7 +26,8 @@ import { contourArea, contoursBounds, type Bounds } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
 import type { Style } from "./style";
-import type { Spine, SpineSegment, Stroke, Terminal } from "./types";
+import { penReach, reachAlong } from "./sweep";
+import type { Pen, Spine, SpineSegment, Stroke, Terminal } from "./types";
 
 // ---------------------------------------------------------------------------
 // What a kit is
@@ -205,6 +206,36 @@ export function rowsOf(grid: Grid): number[] {
  */
 export function unitOf(style: Style, grid: Grid): number {
   return style.metrics.capHeight / Math.max(1, grid.rows);
+}
+
+/**
+ * How much of a cell a stroke may fill and leave the letters legible: a row
+ * across, for a level run, since the eye of an e and the bowl of an a are one
+ * row high; and a little over a cell for an upright, since the counters
+ * between two uprights are two columns wide.
+ */
+const ROW_INK = 0.6;
+const COLUMN_INK = 0.95;
+
+/**
+ * The pen a letter on the grid is drawn with.
+ *
+ * The face's own, unless at the face's own weight it fills too much of a
+ * cell: a heavy face's pen is wider across than a row is tall less a
+ * counter, and on the grid the one-row eye of its e and the bowl of its a
+ * closed solid -- the Ribbon's and the Fairground's, whose level runs are a
+ * whole cell deep. There the pen is taken down by as much as it needs, and
+ * by that same share at every weight, so the weight control still moves the
+ * letters on the grid as it moves the rest of the font.
+ *
+ * `own` is the pen at the face's own weight, held as it is now.
+ */
+export function gridPen(pen: Pen, own: Pen, unit: number): Pen {
+  const reach = penReach(own);
+  const level = 2 * Math.abs(reachAlong({ x: 0, y: 1 }, reach).y);
+  const upright = 2 * Math.abs(reachAlong({ x: 1, y: 0 }, reach).x);
+  const share = Math.min(1, (ROW_INK * unit) / level, (COLUMN_INK * unit) / upright);
+  return share >= 1 ? pen : { ...pen, weight: pen.weight * share };
 }
 
 /** Where a cell sits, in font units. */

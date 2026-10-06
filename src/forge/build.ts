@@ -45,7 +45,8 @@ import { effectInk, reachesEffects, type Effects } from "./effects";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
-import { assemble, hasTiles, type Kit } from "./kit";
+import { assemble, gridPen, hasTiles, type Kit, unitOf } from "./kit";
+import { thinnedRounds } from "./rounds";
 import {
   alongSpine,
   decided,
@@ -112,7 +113,7 @@ export interface Bone {
 export function skeletonOf(name: string, style: Style, form?: string): Bone[] {
   const recipe = recipeOf(name, form);
   if (!recipe) return [];
-  return recipe(widthOf(style, name)).strokes.map((stroke) => {
+  return thinnedRounds(recipe(widthOf(style, name)), style).strokes.map((stroke) => {
     const reach = penReach(stroke.pen);
     return {
       path: spinePath(stroke.spine),
@@ -222,6 +223,17 @@ export function drawLetter(
 ): Drawn | null {
   const made = makeLetter(name, style, form, cuts, kit, cast, effects);
   return made ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut } : null;
+}
+
+/**
+ * The style a letter on the grid is drawn in: the face's own, with its pen
+ * held to what a cell can take (see `gridPen`).
+ */
+function gridded(style: Style, kit: Kit): Style {
+  const base = BASES.find((one) => one.name === style.name);
+  const own = base ? { ...style.pen, weight: base.pen.weight } : style.pen;
+  const pen = gridPen(style.pen, own, unitOf(style, kit.grid));
+  return pen === style.pen ? style : { ...style, pen };
 }
 
 /** One run of a letter: its ink, and the named decisions it was built from. */
@@ -368,13 +380,15 @@ function drawnFresh(
    * letter is comes out here and nowhere else: everything after this point --
    * the ink, the lean, the spacing, the cuts -- is the same either way.
    */
-  const laid = kit?.on && hasTiles(kit, name) ? assemble(kit.glyphs[name], style, kit) : null;
+  const onGrid = kit?.on && hasTiles(kit, name) ? gridded(style, kit) : null;
+  const laid = kit && onGrid ? assemble(kit.glyphs[name], onGrid, kit) : null;
   const recipe = laid ? null : recipeOf(name, form);
   if (!laid && !recipe) return null;
-  const built: Recipe | null = recipe ? recipe(widthOf(style, name)) : null;
+  // Past the Black, a geometric face's rounds thinned at their sides: see `rounds.ts`.
+  const built: Recipe | null = recipe ? thinnedRounds(recipe(widthOf(style, name)), style) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
-  const inked = inkAll(strokes, style, name);
+  const inked = inkAll(strokes, onGrid ?? style, name);
   // Cells filled in outright are ink rather than a path for it, so they join
   // the drawing as their own run.
   if (laid && laid.blocks.length > 0) inked.push(laid.blocks);
@@ -2397,6 +2411,9 @@ function ballsFor(
      * down, the Psychedelic's parentheses wore their balls inside their
      * own curves.
      */
+    let ceiling = band.yMax;
+    let floor = band.yMin;
+    let wall = band.xMin;
     if (!written && !buried && !style.parts.ball.curved) {
       const over = placed.y + held - band.yMax;
       const under = band.yMin + held - placed.y;
@@ -2406,13 +2423,51 @@ function ballsFor(
           : under > 0 && outward.y < -0.6
             ? under / -outward.y
             : 0;
-      if (back > 0) placed = { x: placed.x - outward.x * back, y: placed.y - outward.y * back };
+      if (back > 0) {
+        placed = { x: placed.x - outward.x * back, y: placed.y - outward.y * back };
+        /*
+         * Set back no further than leaves it covering both corners of the
+         * cut, where the letter has room above (or below) its own ink before
+         * the next line it is drawn between: set back the whole way, a
+         * parenthesis's ball left the cut's inner corner standing out beside
+         * it as an ear. A run whose ink already stops on a line keeps the
+         * whole set-back.
+         */
+        const lines = [0, style.metrics.xHeight, style.metrics.capHeight];
+        lines.push(style.metrics.ascender, style.metrics.descender);
+        const room =
+          over > 0
+            ? Math.min(...lines.filter((y) => y > band.yMax + 2)) - band.yMax
+            : band.yMin - Math.max(...lines.filter((y) => y < band.yMin - 2));
+        // How far back along the run the ball may sit and still take in
+        // both corners of the cut, which a pen with contrast puts a little
+        // ahead of and behind the end rather than square across it.
+        const shift = reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen));
+        const ahead = Math.abs(shift.x * outward.x + shift.y * outward.y);
+        const square = shift.x * shift.x + shift.y * shift.y;
+        const reachSq = (held * 0.98) ** 2 - square + ahead * ahead;
+        const covers = reachSq > 0 ? Math.sqrt(reachSq) - ahead : -Infinity;
+        const behind = { x: at.x - placed.x, y: at.y - placed.y };
+        const setBackBy =
+          Math.hypot(behind.x, behind.y) *
+          (behind.x * outward.x + behind.y * outward.y < 0 ? -1 : 1);
+        if (Number.isFinite(room) && room > 0 && covers > 0 && setBackBy > covers) {
+          const want = Math.max(covers, setBackBy - room / Math.abs(outward.y));
+          placed = { x: at.x - outward.x * want, y: at.y - outward.y * want };
+          if (over > 0) ceiling = Math.max(ceiling, placed.y + held);
+          else floor = Math.min(floor, placed.y - held);
+          // Nor held in off the left, where the corner it covers is the
+          // letter's leftmost ink: the bulge of the disc round it is all
+          // that passes it.
+          wall = Math.min(wall, placed.x - held);
+        }
+      }
     }
     const kept = written
       ? placed
       : {
-          x: Math.max(placed.x, band.xMin + held),
-          y: Math.min(Math.max(placed.y, band.yMin + held), band.yMax - held),
+          x: Math.max(placed.x, wall + held),
+          y: Math.min(Math.max(placed.y, floor + held), ceiling - held),
         };
     /*
      * And, moved in off a line, slid along it until it still covers both
@@ -2551,7 +2606,12 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
     const written = style.parts.script.on;
     const grows = written ? stem : Math.min(stem, style.metrics.unitsPerEm * 0.12);
     const reach = spread * grows;
-    const back = depth * grows;
+    /*
+     * And never further back than the stroke runs: the dot of a grid i is
+     * half a cell long, and a swelling a pen deep on its top end ran on past
+     * its foot and down onto the stem.
+     */
+    const back = Math.min(depth * grows, spineLength(stroke.spine));
     /*
      * And only on an upright or a level run. On a diagonal cut level the
      * swelling lay along the line and stood out sideways off the slant as a

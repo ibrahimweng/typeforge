@@ -105,6 +105,31 @@ describe("past the Black", () => {
     }
   }, 300_000);
 
+  it("opens the Geometric's rounds from the inside, keeping their outsides", () => {
+    /*
+     * The Geometric keeps its o round, so past the Black it cannot widen its
+     * bowls; its round strokes thin at their sides instead (`rounds.ts`). At
+     * 260 its o was a slot 0.55 of a stem across, its b, d, p and q and its
+     * 0, 6 and 9 the same.
+     */
+    for (const letter of ["o", "b", "d", "p", "q", "a", "c", "zero", "six", "nine", "O"]) {
+      const found = counters(letter, "Geometric", 260);
+      const shown = found.map((v) => v.toFixed(2)).join(", ");
+      for (const one of found) expect(one, `${letter}: ${shown}`).toBeGreaterThan(0.7);
+    }
+    // And the o as wide as it was: the outside does not move.
+    const width = (weight: number) => {
+      const box = contoursBounds(drawn("o", "Geometric", weight));
+      return box.xMax - box.xMin;
+    };
+    const style = face("Geometric");
+    const rounds = (weight: number) =>
+      contoursBounds(drawn("o", "Geometric", weight)).yMax -
+      contoursBounds(drawn("o", "Geometric", weight)).yMin;
+    expect(width(260) / rounds(260)).toBeLessThan(1.28);
+    expect(style.metrics.heavyThin).toBeGreaterThan(0);
+  }, 300_000);
+
   it("changes nothing up to the Sans's Black", () => {
     // Geist Black's stem, where the Sans is fitted to Geist Black.
     expect(pastBlack({ ...face("Sans"), pen: { ...face("Sans").pen, weight: 194 } })).toBe(0);
