@@ -7,8 +7,9 @@
  */
 
 import { spineEnd } from "../shapes";
-import { penReach, reachAlong } from "../sweep";
+import { penReach, reachAlong, sweep } from "../sweep";
 import { blackness, pastBlack, stemBlack, type Style } from "../style";
+import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
 import { stackedPen } from "./grotesque";
@@ -1434,23 +1435,66 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * at the limit of the axis.
      */
     const lowest = kneeY + r * Math.SQRT1_2 + f.half * 0.5;
-    const loopY =
+    const held =
       pastBlack(f.style) > 0
         ? Math.max(Math.min(risen, f.crest(C) - r), Math.min(risen, lowest))
         : risen;
-    const rise = loopY - bowlAt.y;
     const clear = (r + R) * 1.08;
-    const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
-    const loopAt = at(bowlAt.x + over, loopY);
-    // Where the tangent common to both circles, crossing between them, meets
-    // each: on the loop's lower right and the bowl's upper left.
-    const apart = Math.hypot(over, rise);
-    const joinAt =
-      ((Math.atan2(rise, over) + Math.PI + Math.acos(Math.min(1, (r + R) / apart))) * 180) /
-        Math.PI -
-      360;
-    const leave = pointOn(loopAt, r, joinAt);
-    const arrive = pointOn(bowlAt, R, joinAt + 180);
+    /*
+     * The loop stood at a height, and the spine from it down into the bowl and
+     * round to the arm: the run between the two circles is the tangent common
+     * to both, crossing between them, and meets each on the loop's lower right
+     * and the bowl's upper left.
+     */
+    const placed = (loopY: number) => {
+      const rise = loopY - bowlAt.y;
+      const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
+      const loopAt = at(bowlAt.x + over, loopY);
+      const apart = Math.hypot(over, rise);
+      const joinAt =
+        ((Math.atan2(rise, over) + Math.PI + Math.acos(Math.min(1, (r + R) / apart))) * 180) /
+          Math.PI -
+        360;
+      const spine = chain(
+        pinned(turn(loopAt, r, joinAt + 18, joinAt), 1),
+        straight(pointOn(loopAt, r, joinAt), pointOn(bowlAt, R, joinAt + 180)),
+        pinned(turn(bowlAt, R, joinAt + 180, 345), 3),
+      );
+      return { loopAt, joinAt, spine };
+    };
+    /*
+     * Held under the cap line, the loop comes down beside the bowl wherever the
+     * cap line is low for the pen -- a short cap height, a tall x-height, a pen
+     * held at an angle, past the Black. There the spine leaves the loop
+     * running uphill, goes most of the way round the bowl, and comes back over
+     * its own start: the run's end at the arm and its start at the loop
+     * crossed, and the letter folded. So where it would, the loop rises again,
+     * only as far as it takes to clear -- never past where it stood before it
+     * was held, which is where it stood at the limit of the axis. Asked of the
+     * run itself, because how far it reaches back round depends on the pen's
+     * shape as much as on where the loop is; where it does not fold, which is
+     * every face as it comes, the loop stays where it is held.
+     */
+    const folds = (spine: Spine) =>
+      sweep({ spine, pen: f.style.pen, start: BUTT, end: BUTT }).some((contour) =>
+        contoursIntersect([contour]),
+      );
+    let loop = placed(held);
+    if (held < risen && folds(loop.spine)) {
+      let low = held;
+      let high = risen;
+      if (!folds(placed(high).spine)) {
+        for (let step = 0; step < 12; step++) {
+          const middle = (low + high) / 2;
+          if (folds(placed(middle).spine)) low = middle;
+          else high = middle;
+        }
+        // And a little clear of the fold rather than grazing it.
+        high = Math.min(risen, high + f.half * 0.25);
+      }
+      loop = placed(high);
+    }
+    const { loopAt, joinAt } = loop;
     // The diagonal leaves the loop at forty-five degrees and turns out along
     // the baseline into its foot.
     const from = pointOn(loopAt, r, 225);
@@ -1481,16 +1525,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
         BUTT,
         BUTT,
       ),
-      ink(
-        f,
-        chain(
-          pinned(turn(loopAt, r, joinAt + 18, joinAt), 1),
-          straight(leave, arrive),
-          pinned(turn(bowlAt, R, joinAt + 180, 345), 3),
-        ),
-        BUTT,
-        BUTT,
-      ),
+      ink(f, loop.spine, BUTT, BUTT),
       // The arm on its own, run in from a little way back round the bowl: at
       // a black weight its top comes up under the spine, and in one run with
       // it the two edges met and the outline folded.
