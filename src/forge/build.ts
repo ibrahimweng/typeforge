@@ -1067,6 +1067,26 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
  * whether it is a lowercase letter, whose stems take a sloped head.
  */
 function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
+  const dressed = given.some((stroke) => stroke.setAs)
+    ? dressedSmall(given, style, name)
+    : dressedAll(given, style, name);
+  const swept = dressed.map((stroke) => sweep(stroke));
+  return dressed.map((stroke, index) => {
+    const others = swept.flatMap((one, other) => (other === index ? [] : one));
+    const as = stroke.setAs;
+    if (!as) return inkOf(stroke, style, others);
+    // A letter drawn small is inked where it was drawn, on its own lines,
+    // with what stands beside it moved there too: see `dressedSmall`.
+    return inkOf(
+      shiftedStroke(stroke, -as.dx, -as.dy),
+      as.style,
+      others.map((contour) => shiftedContour(contour, -as.dx, -as.dy)),
+    ).map((contour) => shiftedContour(contour, as.dx, as.dy));
+  });
+}
+
+/** A letter's strokes made ready to ink: thinned where they rise, and their ends dressed. */
+function dressedAll(given: Stroke[], style: Style, name: string): Stroke[] {
   const thinned =
     style.metrics.risingHairline && !style.metrics.risingOwn?.includes(decidedBy(name));
   // A text serif's vees drawn in one run are taken apart first, so their
@@ -1101,7 +1121,7 @@ function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
    * text face's figures read as a sans's with serifs on their feet.
    */
   const anyDrop = figure || decidedBy(name) === "question";
-  const dressed = strokes.map((stroke) =>
+  return strokes.map((stroke) =>
     dress(
       stroke,
       style,
@@ -1112,14 +1132,6 @@ function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
       capitalDrop,
       anyDrop,
       tallS,
-    ),
-  );
-  const swept = dressed.map((stroke) => sweep(stroke));
-  return dressed.map((stroke, index) =>
-    inkOf(
-      stroke,
-      style,
-      swept.flatMap((one, other) => (other === index ? [] : one)),
     ),
   );
 }
@@ -1151,6 +1163,79 @@ function risen(stroke: Stroke): Stroke {
   const thin = hairlineWeight(stroke.pen);
   if (thin >= stroke.pen.weight) return stroke;
   return { ...stroke, pen: { ...stroke.pen, weight: thin, contrast: 0 } };
+}
+
+/**
+ * `dressedAll` for a glyph some of whose strokes are a letter drawn small:
+ * see `Stroke.setAs`. Each such letter's strokes are made ready as that
+ * letter at that size -- thinned, and their ends dressed, where it was
+ * drawn, on its own lines -- and then moved back to where they stand in the
+ * glyph; the rest are made ready as the glyph's own. Handed back in the
+ * order given.
+ */
+function dressedSmall(given: Stroke[], style: Style, name: string): Stroke[] {
+  const groups = new Map<string, number[]>();
+  given.forEach((stroke, index) => {
+    const as = stroke.setAs;
+    const key = as ? `${as.name} ${as.dx} ${as.dy}` : "";
+    groups.set(key, [...(groups.get(key) ?? []), index]);
+  });
+  const dressed: Stroke[] = [];
+  for (const indices of groups.values()) {
+    const group = indices.map((index) => given[index]);
+    const as = group[0].setAs;
+    const done = as
+      ? dressedAll(
+          group.map((stroke) => shiftedStroke(stroke, -as.dx, -as.dy)),
+          as.style,
+          as.name,
+        ).map((stroke) => shiftedStroke(stroke, as.dx, as.dy))
+      : dressedAll(group, style, name);
+    indices.forEach((index, at) => {
+      dressed[index] = done[at];
+    });
+  }
+  return dressed;
+}
+
+function shiftedContour(contour: Contour, dx: number, dy: number): Contour {
+  const point = (p: Vec2): Vec2 => ({ x: p.x + dx, y: p.y + dy });
+  return {
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: point(node.point),
+      handleIn: node.handleIn && point(node.handleIn),
+      handleOut: node.handleOut && point(node.handleOut),
+    })),
+  };
+}
+
+/** A stroke moved, with the one height its dressed ends carry moved too. */
+function shiftedStroke(stroke: Stroke, dx: number, dy: number): Stroke {
+  const point = (p: Vec2): Vec2 => ({ x: p.x + dx, y: p.y + dy });
+  const spine: Spine = {
+    closed: stroke.spine.closed,
+    segments: stroke.spine.segments.map((segment) =>
+      segment.kind === "line"
+        ? { ...segment, from: point(segment.from), to: point(segment.to) }
+        : { ...segment, centre: point(segment.centre) },
+    ),
+  };
+  const end = (terminal: Terminal): Terminal =>
+    terminal.beak?.bar
+      ? {
+          ...terminal,
+          beak: {
+            ...terminal.beak,
+            reach: terminal.beak.reach + dy,
+            bar: { ...terminal.beak.bar, from: terminal.beak.bar.from + dy },
+          },
+        }
+      : terminal.beak
+        ? { ...terminal, beak: { ...terminal.beak, reach: terminal.beak.reach + dy } }
+        : terminal;
+  return { ...stroke, spine, start: end(stroke.start), end: end(stroke.end) };
 }
 
 /**

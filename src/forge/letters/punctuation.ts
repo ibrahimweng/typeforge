@@ -12,6 +12,7 @@ import { blackness, pastBlack, stemBlack, type Style } from "../style";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
 import { stackedPen } from "./grotesque";
+import { capitalY } from "./capitals";
 import {
   arm,
   at,
@@ -995,10 +996,11 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * and it is what a heavy face has room to draw.
    */
   yen: outOf("Y", (f, y) => {
-    const drawn = y();
+    const told = f.style.metrics.yen;
+    // Its own Y where the face draws one (`metrics.yen.meets`), or the letter.
+    const drawn = told?.meets ? capitalY(f.style, told.meets).strokes : y();
     const across = spread(drawn);
     // A face that says where its bars go (`metrics.yen`) draws them there.
-    const told = f.style.metrics.yen;
     if (told) {
       const middle = (across.xMin + across.xMax) / 2 + f.cap * told.shift;
       const reach = f.cap * told.reach;

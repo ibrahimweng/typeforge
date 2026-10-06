@@ -31,7 +31,15 @@ import {
   superQuarter,
   wavy,
 } from "../shapes";
-import { blackness, heavier, pastBlack, spacingOf, type Style, terminalFor } from "../style";
+import {
+  blackness,
+  heavier,
+  pastBlack,
+  proportioned,
+  spacingOf,
+  type Style,
+  terminalFor,
+} from "../style";
 import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
 import { contoursIntersect } from "@/font/outline";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
@@ -4417,7 +4425,30 @@ export function turnSpine(spine: Spine, about: Vec2): Spine {
 
 /** A stroke moved, keeping its pen, its ends and what it was built from. */
 export function shovedStroke(stroke: Stroke, dx: number, dy: number): Stroke {
-  return inherit(stroke, { ...stroke, spine: shoveSpine(stroke.spine, dx, dy) });
+  const { setAs } = stroke;
+  return inherit(stroke, {
+    ...stroke,
+    spine: shoveSpine(stroke.spine, dx, dy),
+    ...(setAs ? { setAs: { ...setAs, dx: setAs.dx + dx, dy: setAs.dy + dy } } : {}),
+  });
+}
+
+/**
+ * The strokes of a letter drawn small, marked to be finished as that letter
+ * is at that size rather than as the symbol they end up in: see
+ * `Stroke.setAs`.
+ *
+ * Finished as the symbol's, they took none of the letter's: a serif goes only
+ * where a stroke stops on one of the face's own lines, and a superior one
+ * stands nowhere near one, so the Serif's superior figures, fractions, trade
+ * mark and registered sign came out without a foot serif, a drop or a beak
+ * among them -- sans figures in a text face, where Lora draws its own with
+ * every one.
+ */
+export function dressedAs(strokes: Stroke[], name: LetterName, style: Style): Stroke[] {
+  return strokes.map((stroke) =>
+    inherit(stroke, { ...stroke, setAs: { name, style, dx: 0, dy: 0 } }),
+  );
 }
 
 export function turnedStroke(stroke: Stroke, about: Vec2): Stroke {
@@ -4461,9 +4492,26 @@ export function setSmall(
   left: number,
   foot: number,
   penShare?: number,
+  dressed = false,
 ): Stroke[] {
-  const little = sized(style, fraction, penShare);
-  const strokes = setInside(() => recipeOf(name, borrowing)!(little).strokes);
+  const small = sized(style, fraction, penShare);
+  /*
+   * Dressed as the letter it is (see `dressedAs`), it is drawn as that letter
+   * at that size all through: on an em as much smaller, so its serifs reach
+   * as far as a letter that size has them reach rather than as far as the
+   * full-size letter's, and at the width the face asks of it set small
+   * (`metrics.superiors.wide`).
+   */
+  const m = small.metrics;
+  const wide = dressed ? (style.metrics.superiors?.wide?.[name] ?? 1) : 1;
+  const little = dressed
+    ? {
+        ...small,
+        metrics: { ...m, width: m.width * wide, unitsPerEm: m.unitsPerEm * fraction },
+      }
+    : small;
+  const drawn = setInside(() => recipeOf(name, borrowing)!(little).strokes);
+  const strokes = dressed ? dressedAs(drawn, name, little) : drawn;
   return strokes.map((stroke) => shovedStroke(stroke, left - spacingOf(little), foot));
 }
 
@@ -4502,7 +4550,7 @@ export function superior(f: Frame, name: LetterName): Recipe {
   const set = f.style.metrics.superiors;
   const share = set?.share ?? 0.6;
   const foot = set ? f.cap * set.foot : f.cap * (1 - share);
-  return { strokes: setSmall(f.style, name, share, f.edge, foot, set?.pen) };
+  return { strokes: setSmall(f.style, name, share, f.edge, foot, set?.pen, set !== undefined) };
 }
 
 /**
@@ -4535,6 +4583,21 @@ export function fraction(f: Frame, over: LetterName, under: LetterName): Recipe 
 }
 
 /**
+ * The style a glyph drawn at `owner`'s width draws `name` at, at its own.
+ *
+ * A fraction is drawn at its numerator's width (see `widthOf` in `build.ts`:
+ * the one and the three own the quarter and the three quarters), and its
+ * denominator came with it: the Serif's four under a one stood 0.8 as wide
+ * as the same four under a three, where Lora's is one figure in both.
+ */
+function widthFor(style: Style, owner: LetterName, name: LetterName): Style {
+  const ratio = proportioned(style, name).metrics.width / proportioned(style, owner).metrics.width;
+  if (ratio === 1) return style;
+  const m = style.metrics;
+  return { ...style, metrics: { ...m, width: m.width * ratio, stretch: (m.stretch ?? 1) * ratio } };
+}
+
+/**
  * A fraction as a text face sets it (`metrics.superiors`): the numerator a
  * superior figure, the denominator the same figure standing on the line, and
  * between them a long slash from the line to the cap line, cut square, its
@@ -4544,7 +4607,7 @@ export function fraction(f: Frame, over: LetterName, under: LetterName): Recipe 
  */
 function textFraction(f: Frame, over: LetterName, under: LetterName): Recipe {
   const set = f.style.metrics.superiors!;
-  const numerator = setSmall(f.style, over, set.share, f.edge, f.cap * set.foot, set.pen);
+  const numerator = setSmall(f.style, over, set.share, f.edge, f.cap * set.foot, set.pen, true);
   // Measured off the swept ink: the skeleton and the pen alone miss the
   // serifs, and the slash then stood off the middle of a flagged one.
   const inkOf = (strokes: Stroke[]) => {
@@ -4555,7 +4618,10 @@ function textFraction(f: Frame, over: LetterName, under: LetterName): Recipe {
   const wide = Math.max(f.style.pen.weight * set.slash, f.cap * 0.03);
   const low = -f.cap * 0.004;
   const high = f.cap * 1.0007;
-  const foot = at(top.xMin + (top.xMax - top.xMin) * 0.52, low);
+  // Under the middle of the numerator, or as far across it as the face
+  // says (`metrics.superiors.slashAt`): the one's foot serif reaches right
+  // and its flag left, and Lora's slash leaves from under the serif.
+  const foot = at(top.xMin + (top.xMax - top.xMin) * (set.slashAt?.[over] ?? 0.52), low);
   const head = at(foot.x + (high - low) * set.slope, high);
   const drawn = ink(f, straight(foot, head), BUTT, BUTT);
   const slash = finish(f, [
@@ -4564,7 +4630,15 @@ function textFraction(f: Frame, over: LetterName, under: LetterName): Recipe {
   // The denominator's ink starts 0.41 of the cap height on from the slash's
   // foot, under its head, as Lora's does (287 on a cap height of 700).
   const along = foot.x + f.cap * 0.41;
-  const denominator = setSmall(f.style, under, set.share, 0, 0, set.pen);
+  const denominator = setSmall(
+    widthFor(f.style, over, under),
+    under,
+    set.share,
+    0,
+    0,
+    set.pen,
+    true,
+  );
   const box = inkOf(denominator);
   return {
     strokes: [
