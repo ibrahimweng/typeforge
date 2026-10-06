@@ -47,8 +47,10 @@ export default defineConfig({
      * Coverage, off unless it is asked for.
      *
      * `npm run coverage`. Instrumenting every file costs six times the run --
-     * four minutes measured here becomes twenty-six -- and reports nothing the
-     * ordinary run needs, so it is not on by default. What it is for is a
+     * a run of four minutes became twenty-six when that was measured -- and
+     * the run is longer now: about twelve minutes on an idle four-core machine
+     * (694 seconds). It reports nothing the ordinary run needs, so it is not
+     * on by default. What it is for is a
      * question about the suite rather than about a change, and it is asked
      * deliberately.
      */

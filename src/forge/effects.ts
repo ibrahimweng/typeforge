@@ -1031,13 +1031,62 @@ function pressWedges(
        * thins. Eased in over a few samples from each end the stroke itself
        * does not have, the pressure comes and goes as a hand's does; at a
        * real end of the stroke it is still cut to the tip.
+       *
+       * Eased out past the run, though, where the ink's edge runs on. A run
+       * most often stops where the stroke swells -- the ray from the spine
+       * reaches further than a flank is believed -- and that is where the
+       * band cuts deepest, a share of a body that is growing. Eased over the
+       * run's own last samples, the pressure came off just where it was
+       * greatest: the Formal Script's S kept half the thinning of its
+       * swashes. So where the edge goes on smoothly to the next sample, the
+       * run keeps its whole depth and the band slopes out of the ink to that
+       * sample, a sample's length rather than a step. Out to the band's own
+       * outer side there, and no nearer the edge: brought out only as far as
+       * the eased samples are, it ran close along the edge for that length,
+       * and the subtraction folded the S and the z over themselves.
        */
+      const onward = (from: number, toward: 1 | -1): Vec2 | null => {
+        const at = from + toward;
+        if (walls.length > 0) return null;
+        /*
+         * Only into a gap at least as long as an ease. Across a sample or
+         * two left out mid-flank, the bands either side would both keep their
+         * depth up to it and leave the ink between standing as a tooth; there
+         * the runs ease inside themselves, as they did.
+         */
+        for (let step = 0; step < EASE; step++) {
+          const gap = at + step * toward;
+          if (gap < 0 || gap >= walked.length || flank[gap]) return null;
+        }
+        const before = walked[Math.max(0, at - 1)];
+        const after = walked[Math.min(walked.length - 1, at + 1)];
+        const far = Math.hypot(after.x - before.x, after.y - before.y);
+        if (far < 1e-9) return null;
+        const normal = {
+          x: (-(after.y - before.y) / far) * side,
+          y: ((after.x - before.x) / far) * side,
+        };
+        const here = walked[at];
+        const hit = rayHitDistance(edges, here, normal);
+        // The edge running on rather than jumping to another: no further
+        // from the run's own than the samples are apart.
+        const end = run[toward === 1 ? run.length - 1 : 0].edge;
+        const was = Math.hypot(end.x - walked[from].x, end.y - walked[from].y);
+        const apart = Math.hypot(here.x - walked[from].x, here.y - walked[from].y);
+        if (!Number.isFinite(hit) || hit < 0.5 || Math.abs(hit - was) > apart * 1.5) return null;
+        return {
+          x: here.x + normal.x * (hit + half * 0.3),
+          y: here.y + normal.y * (hit + half * 0.3),
+        };
+      };
       const close = (after: number) => {
         if (run.length >= 2) {
           const last = first + run.length - 1;
+          const before = first === 0 ? null : onward(first, -1);
+          const beyond = last === walked.length - 1 ? null : onward(last, 1);
           const eased = run.map((one, index) => {
-            const fromStart = first === 0 ? EASE : index;
-            const fromEnd = last === walked.length - 1 ? EASE : run.length - 1 - index;
+            const fromStart = first === 0 || before ? EASE : index;
+            const fromEnd = last === walked.length - 1 || beyond ? EASE : run.length - 1 - index;
             const share = Math.min(1, fromStart / EASE, fromEnd / EASE);
             // Eased out to well clear of the edge rather than onto it: a
             // band lying along the ink's own edge leaves the subtraction a
@@ -1055,11 +1104,10 @@ function pressWedges(
               outer: one.outer,
             };
           });
-          strip.push(
-            oneWay(
-              poly([...eased.map((one) => one.inner), ...eased.map((one) => one.outer).reverse()]),
-            ),
-          );
+          const inner = eased.map((one) => one.inner);
+          if (before) inner.unshift(before);
+          if (beyond) inner.push(beyond);
+          strip.push(oneWay(poly([...inner, ...eased.map((one) => one.outer).reverse()])));
         }
         run = [];
         first = after;

@@ -35,6 +35,7 @@ import {
   pointOn,
   dot,
   sized,
+  dressedAs,
   setInside,
   borrowing,
   shovedStroke,
@@ -588,6 +589,7 @@ function loraEnclosed(
   penShare: number,
   shift: Vec2,
   wide = 1,
+  dressed = false,
 ): Recipe {
   const f = frame(style);
   const u = loraUnit(f);
@@ -599,7 +601,8 @@ function loraEnclosed(
   const pen: Pen = { weight: side, contrast: Math.min(0.5, 1 - crown / side), angle: 0 };
   const little = sized(f.style, share, penShare);
   const set = { ...little, metrics: { ...little.metrics, width: little.metrics.width * wide } };
-  const letter = setInside(() => recipeOf(name, borrowing)!(set).strokes);
+  const drawn = setInside(() => recipeOf(name, borrowing)!(set).strokes);
+  const letter = dressed ? dressedAs(drawn, name, set) : drawn;
   const box = spread(letter);
   return {
     strokes: [
@@ -623,9 +626,16 @@ export function humanistCopyright(style: Style): Recipe {
   return loraEnclosed(style, "C", 0.69, 0.92, at(-15, 0));
 }
 
-/** The registered sign as Lora's: see `loraEnclosed`. */
+/**
+ * The registered sign as Lora's: see `loraEnclosed`. Its R is Lora's, wider
+ * than the Serif's set small (1.18) and finished as an R with its serifs
+ * (see `dressedAs`), 0.61 of a capital on 0.875 of the pen at the Regular and
+ * 0.49 at the Bold, held there past it, and it stands 58 right of the ring's
+ * middle and 28 up. The R the sign drew before stood about 40 units left of
+ * Lora's and wore no serifs.
+ */
 export function humanistRegistered(style: Style): Recipe {
-  return loraEnclosed(style, "R", 0.67, byPen(style, 0.85, 0.69), at(18, 16));
+  return loraEnclosed(style, "R", 0.61, bySize(style, 0.875, 0.49), at(58, 28), 1.18, true);
 }
 
 // ---------------------------------------------------------------------------
@@ -647,7 +657,9 @@ function smallLetter(
 ): Stroke[] {
   const little = sized(style, share, penShare);
   const set = { ...little, metrics: { ...little.metrics, width: little.metrics.width * wide } };
-  const strokes = setInside(() => recipeOf(name, style.forms?.[name])!(set).strokes);
+  const drawn = setInside(() => recipeOf(name, style.forms?.[name])!(set).strokes);
+  // With the serifs a T and an M wear: see `dressedAs`.
+  const strokes = dressedAs(drawn, name, set);
   const box = spread(strokes);
   return strokes.map((stroke) => shovedStroke(stroke, left - box.xMin, foot));
 }
@@ -658,16 +670,22 @@ function smallLetter(
  * across and the M 555, their stems 72 at the Regular and 103 at the Bold --
  * with 17 between them. The construction's were narrower by a third and its
  * M was hardly wider than its T.
+ *
+ * And serifed, as Lora's are: finished as a symbol's strokes, the two had
+ * none and read as a sans's. With their serifs on, the M is drawn 1.33 of
+ * its width set small rather than 1.54 and the T 1.06, on 0.93 of the pen at
+ * the Regular, and the M is set 32 units past the T's pen rather than 17, so
+ * the serifs between them stand apart.
  */
 export function humanistTrademark(style: Style): Recipe {
   const f = frame(style);
   const u = loraUnit(f);
   const share = bySize(style, 401, 413) / 700;
-  const pen = Math.min(1, Math.max(0.6, byPen(style, 0.83, 0.73)));
+  const pen = Math.min(1, Math.max(0.6, byPen(style, 0.93, 0.73)));
   const foot = f.cap * (1 - share);
   const left = f.edge - f.half;
-  const t = smallLetter(f.style, "T", share, pen, 1.09, left, foot);
-  const m = smallLetter(f.style, "M", share, pen, 1.54, spread(t).xMax + 17 * u, foot);
+  const t = smallLetter(f.style, "T", share, pen, 1.06, left, foot);
+  const m = smallLetter(f.style, "M", share, pen, 1.33, spread(t).xMax + 32 * u, foot);
   return { strokes: [...t, ...m] };
 }
 
@@ -676,25 +694,30 @@ export function humanistTrademark(style: Style): Recipe {
 // ---------------------------------------------------------------------------
 
 /** How tall each of the section mark's two s's is, in Lora's units. */
-const SECTION_S = 700;
+const SECTION_S = 670;
 
 /**
- * The section mark as Lora's: two tall s's 700 high, the upper one hung from
- * 760 and the lower one standing 228 under the line, so they share the
- * middle; 458 across at the Regular, the upper one set 46 to the right of the
- * lower. Their sides are 80 across at the Regular and 115 at the Bold. The
- * construction's were two small s's inside the cap height, 330 across.
+ * The section mark as Lora's: two tall s's, the upper one hung from 760 and
+ * the lower one standing 228 under the line, so they share the middle; 458
+ * across at the Regular, the upper one set 46 to the right of the lower.
+ * The construction's were two small s's inside the cap height, 330 across.
+ *
+ * Drawn to Lora's ink rather than to those measures: each s 670 high, the
+ * upper set 38.5 right of the lower, their sides 81.5 at the Regular and 123
+ * at the Bold, and at the Bold 0.86 of their Regular width -- 700 high on
+ * sides of 80 and 115 stood off Lora's by 0.38 at the Regular and 0.30 at the
+ * Bold.
  */
 export function humanistSection(style: Style): Recipe {
   const f0 = frame(style);
   const u = loraUnit(f0);
-  const weight = Math.min(byPen(style, 80, 115) * u, SECTION_S * u * 0.24);
+  const weight = Math.min(byPen(style, 81.5, 123) * u, SECTION_S * u * 0.24);
   const held = {
     ...style,
     pen: { ...style.pen, weight },
     metrics: {
       ...style.metrics,
-      width: style.metrics.width * SECTION_WIDE * bySize(style, 1, 0.88),
+      width: style.metrics.width * SECTION_WIDE * bySize(style, 1, 0.86),
     },
   };
   const f = frame(held);
@@ -715,10 +738,10 @@ export function humanistSection(style: Style): Recipe {
 }
 
 /** How much wider than the face's s the section mark's are drawn. */
-const SECTION_WIDE = 0.85;
+const SECTION_WIDE = 0.9;
 
 /** How far right of the lower s the upper one stands, in Lora's units. */
-const SECTION_OVER = 46;
+const SECTION_OVER = 38.5;
 
 /**
  * The pilcrow as Lora's: a solid bowl 291 tall hung from the cap line, from
@@ -960,7 +983,9 @@ function loraOrdinal(style: Style, name: "a" | "o", wide: number): Recipe {
   const share = bySize(style, 0.632, 0.66);
   const little = sized(style, share, 0.7);
   const set = { ...little, metrics: { ...little.metrics, width: little.metrics.width * wide } };
-  const strokes = setInside(() => recipeOf(name, borrowing)!(set).strokes);
+  const drawn = setInside(() => recipeOf(name, borrowing)!(set).strokes);
+  // Finished as the letter it is: the a's head ends in its drop.
+  const strokes = dressedAs(drawn, name, set);
   const box = inkBox(strokes);
   return {
     strokes: strokes.map((stroke) =>
@@ -971,13 +996,13 @@ function loraOrdinal(style: Style, name: "a" | "o", wide: number): Recipe {
 
 export function humanistOrdFeminine(style: Style): Recipe {
   return onTextSerif("ordfeminine", style, () =>
-    loraOrdinal(style, "a", bySize(style, 1.09, 1.05, -0.002)),
+    loraOrdinal(style, "a", bySize(style, 1.003, 0.966, -0.00184)),
   );
 }
 
 export function humanistOrdMasculine(style: Style): Recipe {
   return onTextSerif("ordmasculine", style, () =>
-    loraOrdinal(style, "o", bySize(style, 1.02, 0.745, -0.001)),
+    loraOrdinal(style, "o", bySize(style, 1.01, 0.738, -0.00099)),
   );
 }
 
@@ -1017,7 +1042,7 @@ export function humanistAtSign(style: Style): Recipe {
   // The a's stem, from its head down to where it turns into the tail that
   // meets the ring along the ring's own heading: the tail is the circle
   // tangent to both.
-  const top = at(X(534) + grow * 0.6, 470 * u + grow * 0.3);
+  const top = at(X(514) + grow * 0.6, 478 * u + grow * 0.3);
   const down = (266 * Math.PI) / 180;
   const into = headingAt(ringRun.segments[0], "start");
   const meet = spineStart(ringRun);
@@ -1058,9 +1083,9 @@ export function humanistAtSign(style: Style): Recipe {
   // Never more than half the bowl's width, or it has no counter to go round.
   const bowlSide = Math.min(byPen(style, 70, 99) * u, (outerRight - outerLeft) * 0.36);
   const bowlPen: Pen = { weight: bowlSide, contrast: 0.55, angle: 8 };
-  const bowlCentre = at((outerLeft + outerRight) / 2, 276 * u);
+  const bowlCentre = at((outerLeft + outerRight) / 2, 266 * u);
   const bowlW = (outerRight - outerLeft) / 2 - bowlSide / 2;
-  const bowlH = 206 * u - bowlSide * 0.225;
+  const bowlH = 188 * u - bowlSide * 0.225;
   return finish(
     f,
     [main, penned(f, ring(roundOf(f, bowlSide), bowlCentre, bowlW, bowlH), bowlPen)],

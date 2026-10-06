@@ -204,14 +204,31 @@ export interface Metrics {
    * Left out, a superior is six tenths of a capital hung from the cap line
    * and a fraction's figures stand clear of a short slash.
    */
-  superiors?: { share: number; foot: number; slope: number; slash: number; pen: number };
+  superiors?: {
+    share: number;
+    foot: number;
+    slope: number;
+    slash: number;
+    pen: number;
+    /** How much wider than the face's figure set small each is drawn. */
+    wide?: Record<string, number>;
+    /** How far across a numerator's ink a fraction's slash leaves from. */
+    slashAt?: Record<string, number>;
+  };
   /**
    * Where a yen's two bars stand, as Lora's do: at `bars` of the cap height,
    * reaching `reach` of it either side of the middle (moved `shift` of it),
    * `deep` of the pen deep and even. Left out, they stand under the fork and
    * run the letter's width, one over the other where two will not fit.
    */
-  yen?: { bars: [number, number]; reach: number; shift: number; deep: number };
+  yen?: {
+    bars: [number, number];
+    reach: number;
+    shift: number;
+    deep: number;
+    /** Where the yen's own Y's arms meet, against the cap height: see `capitalY`. */
+    meets?: number;
+  };
   /**
    * Where the accents stand: `gap`, how far over a lowercase letter and over
    * a capital, as shares of the em; and `byFoot`, whether a grave or an
@@ -1357,11 +1374,34 @@ export const SERIF: Style = {
     // fraction slash, 46 across at the Regular and 81 at the Bold, leaning
     // 0.668: the construction's stood 26 units lower, 0.6 of a capital, beside
     // a slash leaning 0.37 that kept the figures apart by the pen.
-    superiors: { share: 0.573, foot: 306 / 700, slope: 0.668, slash: 0.55, pen: 0.72 },
+    //
+    // Drawn as the figures they are, serifs and drops and all (see
+    // `dressedAs` in `letters/common.ts`), on 0.68 of the pen, and each as
+    // wide as Lora's against the Serif's figure set small: Lora's one a
+    // little wider, its two, three and four narrower. A fraction's slash
+    // leaves from three quarters across a one, under its foot serif.
+    superiors: {
+      share: 0.573,
+      foot: 306 / 700,
+      slope: 0.668,
+      slash: 0.55,
+      pen: 0.68,
+      wide: { one: 1.025, two: 0.98, three: 0.895, four: 0.96 },
+      slashAt: { one: 0.75 },
+    },
     // Lora's yen: its bars 186 and 294 up, 345 long and 47 deep at the
     // Regular, where the construction's lay one over the other at 127, the
     // letter's whole width long.
-    yen: { bars: [186 / 700, 294 / 700], reach: 172.5 / 700, shift: 7 / 700, deep: 0.54 },
+    // And its Y is Lora's, not the letter's: the arms run down to meet
+    // 0.26 of the cap height up, where the letter's meet at 0.46, so the
+    // upper bar crosses them where they close rather than under a vee.
+    yen: {
+      bars: [186 / 700, 294 / 700],
+      reach: 172.5 / 700,
+      shift: 7 / 700,
+      deep: 0.54,
+      meets: 0.26,
+    },
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
     bold: {
       at: 0.47,
@@ -1539,23 +1579,23 @@ export const SERIF: Style = {
       slash: [0.62, 0.59, "half", [0, 0], [13, 15]],
       backslash: [0.62, 0.59, "half", [0, 0], [13, 15]],
       bar: [2.32, 2.26, "half", [0, 0], [-13, -11]],
-      ordfeminine: [1.59, 1.21, "half", [0, 0], [-22, -28]],
-      ordmasculine: [1.41, 1.38, "half", [0, 0], [-21, -19]],
+      ordfeminine: [1.71, 1.21, "half", [0, 0], [-10, -51]],
+      ordmasculine: [1.41, 1.35, "half", [0, 0], [-30, -50]],
       cent: [1.06, 1.12, "half", [0, 0], [37, 13]],
       dollar: [1.47, 1.09, "half", [0, 0], [13, 19]],
-      onesuperior: [0.9, 2.26, "half", [0, 0], [-20, -8]],
-      twosuperior: [1.79, 1.88, "half", [0, 0], [-17, -21]],
-      threesuperior: [1.59, 1.56, "half", [0, 0], [-21, -24]],
-      onequarter: [1.32, 1.24, "half", [0, 0], [-12, 9]],
-      onehalf: [1.32, 1.21, "half", [0, 0], [-12, 11]],
-      threequarters: [1.59, 1.24, "half", [0, 0], [-21, 9]],
+      onesuperior: [0.9, 1.84, "half", [0, 0], [-20, -37]],
+      twosuperior: [1.5, 2.45, "half", [0, 0], [-12, 6]],
+      threesuperior: [1.65, 1.86, "half", [0, 0], [-17, -2]],
+      onequarter: [0.91, 1.53, "half", [0, 0], [-20, 15]],
+      onehalf: [0.97, 2.97, "half", [0, 0], [-20, 20]],
+      threequarters: [1.59, 1.49, "half", [0, 0], [-14, 20]],
       sterling: [1.38, 1, "held", [0, 0], [7, 15]],
       paragraph: [0.97, 2.91, "half", [0, 0], [24, 6]],
-      section: [1.12, 1.09, "half", [0, 0], [21, 22]],
+      section: [1.06, 1.05, "half", [0, 0], [17, 20]],
       copyright: [1.29, 1.24, "held", [0, 0], [4, 7]],
       registered: [1.29, 1.26, "held", [0, 0], [4, 6]],
       brokenbar: [2.47, 2.47, "half", [0, 0], [-9, -7]],
-      at: [1.47, 1.24, "half", [0, 0], [7, 21]],
+      at: [1.59, 1.12, "half", [0, 0], [12, 6]],
       yen: [0.82, 0.79, "half", [0, 0], [15, 15]],
       // The typographic punctuation (`letters/typographic.ts`). Lora sets its
       // closing quotes tight, 25 and 23 off, and its opening ones 46 and 52;
@@ -1571,7 +1611,7 @@ export const SERIF: Style = {
       guilsinglleft: [0.91, 1.38, "half", [0, 0], [-15, -13]],
       guilsinglright: [1.38, 0.91, "half", [0, 0], [-13, -15]],
       bullet: [1.47, 1.47, "half", [0, 0], [-22, -22]],
-      trademark: [1.45, 1.45, "half", [0, 0], [22, 15]],
+      trademark: [1.74, 0.94, "half", [0, 0], [40, 9]],
       Euro: [1.03, 1.24, "half", [0, 0], [22, 4]],
       dagger: [0.76, 0.76, "half", [0, 0], [11, 11]],
       exclamdown: [1.85, 1.85, "half", [0, 0], [-15, -15]],

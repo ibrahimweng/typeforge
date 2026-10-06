@@ -560,38 +560,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     ]);
   },
 
-  Y: (style) => {
-    const f = frame(style);
-    const half = f.capBowl * 0.82 + openVee(f);
-    const left = f.edge;
-    const middle = left + half;
-    const junction = f.cap * 0.46;
-    const top = at(left, f.cap);
-    const other = at(middle + half, f.cap);
-    const point = corner(f, top, at(middle, junction), other);
-    const low = dips(f, top, point, other);
-    return finish(f, [
-      ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
-      /*
-       * The stem stands under the vee and runs up past where it bottoms out,
-       * so its square top is buried rather than showing as a step.
-       *
-       * Under where the vee really bottoms out, which is not under the tip
-       * the recipe named: `dips` explains the two places that only look like
-       * it. Standing at the tip put this stem thirty-two units to one side of
-       * its own vee on the Formal Script, and only the width of the vee's ink
-       * was holding the letter together -- thirty-six square units of overlap
-       * at the bowl width it used to ship, none at all at the one it ships
-       * now.
-       *
-       * Half a pen-half past the meeting point, so the two are overlapping
-       * over an area rather than touching along a line. Measured from a point
-       * both strokes' spines pass through, that is a full pen's footprint of
-       * shared ink on every face here.
-       */
-      ink(f, straight(at(low.x, 0), at(low.x, low.y + f.half * 0.5)), f.end, BUTT),
-    ]);
-  },
+  Y: (style) => capitalY(style),
 
   Z: (style) => {
     const f = frame(style);
@@ -636,3 +605,41 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     ]);
   },
 };
+
+/**
+ * The capital Y: two arms meeting `meets` of the cap height up, over a stem.
+ * The yen of a face whose yen's arms run further down than its letter's
+ * (`metrics.yen.meets`) is drawn from this.
+ */
+export function capitalY(style: Style, meets = 0.46): Recipe {
+  const f = frame(style);
+  const half = f.capBowl * 0.82 + openVee(f);
+  const left = f.edge;
+  const middle = left + half;
+  const junction = f.cap * meets;
+  const top = at(left, f.cap);
+  const other = at(middle + half, f.cap);
+  const point = corner(f, top, at(middle, junction), other);
+  const low = dips(f, top, point, other);
+  return finish(f, [
+    ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end),
+    /*
+     * The stem stands under the vee and runs up past where it bottoms out,
+     * so its square top is buried rather than showing as a step.
+     *
+     * Under where the vee really bottoms out, which is not under the tip
+     * the recipe named: `dips` explains the two places that only look like
+     * it. Standing at the tip put this stem thirty-two units to one side of
+     * its own vee on the Formal Script, and only the width of the vee's ink
+     * was holding the letter together -- thirty-six square units of overlap
+     * at the bowl width it used to ship, none at all at the one it ships
+     * now.
+     *
+     * Half a pen-half past the meeting point, so the two are overlapping
+     * over an area rather than touching along a line. Measured from a point
+     * both strokes' spines pass through, that is a full pen's footprint of
+     * shared ink on every face here.
+     */
+    ink(f, straight(at(low.x, 0), at(low.x, low.y + f.half * 0.5)), f.end, BUTT),
+  ]);
+}
