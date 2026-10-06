@@ -233,9 +233,14 @@ describe("shiftShoulders", () => {
    * the arch after it into a hook.
    */
   it("stops short of the top of the arch", () => {
-    const moved = shiftShoulders([ARCH], 400);
-    expect(moved[0].nodes[3].point.y).toBeGreaterThan(800);
-    expect(moved[0].nodes[3].point.y).toBeLessThanOrEqual(800 + 150 * 0.75);
+    // The arch tops out at 950, so three quarters of the way there from 800
+    // is 912.5 -- where the search for the furthest clean move lands exactly,
+    // however far past it the move was asked to go.
+    for (const shift of [120, 400]) {
+      const moved = shiftShoulders([ARCH], shift);
+      expect(moved[0].nodes[3].point).toEqual({ x: 200, y: 800 + 150 * 0.75 });
+      expect(moved[0].nodes[8].point).toEqual({ x: 200, y: 500 + 150 * 0.75 });
+    }
   });
 
   it("leaves the far side of the letter where it was", () => {

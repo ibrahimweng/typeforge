@@ -7,11 +7,13 @@
  */
 
 import { spineEnd } from "../shapes";
-import { penReach, reachAlong } from "../sweep";
-import { blackness, type Style } from "../style";
+import { penReach, reachAlong, sweep } from "../sweep";
+import { blackness, pastBlack, stemBlack, type Style } from "../style";
+import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
 import { stackedPen } from "./grotesque";
+import { capitalY } from "./capitals";
 import {
   arm,
   at,
@@ -33,6 +35,7 @@ import {
   fraction,
   type Frame,
   frame,
+  inherit,
   ink,
   joined,
   LEVEL,
@@ -47,6 +50,7 @@ import {
   shortEnd,
   signGap,
   signWidth,
+  sized,
   spread,
   squareDots,
   stopRadius,
@@ -108,11 +112,35 @@ function quoteWidth(f: Frame): number {
   return stopRadius(f) * 1.44;
 }
 
-/** One straight quote: a wedge from the cap height down about a third of it. */
+/**
+ * One straight quote: a wedge from a little over the cap height down about a
+ * third of it. Lora's stands 16 over its cap line (491 to 716 on a cap height
+ * of 700), as its capitals' serifs and its curly quotes do; hung from the cap
+ * line it stood 16 short of them.
+ */
 function quote(f: Frame, x: number): Stroke[] {
   const wide = quoteWidth(f);
-  const depth = Math.max(f.cap * 0.31, wide * 1.7);
-  return wedge(f, x, f.cap, f.cap - depth, wide, wide * 0.55);
+  const top = f.cap * 1.023;
+  const depth = Math.max(f.cap * 0.32, wide * 1.7);
+  return wedge(f, x, top, top - depth, wide, wide * 0.55);
+}
+
+/**
+ * The frame a plain face's straight quote is drawn in: its own pen up to about
+ * the full stop's size, and no heavier.
+ *
+ * At a text weight that is the stem. Past it, a quote at the stem's full
+ * weight was a slab wider than the full stop beside it and hardly taller than
+ * it was wide -- a Grotesque Black's was 234 across and 202 deep, where Geist
+ * Black's is 140 across and 288 deep. Held to eight tenths of the full stop and
+ * never less than a text stem, it keeps to the dots' colour; and it runs at
+ * least a stroke and six tenths deep, so it stays a mark rather than a block.
+ */
+function quoteFrame(f: Frame): { g: Frame; depth: number } {
+  const stem = f.style.pen.weight;
+  const wide = Math.min(stem, Math.max(stopRadius(f) * 1.6, f.x * 0.19));
+  const g = wide < stem ? frame(sized(f.style, 1, wide / stem)) : f;
+  return { g, depth: Math.max(f.cap * 0.28, wide * 1.6) };
 }
 
 /**
@@ -131,13 +159,37 @@ function solidus(f: Frame, side: 1 | -1): Stroke {
 }
 
 /**
+ * The style a mark is drawn with past the Black, on a face that keeps its
+ * counters open there (`metrics.heavyOpen`): gaining only half what the stem
+ * does, as the grotesque's stacked letters do (see `stackedPen` in
+ * `grotesque.ts`). On the stem's pen an Ultra Geometric's ampersand stood a
+ * sixth of the cap height over every capital, and its parentheses were
+ * slabs with barely a curve left inside them. The style as it was up to the
+ * Black, and on every other face.
+ */
+function stacked(style: Style): Style {
+  const gained = pastBlack(style);
+  if (!(gained > 0)) return style;
+  return { ...style, pen: { ...style.pen, weight: style.pen.weight - gained * 0.5 } };
+}
+
+/**
  * How far a bracket's arms reach from its upright. On a text face, past the
  * upright by at least most of a stem: at Black the arms were otherwise stubs
  * and the bracket read as a bar.
  */
 function bracketReach(f: Frame): number {
   const w = f.arch * 0.52;
-  return bookish(f) ? Math.max(w, f.half + f.arch * 0.36) : w;
+  const least = f.half + f.arch * 0.36;
+  if (bookish(f)) return Math.max(w, least);
+  /*
+   * And on a face that keeps its counters open at a heavy weight
+   * (`metrics.heavyOpen`), brought out to the same from a Bold to a Black:
+   * a heavy Geometric's arms reached less than half a pen past the upright,
+   * and past the Black they stopped inside it and the bracket was a slab.
+   */
+  const heavy = Math.min(1, Math.max(0, (stemBlack(f.style) - 0.5) / 0.4));
+  return w + Math.max(0, least - w) * heavy;
 }
 
 /**
@@ -500,7 +552,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   },
 
   parenleft: (style) => {
-    const f = frame(style);
+    const f = frame(stacked(style));
     if (bookish(f)) return finish(f, crescent(f, 1));
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge + radius, f.cap * 0.4);
@@ -508,7 +560,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   },
 
   parenright: (style) => {
-    const f = frame(style);
+    const f = frame(stacked(style));
     if (bookish(f)) return finish(f, crescent(f, -1));
     const radius = Math.max(f.cap * 0.72, f.least);
     const centre = at(f.edge - radius + f.arch * 0.32, f.cap * 0.4);
@@ -527,9 +579,9 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   quotesingle: (style) => {
     const f = frame(style);
     if (bookish(f)) return finish(f, quote(f, f.edge));
-    return finish(f, [
-      ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
-    ]);
+    const { g, depth } = quoteFrame(f);
+    const x = f.edge - f.half + g.half;
+    return finish(g, [ink(g, straight(at(x, f.cap - depth), at(x, f.cap)), g.plain, g.plain)]);
   },
 
   quotedbl: (style) => {
@@ -547,10 +599,14 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     // A mark's width and then white of its own, never less than a share of
     // the x-height: at a hairline weight, set a share of the pen apart, the
     // two marks read as one split bar.
-    const gap = f.style.pen.weight + Math.max(f.style.pen.weight * 0.6, f.x * 0.09);
-    return finish(f, [
-      ink(f, straight(at(f.edge, f.cap * 0.72), at(f.edge, f.cap)), f.plain, f.plain),
-      ink(f, straight(at(f.edge + gap, f.cap * 0.72), at(f.edge + gap, f.cap)), f.plain, f.plain),
+    const { g, depth } = quoteFrame(f);
+    const pen = g.style.pen.weight;
+    const gap = pen + Math.max(pen * 0.6, f.x * 0.09);
+    const x = f.edge - f.half + g.half;
+    const foot = f.cap - depth;
+    return finish(g, [
+      ink(g, straight(at(x, foot), at(x, f.cap)), g.plain, g.plain),
+      ink(g, straight(at(x + gap, foot), at(x + gap, f.cap)), g.plain, g.plain),
     ]);
   },
 
@@ -941,8 +997,33 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * and it is what a heavy face has room to draw.
    */
   yen: outOf("Y", (f, y) => {
-    const drawn = y();
+    const told = f.style.metrics.yen;
+    // Its own Y where the face draws one (`metrics.yen.meets`), or the letter.
+    const drawn = told?.meets ? capitalY(f.style, told.meets).strokes : y();
     const across = spread(drawn);
+    // A face that says where its bars go (`metrics.yen`) draws them there.
+    if (told) {
+      const middle = (across.xMin + across.xMax) / 2 + f.cap * told.shift;
+      const reach = f.cap * told.reach;
+      // Never deeper than leaves a third of the space between them open:
+      // past a Black the two ran together into a block.
+      const apart = f.cap * Math.abs(told.bars[1] - told.bars[0]);
+      const deep = Math.min(f.style.pen.weight * told.deep, apart * 0.67);
+      return joined(
+        f,
+        drawn,
+        told.bars.map((share) => {
+          const row = f.cap * share;
+          const one = thin(
+            f,
+            straight(at(middle - reach, row), at(middle + reach, row)),
+            BUTT,
+            BUTT,
+          );
+          return inherit(one, { ...one, pen: { ...one.pen, contrast: 0, weight: deep } });
+        }),
+      );
+    }
     const bar = f.style.pen.weight * f.bar;
     const junction = f.cap * 0.46;
     const top = junction - f.style.pen.weight * 0.85 - bar / 2;
@@ -1306,7 +1387,8 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
    * the same nodes at every weight.
    */
   ampersand: (style) => {
-    const f = frame(style);
+    // A loop over a bowl has less room than a single bowl: see `stacked`.
+    const f = frame(stacked(style));
     const C = f.cap;
     const pinned = (run: Spine, pieces: number): Spine => ({
       ...run,
@@ -1336,26 +1418,88 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     const R = Math.max(wantR * fits, f.half * Math.max(1.5 + 0.25 * black, 1.85), f.least);
     const r = Math.max(wantr * fits, f.half * Math.max(1.15 + 0.5 * black, 1.5), f.least);
     const bowlAt = at(f.edge + R, f.dip(0) + R);
-    const loopY = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - 0.35 * black));
-    const rise = loopY - bowlAt.y;
-    const clear = (r + R) * 1.08;
-    const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
-    const loopAt = at(bowlAt.x + over, loopY);
-    // Where the tangent common to both circles, crossing between them, meets
-    // each: on the loop's lower right and the bowl's upper left.
-    const apart = Math.hypot(over, rise);
-    const joinAt =
-      ((Math.atan2(rise, over) + Math.PI + Math.acos(Math.min(1, (r + R) / apart))) * 180) /
-        Math.PI -
-      360;
-    const leave = pointOn(loopAt, r, joinAt);
-    const arrive = pointOn(bowlAt, R, joinAt + 180);
-    // The diagonal leaves the loop at forty-five degrees and turns out along
-    // the baseline into its foot.
-    const from = pointOn(loopAt, r, 225);
+    const risen = Math.max(f.crest(C) - r, bowlAt.y + (r + R) * 1.02 * (1 - 0.35 * black));
+    /*
+     * On a face that keeps its counters open at a heavy weight
+     * (`metrics.heavyOpen`), past the Black the loop is held under the cap
+     * line and moves further out to the right instead: risen, an Ultra
+     * Geometric's loop stood a sixth of the cap height over every capital.
+     */
     const foot = Math.max(C * 0.14, f.half * 1.9);
     const line = f.sits(0);
     const kneeY = line + foot * (1 - Math.SQRT1_2);
+    /*
+     * But never so low that the diagonal, leaving the loop at forty-five
+     * degrees, starts below its own knee: held under the cap line, the
+     * display face's loop at an 800 came down beside the bowl, the diagonal
+     * ran back uphill into the foot, and the letter changed its points
+     * along the weight axis. There the loop rises again, as it always did
+     * at the limit of the axis.
+     */
+    const lowest = kneeY + r * Math.SQRT1_2 + f.half * 0.5;
+    const held =
+      pastBlack(f.style) > 0
+        ? Math.max(Math.min(risen, f.crest(C) - r), Math.min(risen, lowest))
+        : risen;
+    const clear = (r + R) * 1.08;
+    /*
+     * The loop stood at a height, and the spine from it down into the bowl and
+     * round to the arm: the run between the two circles is the tangent common
+     * to both, crossing between them, and meets each on the loop's lower right
+     * and the bowl's upper left.
+     */
+    const placed = (loopY: number) => {
+      const rise = loopY - bowlAt.y;
+      const over = Math.max(C * 0.05, Math.sqrt(Math.max(0, clear * clear - rise * rise)));
+      const loopAt = at(bowlAt.x + over, loopY);
+      const apart = Math.hypot(over, rise);
+      const joinAt =
+        ((Math.atan2(rise, over) + Math.PI + Math.acos(Math.min(1, (r + R) / apart))) * 180) /
+          Math.PI -
+        360;
+      const spine = chain(
+        pinned(turn(loopAt, r, joinAt + 18, joinAt), 1),
+        straight(pointOn(loopAt, r, joinAt), pointOn(bowlAt, R, joinAt + 180)),
+        pinned(turn(bowlAt, R, joinAt + 180, 345), 3),
+      );
+      return { loopAt, joinAt, spine };
+    };
+    /*
+     * Held under the cap line, the loop comes down beside the bowl wherever the
+     * cap line is low for the pen -- a short cap height, a tall x-height, a pen
+     * held at an angle, past the Black. There the spine leaves the loop
+     * running uphill, goes most of the way round the bowl, and comes back over
+     * its own start: the run's end at the arm and its start at the loop
+     * crossed, and the letter folded. So where it would, the loop rises again,
+     * only as far as it takes to clear -- never past where it stood before it
+     * was held, which is where it stood at the limit of the axis. Asked of the
+     * run itself, because how far it reaches back round depends on the pen's
+     * shape as much as on where the loop is; where it does not fold, which is
+     * every face as it comes, the loop stays where it is held.
+     */
+    const folds = (spine: Spine) =>
+      sweep({ spine, pen: f.style.pen, start: BUTT, end: BUTT }).some((contour) =>
+        contoursIntersect([contour]),
+      );
+    let loop = placed(held);
+    if (held < risen && folds(loop.spine)) {
+      let low = held;
+      let high = risen;
+      if (!folds(placed(high).spine)) {
+        for (let step = 0; step < 12; step++) {
+          const middle = (low + high) / 2;
+          if (folds(placed(middle).spine)) low = middle;
+          else high = middle;
+        }
+        // And a little clear of the fold rather than grazing it.
+        high = Math.min(risen, high + f.half * 0.25);
+      }
+      loop = placed(high);
+    }
+    const { loopAt, joinAt } = loop;
+    // The diagonal leaves the loop at forty-five degrees and turns out along
+    // the baseline into its foot.
+    const from = pointOn(loopAt, r, 225);
     const knee = at(from.x + (from.y - kneeY), kneeY);
     const heel = at(knee.x + foot * Math.SQRT1_2, line);
     // The arm: up and a little to the right out of the bowl, to about half
@@ -1383,16 +1527,7 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
         BUTT,
         BUTT,
       ),
-      ink(
-        f,
-        chain(
-          pinned(turn(loopAt, r, joinAt + 18, joinAt), 1),
-          straight(leave, arrive),
-          pinned(turn(bowlAt, R, joinAt + 180, 345), 3),
-        ),
-        BUTT,
-        BUTT,
-      ),
+      ink(f, loop.spine, BUTT, BUTT),
       // The arm on its own, run in from a little way back round the bowl: at
       // a black weight its top comes up under the spine, and in one run with
       // it the two edges met and the outline folded.

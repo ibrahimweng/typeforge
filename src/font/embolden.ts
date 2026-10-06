@@ -335,6 +335,81 @@ function apart(one: Vec2[], other: Vec2[], enough: number): number {
 }
 
 /**
+ * `apart`, asked of two pieces of a letter that have been asked about before.
+ *
+ * Each contour of a letter is weighed against all the others, and each time
+ * it asks how far apart it stands from each of them: the same question about
+ * the same two flattened outlines, which nothing changes once they are made.
+ * So the answer is kept against the two of them.
+ */
+const aparts = new WeakMap<Vec2[], WeakMap<Vec2[], Map<number, number>>>();
+
+function apartKept(one: Vec2[], other: Vec2[], enough: number): number {
+  const answers = (a: Vec2[], b: Vec2[]): Map<number, number> => {
+    let from = aparts.get(a);
+    if (!from) {
+      from = new WeakMap();
+      aparts.set(a, from);
+    }
+    let found = from.get(b);
+    if (!found) {
+      found = new Map();
+      from.set(b, found);
+    }
+    return found;
+  };
+  const ours = answers(one, other);
+  let answer = ours.get(enough);
+  if (answer === undefined) {
+    // Asked the other way round -- the other contour weighed against this
+    // one -- the answer is the same: every step of `apart` treats its two
+    // outlines alike.
+    answer = apart(one, other, enough);
+    ours.set(enough, answer);
+    answers(other, one).set(enough, answer);
+  }
+  return answer;
+}
+
+/** A piece of a contour's flattened outline, as `applyWeight` measures against it. */
+interface Wall {
+  a: Vec2;
+  b: Vec2;
+  /** Which way this wall moves for the same change of weight. */
+  normal: Vec2;
+  /** Round its own outline, for a wall of this contour; else -1. */
+  middle: number;
+  /** The segment of this contour it was flattened from; else -1. */
+  seg: number;
+  /** Which way it runs. */
+  edge: Vec2;
+  /** Whether it is another piece of ink with paper between them. */
+  foreign: boolean;
+  /** The box round it, for ruling it out before measuring to it. */
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+/** The walls of another contour, kept by its flattened outline and how they face. */
+const keptWalls = new WeakMap<Vec2[], Map<string, { walls?: Wall[] }>>();
+
+function wallsKept(polyline: Vec2[], facing: string): { walls?: Wall[] } {
+  let byFacing = keptWalls.get(polyline);
+  if (!byFacing) {
+    byFacing = new Map();
+    keptWalls.set(polyline, byFacing);
+  }
+  let shelf = byFacing.get(facing);
+  if (!shelf) {
+    shelf = {};
+    byFacing.set(facing, shelf);
+  }
+  return shelf;
+}
+
+/**
  * Offset one contour by `amount` -- positive adds weight -- keeping its points.
  */
 export function applyWeight(
@@ -382,6 +457,10 @@ export function applyWeight(
   const em = around.unitsPerEm;
 
   const lengths = segments.map(segmentLength);
+  // Which way each segment leaves its start and arrives at its end, asked
+  // over and over below and worked out once.
+  const headStart = segments.map((segment) => headingOn(segment, 0));
+  const headEnd = segments.map((segment) => headingOn(segment, 1));
   const starts: number[] = [];
   let total = 0;
   for (const length of lengths) {
@@ -407,25 +486,6 @@ export function applyWeight(
    * of a serif would read as a wall to the end of it.
    */
   const window = wanted * 4;
-  interface Wall {
-    a: Vec2;
-    b: Vec2;
-    /** Which way this wall moves for the same change of weight. */
-    normal: Vec2;
-    /** Round its own outline, for a wall of this contour; else -1. */
-    middle: number;
-    /** The segment of this contour it was flattened from; else -1. */
-    seg: number;
-    /** Which way it runs. */
-    edge: Vec2;
-    /** Whether it is another piece of ink with paper between them. */
-    foreign: boolean;
-    /** The box round it, for ruling it out before measuring to it. */
-    xMin: number;
-    xMax: number;
-    yMin: number;
-    yMax: number;
-  }
   const segmentAt = (position: number): number => {
     let found = 0;
     for (let index = 0; index < count; index++) if (starts[index] <= position) found = index;
@@ -444,9 +504,22 @@ export function applyWeight(
      */
     const foreign =
       bolder && !own && around.roles[which] === isOuter
-        ? isOuter && apart(around.obstacles[self] ?? [], polyline, em * 0.004) > em * 0.004
+        ? isOuter && apartKept(around.obstacles[self] ?? [], polyline, em * 0.004) > em * 0.004
         : false;
     if (bolder && !own && around.roles[which] === isOuter && !foreign) return;
+    /*
+     * The walls of another contour are the same walls every time this letter
+     * asks, whatever share of the weight it asks for, so they are made once
+     * for each way round they can face and handed out again. Only the
+     * contour's own walls know where they are round it.
+     */
+    const role = around.roles[which] ?? true;
+    const shelf = own ? null : wallsKept(polyline, `${role}|${bolder}|${foreign}`);
+    if (shelf?.walls) {
+      for (const wall of shelf.walls) walls.push(wall);
+      return;
+    }
+    const from = walls.length;
     let area = 0;
     polyline.forEach((point, k) => {
       const next = polyline[(k + 1) % polyline.length];
@@ -480,6 +553,7 @@ export function applyWeight(
       });
       run += length;
     });
+    if (shelf) shelf.walls = walls.slice(from);
   });
   /*
    * Past this, a wall is too far off to hold anything back -- the allowance
@@ -507,21 +581,44 @@ export function applyWeight(
   }
   const columns = walls.length > 0 ? Math.floor((gridRight - gridX) / cell) + 1 : 0;
   const rows = walls.length > 0 ? Math.floor((gridTop - gridY) / cell) + 1 : 0;
-  const filed: number[][] = Array.from({ length: columns * rows }, () => []);
+  /*
+   * Filed flat: where each square's walls start in one list of them all,
+   * counted first and then laid in, each square's in the order the walls
+   * are numbered. A list of its own for every square was a thousand and more
+   * arrays made for every contour weighed, and making them was a fifth of
+   * what the weight cost.
+   */
+  const squares = columns * rows;
+  const firstIn = new Int32Array(squares + 1);
+  const spans = new Int32Array(walls.length * 4);
   walls.forEach((wall, index) => {
     const left = Math.floor((wall.xMin - gridX) / cell);
     const right = Math.floor((wall.xMax - gridX) / cell);
     const bottom = Math.floor((wall.yMin - gridY) / cell);
     const top = Math.floor((wall.yMax - gridY) / cell);
+    spans[index * 4] = left;
+    spans[index * 4 + 1] = right;
+    spans[index * 4 + 2] = bottom;
+    spans[index * 4 + 3] = top;
     for (let row = bottom; row <= top; row++)
-      for (let column = left; column <= right; column++) filed[row * columns + column].push(index);
+      for (let column = left; column <= right; column++) firstIn[row * columns + column + 1]++;
   });
+  for (let square = 0; square < squares; square++) firstIn[square + 1] += firstIn[square];
+  const filed = new Int32Array(squares > 0 ? firstIn[squares] : 0);
+  const filling = firstIn.slice(0, squares);
+  for (let index = 0; index < walls.length; index++) {
+    const left = spans[index * 4];
+    const right = spans[index * 4 + 1];
+    for (let row = spans[index * 4 + 2]; row <= spans[index * 4 + 3]; row++)
+      for (let column = left; column <= right; column++)
+        filed[filling[row * columns + column]++] = index;
+  }
   const anyForeign = walls.some((wall) => wall.foreign);
   const asked = new Int32Array(walls.length);
   let asking = 0;
   const turnAt = (index: number): number => {
-    const a = headingOn(segments[(index - 1 + count) % count], 1);
-    const b = headingOn(segments[index], 0);
+    const a = headEnd[(index - 1 + count) % count];
+    const b = headStart[index];
     return a.x * b.x + a.y * b.y;
   };
   // Smooth: one direction through the point, which the result keeps.
@@ -546,8 +643,8 @@ export function applyWeight(
   const insideAt = nodes.map((_, index) => {
     if (flowing[index]) return false;
     const previous = (index - 1 + count) % count;
-    const arriving = move(headingOn(segments[previous], 1));
-    const leaving = headingOn(segments[index], 0);
+    const arriving = move(headEnd[previous]);
+    const leaving = headStart[index];
     return arriving.x * leaving.x + arriving.y * leaving.y > 0.05;
   });
   const ownCorner = (wall: Wall, seg: number): boolean => {
@@ -555,8 +652,8 @@ export function applyWeight(
     const next = (seg + 1) % count;
     const previous = (seg - 1 + count) % count;
     let along: Vec2;
-    if (wall.seg === next && insideAt[next]) along = headingOn(segments[next], 0);
-    else if (wall.seg === previous && insideAt[seg]) along = headingOn(segments[previous], 1);
+    if (wall.seg === next && insideAt[next]) along = headStart[next];
+    else if (wall.seg === previous && insideAt[seg]) along = headEnd[previous];
     else return false;
     return wall.edge.x * along.x + wall.edge.y * along.y > 0.82;
   };
@@ -575,7 +672,7 @@ export function applyWeight(
     return Math.acos(Math.max(-1, Math.min(1, a.x * b.x + a.y * b.y)));
   };
   const nodeOut = nodes.map((_, index) =>
-    outAt(headingOn(segments[(index - 1 + count) % count], 1), headingOn(segments[index], 0)),
+    outAt(headEnd[(index - 1 + count) % count], headStart[index]),
   );
   const segmentOut = segments.map((segment) => {
     if (segment.kind === "line") return 0;
@@ -587,7 +684,17 @@ export function applyWeight(
   // A few degrees of wobble in a converted outline, and no more.
   const WOBBLE = 0.3;
   const NOTCH_PIECES = 10;
+  // Asked of the same two segments for sample after sample, and remembered.
+  let notches: Int8Array | null = null;
   const notch = (from: number, to: number): boolean => {
+    notches ??= new Int8Array(count * count);
+    const known = notches[from * count + to];
+    if (known !== 0) return known > 0;
+    const answer = notchBetween(from, to);
+    notches[from * count + to] = answer ? 1 : -1;
+    return answer;
+  };
+  const notchBetween = (from: number, to: number): boolean => {
     if (from === to) return false;
     const walk = (step: 1 | -1): boolean => {
       let at = from;
@@ -606,10 +713,41 @@ export function applyWeight(
     };
     return walk(1) || walk(-1);
   };
-  const room = (from: Vec2, heading: Vec2, position: number, seg: number): number => {
-    let nearest = Infinity;
+  /*
+   * Given a `limit`, only whether the room is less than that is wanted, and
+   * what comes back is the room or the limit, whichever is less.
+   */
+  const room = (
+    from: Vec2,
+    heading: Vec2,
+    position: number,
+    seg: number,
+    limit = Infinity,
+  ): number => {
+    let nearest = limit;
     let nearestForeign = Infinity;
     asking++;
+    /*
+     * Whatever stops the ray or the circle short of `span` -- a crossing on
+     * the ray, or the touch of a circle through the sample with its centre
+     * on the ray -- lies inside the circle whose diameter is the first
+     * `span` of the ray. A square or a wall whose box does not reach into
+     * that circle cannot hold anything nearer than what has been found, and
+     * is passed over: it was most of what a sample asked, looking across a
+     * stroke at every wall in a square round it rather than a circle in
+     * front of it. A hair of slack so that rounding never passes over a wall
+     * that would have come out a hair nearer.
+     */
+    const clear = (xMin: number, xMax: number, yMin: number, yMax: number, span: number) => {
+      if (!(span < Infinity)) return false;
+      const half = span / 2;
+      const cx = from.x + heading.x * half;
+      const cy = from.y + heading.y * half;
+      const dx = Math.max(0, xMin - cx, cx - xMax);
+      const dy = Math.max(0, yMin - cy, cy - yMax);
+      const radius = half * (1 + 1e-9) + 1e-9;
+      return dx * dx + dy * dy >= radius * radius;
+    };
     // The cell the sample is in, which may be outside the grid altogether.
     const column = Math.floor((from.x - gridX) / cell);
     const row = Math.floor((from.y - gridY) / cell);
@@ -622,16 +760,90 @@ export function applyWeight(
             Math.abs(row),
             Math.abs(rows - 1 - row),
           );
+    const ask = (index: number): void => {
+      if (asked[index] === asking) return;
+      asked[index] = asking;
+      const wall = walls[index];
+      /*
+       * The cheap questions first. Whatever this wall stops -- a ray, or a
+       * circle through the sample -- it stops at a point on the wall, so no
+       * nearer than the wall's box is; a wall whose box is already further
+       * off than the nearest wall found cannot be nearer, and the answer is
+       * the same without measuring to it.
+       */
+      const offX = Math.max(0, wall.xMin - from.x, from.x - wall.xMax);
+      const offY = Math.max(0, wall.yMin - from.y, from.y - wall.yMax);
+      if (offX > horizon || offY > horizon) return;
+      const least = wall.foreign ? nearestForeign : nearest;
+      if (offX >= least || offY >= least || offX * offX + offY * offY >= least * least) return;
+      if (clear(wall.xMin, wall.xMax, wall.yMin, wall.yMax, least)) return;
+      // Only a wall that faces back can be the far side of the stroke: one
+      // facing the same way is the near side, the sample's own outline.
+      const facing = wall.normal.x * heading.x + wall.normal.y * heading.y;
+      if (facing >= 0) return;
+      // Nor one wholly behind the sample, which neither the ray nor the
+      // circle can reach.
+      if (
+        (wall.a.x - from.x) * heading.x + (wall.a.y - from.y) * heading.y <= 0 &&
+        (wall.b.x - from.x) * heading.x + (wall.b.y - from.y) * heading.y <= 0
+      )
+        return;
+      if (bolder && wall.middle >= 0) {
+        const apart = Math.abs(wall.middle - position) % total;
+        if (Math.min(apart, total - apart) < window) return;
+      }
+      if (ownCorner(wall, seg)) return;
+      if (bolder && wall.seg >= 0 && notch(seg, wall.seg)) {
+        // Unless the two walls stand square across from each other, which
+        // is a counter or a gap, however it is reached.
+        const across = wall.normal.x * heading.x + wall.normal.y * heading.y;
+        if (across > -0.975) return;
+      }
+      let hit = rayToEdge(from, heading, wall.a, wall.b);
+      if (facing < -0.3) hit = Math.min(hit, 2 * ballTouch(from, heading, wall.a, wall.b));
+      if (wall.foreign) nearestForeign = Math.min(nearestForeign, hit);
+      else nearest = Math.min(nearest, hit);
+    };
+    /*
+     * The squares the ray runs through first, out to where it could still
+     * find a wall. What is across the stroke is nearly always there, and once
+     * it is found only the squares reaching into the circle in front of the
+     * sample are asked below, rather than every one round it out to that
+     * far. Only which walls are asked first changes, not which are asked.
+     */
+    if (walls.length > 0) {
+      let last = -1;
+      const stride = cell / 2;
+      const far = horizon + 2 * cell;
+      for (let t = 0; t <= far && t < nearest; t += stride) {
+        const c = Math.floor((from.x + heading.x * t - gridX) / cell);
+        const r = Math.floor((from.y + heading.y * t - gridY) / cell);
+        if (c < 0 || c >= columns || r < 0 || r >= rows) continue;
+        const square = r * columns + c;
+        if (square === last) continue;
+        last = square;
+        for (let slot = firstIn[square]; slot < firstIn[square + 1]; slot++) ask(filed[slot]);
+      }
+    }
     for (let ring = 0; ring <= reach; ring++) {
       // Every wall filed only this far out is at least this far off.
       const off = (ring - 1) * cell;
       if (off > horizon) break;
       if (off >= nearest && (!anyForeign || off >= nearestForeign)) break;
-      for (let r = row - ring; r <= row + ring; r++) {
-        if (r < 0 || r >= rows) continue;
+      const rowFrom = Math.max(0, row - ring);
+      const rowTo = Math.min(rows - 1, row + ring);
+      for (let r = rowFrom; r <= rowTo; r++) {
         const edge = r === row - ring || r === row + ring;
-        for (let c = column - ring; c <= column + ring; c += edge ? 1 : ring * 2 || 1) {
-          if (c < 0 || c >= columns) continue;
+        const step = edge ? 1 : ring * 2 || 1;
+        // The first column this row asks that is on the grid.
+        let c = column - ring;
+        if (c < 0) c = edge ? 0 : c + step;
+        const columnTo = Math.min(columns - 1, column + ring);
+        for (; c <= columnTo; c += step) {
+          const square = r * columns + c;
+          // Most squares hold nothing, and are passed over before anything
+          // is worked out about where they are.
+          if (firstIn[square] === firstIn[square + 1]) continue;
           /*
            * Nothing behind the sample can stop it: a ray finds a wall only
            * ahead of where it starts, and the circle has its centre ahead
@@ -644,50 +856,19 @@ export function applyWeight(
           const aheadX = (heading.x > 0 ? gridX + (c + 1) * cell : gridX + c * cell) - from.x;
           const aheadY = (heading.y > 0 ? gridY + (r + 1) * cell : gridY + r * cell) - from.y;
           if (aheadX * heading.x + aheadY * heading.y < -1e-7) continue;
-          for (const index of filed[r * columns + c]) {
-            if (asked[index] === asking) continue;
-            asked[index] = asking;
-            const wall = walls[index];
-            /*
-             * The cheap questions first. Whatever this wall stops -- a ray, or a
-             * circle through the sample -- it stops at a point on the wall, so no
-             * nearer than the wall's box is; a wall whose box is already further
-             * off than the nearest wall found cannot be nearer, and the answer is
-             * the same without measuring to it.
-             */
-            const offX = Math.max(0, wall.xMin - from.x, from.x - wall.xMax);
-            const offY = Math.max(0, wall.yMin - from.y, from.y - wall.yMax);
-            if (offX > horizon || offY > horizon) continue;
-            const least = wall.foreign ? nearestForeign : nearest;
-            if (offX >= least || offY >= least || offX * offX + offY * offY >= least * least)
-              continue;
-            // Only a wall that faces back can be the far side of the stroke: one
-            // facing the same way is the near side, the sample's own outline.
-            const facing = wall.normal.x * heading.x + wall.normal.y * heading.y;
-            if (facing >= 0) continue;
-            // Nor one wholly behind the sample, which neither the ray nor the
-            // circle can reach.
-            if (
-              (wall.a.x - from.x) * heading.x + (wall.a.y - from.y) * heading.y <= 0 &&
-              (wall.b.x - from.x) * heading.x + (wall.b.y - from.y) * heading.y <= 0
+          const x0 = gridX + c * cell;
+          const y0 = gridY + r * cell;
+          if (
+            clear(
+              x0,
+              x0 + cell,
+              y0,
+              y0 + cell,
+              anyForeign ? Math.max(nearest, nearestForeign) : nearest,
             )
-              continue;
-            if (bolder && wall.middle >= 0) {
-              const apart = Math.abs(wall.middle - position) % total;
-              if (Math.min(apart, total - apart) < window) continue;
-            }
-            if (ownCorner(wall, seg)) continue;
-            if (bolder && wall.seg >= 0 && notch(seg, wall.seg)) {
-              // Unless the two walls stand square across from each other, which
-              // is a counter or a gap, however it is reached.
-              const across = wall.normal.x * heading.x + wall.normal.y * heading.y;
-              if (across > -0.975) continue;
-            }
-            let hit = rayToEdge(from, heading, wall.a, wall.b);
-            if (facing < -0.3) hit = Math.min(hit, 2 * ballTouch(from, heading, wall.a, wall.b));
-            if (wall.foreign) nearestForeign = Math.min(nearestForeign, hit);
-            else nearest = Math.min(nearest, hit);
-          }
+          )
+            continue;
+          for (let slot = firstIn[square]; slot < firstIn[square + 1]; slot++) ask(filed[slot]);
         }
       }
     }
@@ -733,7 +914,7 @@ export function applyWeight(
     if (!(Math.min(wide, tall) > 0) || Math.max(wide, tall) > em * 0.2) return false;
     if (Math.max(wide, tall) > Math.min(wide, tall) * 1.6) return false;
     return around.obstacles.every(
-      (other, which) => which === self || !around.roles[which] || apart(own, other, 0) > 0,
+      (other, which) => which === self || !around.roles[which] || apartKept(own, other, 0) > 0,
     );
   })();
 
@@ -792,11 +973,14 @@ export function applyWeight(
             y: heading.x * Math.sin(angle) + heading.y * Math.cos(angle),
           });
           const position = starts[index] + t * lengths[index];
-          const chord = Math.max(
-            room(at, turned(BALL_ANGLE), position, index),
-            room(at, turned(-BALL_ANGLE), position, index),
-          );
-          if (chord < ahead * Math.cos(BALL_ANGLE) * 1.35) want = by * BALL_SHARE;
+          // Both chords shorter than this, or neither is a ball's: the
+          // second is not asked where the first already says no.
+          const round = ahead * Math.cos(BALL_ANGLE) * 1.35;
+          if (
+            room(at, turned(BALL_ANGLE), position, index, round) < round &&
+            room(at, turned(-BALL_ANGLE), position, index, round) < round
+          )
+            want = by * BALL_SHARE;
         }
         if (!bolder && isDot) want = by * BALL_SHARE;
         by = softMin(want, allow, bolder ? KNEE : LIGHT_KNEE);
@@ -814,6 +998,16 @@ export function applyWeight(
     }
     if (segment.kind === "line") lineBy[index] = lowest;
   });
+  /*
+   * Each segment's samples, which are stored one segment after another: the
+   * same ones in the same order as picking them out of all of them, which
+   * was asked at every corner and every segment and cost the square of the
+   * samples a contour.
+   */
+  const firstOf = new Int32Array(count + 1);
+  for (const sample of samples) firstOf[sample.seg + 1]++;
+  for (let index = 0; index < count; index++) firstOf[index + 1] += firstOf[index];
+  const samplesOf = (seg: number): Sample[] => samples.slice(firstOf[seg], firstOf[seg + 1]);
 
   /*
    * 2. Smooth. A straight run moves by one amount so it stays straight. Along
@@ -857,14 +1051,14 @@ export function applyWeight(
   const caps: Array<{ node: number; seg: number; cap: number }> = [];
   const movedBy = (seg: number): number => {
     if (segments[seg].kind === "line") return lineBy[seg];
-    const own = samples.filter((sample) => sample.seg === seg);
+    const own = samplesOf(seg);
     return own.length ? own.reduce((sum, sample) => sum + sample.by, 0) / own.length : wanted;
   };
   nodes.forEach((node, index) => {
     if (flowing[index]) return;
     const previous = (index - 1 + count) % count;
-    const tA = headingOn(segments[previous], 1);
-    const tB = headingOn(segments[index], 0);
+    const tA = headEnd[previous];
+    const tB = headStart[index];
     const mA = move(tA);
     const mB = move(tB);
     const det = cross(tA, tB);
@@ -881,7 +1075,7 @@ export function applyWeight(
     const lineB = segments[index].kind === "line";
     // What each side would move by at the corner, as measured beside it.
     const endOf = (seg: number, last: boolean) => {
-      const own = samples.filter((sample) => sample.seg === seg);
+      const own = samplesOf(seg);
       return own.length ? own[last ? own.length - 1 : 0].by : wanted;
     };
     const dA = lineA ? lineBy[previous] : endOf(previous, true);
@@ -1017,8 +1211,8 @@ export function applyWeight(
         sample.by = Math.min(sample.by, lineCap[sample.seg]);
     for (const { node, seg, cap } of caps) {
       const at = starts[node];
-      for (const sample of samples) {
-        if (sample.seg !== seg) continue;
+      for (let k = firstOf[seg]; k < firstOf[seg + 1]; k++) {
+        const sample = samples[k];
         const apart = Math.abs(sample.along - at) % total;
         sample.by = Math.min(sample.by, cap + 0.5 * Math.min(apart, total - apart));
       }
@@ -1032,34 +1226,40 @@ export function applyWeight(
    * round the bracket between them, where the curve hides it, rather than as
    * a bulge on the straight.
    */
-  const tau = new Array<number>(samples.length).fill(0);
-  const order = samples.map((_, index) => index);
+  /*
+   * Round the outline from the first corner: the samples are stored segment
+   * by segment, so that is the stored order turned to start at the corner's
+   * first sample, and `(k + head) % size` is the k-th of them round.
+   */
+  const size = samples.length;
   const origin = firstCorner >= 0 ? firstCorner : 0;
-  order.sort(
-    (a, b) =>
-      ((samples[a].seg - origin + count) % count) - ((samples[b].seg - origin + count) % count) ||
-      samples[a].t - samples[b].t,
-  );
-  const angleOf = (sample: Sample) => {
-    const heading = headingOn(segments[sample.seg], sample.t);
-    return Math.atan2(heading.y, heading.x);
-  };
+  const head = size > 0 ? firstOf[origin] % size : 0;
+  const angle = new Float64Array(size);
+  for (let index = 0; index < size; index++) {
+    const heading = headingOn(segments[samples[index].seg], samples[index].t);
+    angle[index] = Math.atan2(heading.y, heading.x);
+  }
+  const tau = new Float64Array(size);
   let turned = 0;
-  order.forEach((index, k) => {
+  for (let k = 0; k < size; k++) {
+    const index = (k + head) % size;
     if (k > 0) {
-      const before = samples[order[k - 1]];
-      let turn = Math.abs(angleOf(samples[index]) - angleOf(before));
+      const before = (index - 1 + size) % size;
+      let turn = Math.abs(angle[index] - angle[before]);
       if (turn > Math.PI) turn = 2 * Math.PI - turn;
-      const apart = Math.abs(samples[index].along - before.along);
+      const apart = Math.abs(samples[index].along - samples[before].along);
       turned += turn + Math.min(apart, total - apart) / (em * 0.5);
     }
     tau[index] = turned;
-  });
+  }
   const lap = firstCorner >= 0 ? Infinity : turned;
+  const lapped = Number.isFinite(lap);
+  const runOf = new Int32Array(size);
+  for (let index = 0; index < size; index++) runOf[index] = run[samples[index].seg];
   const within = (a: number, b: number) => {
-    if (run[samples[a].seg] !== run[samples[b].seg]) return Infinity;
+    if (runOf[a] !== runOf[b]) return Infinity;
     const apart = Math.abs(tau[a] - tau[b]);
-    return Number.isFinite(lap) ? Math.min(apart, lap - apart) : apart;
+    return lapped ? Math.min(apart, lap - apart) : apart;
   };
   const erode = 0.3;
   const blur = 0.8;
@@ -1067,52 +1267,67 @@ export function applyWeight(
    * The samples as far as `radius` from one, in the order they are stored.
    *
    * Found by walking out from it both ways round the outline rather than by
-   * asking every sample: `order` runs round the outline with `tau` rising
-   * along it and each run of it in one piece, so the samples near one are
-   * the ones either side of it, up to the first that is too far. Asking all
-   * of them of every one was the square of the samples a contour -- a tenth
-   * of the time a variable export of an opened font spent. Handed back in
-   * stored order, so the sums below add the same numbers in the same order
-   * as asking all of them did, and come out the same to the last bit.
+   * asking every sample: the samples run round the outline with `tau` rising
+   * along each run of it, so the samples near one are the ones either side
+   * of it, up to the first that is too far. Asking all of them of every one
+   * was the square of the samples a contour -- a tenth of the time a
+   * variable export of an opened font spent. They are a run of stored
+   * indices, wrapping at the end, and are handed back from the lowest index
+   * up, as `first`..`last` and then `wrapped`..`size`, so the sums below add the
+   * same numbers in the same order as asking all of them did, and come out
+   * the same to the last bit. Collected into a list and sorted, as they
+   * were, they cost a tenth of what a weight change did.
    */
-  const place = new Array<number>(samples.length);
-  order.forEach((index, k) => {
-    place[index] = k;
-  });
-  const stamp = new Int32Array(samples.length);
-  let asks = 0;
-  const nearby = (index: number, radius: number): number[] => {
-    const size = order.length;
-    const found = [index];
-    asks++;
-    stamp[index] = asks;
-    for (const step of [1, -1]) {
-      for (let k = 1; k < size; k++) {
-        const other = order[(((place[index] + step * k) % size) + size) % size];
-        if (within(other, index) > radius) break;
-        if (stamp[other] === asks) continue;
-        stamp[other] = asks;
-        found.push(other);
-      }
+  let first = 0;
+  let last = 0;
+  let wrapped = 0;
+  const reachOf = (index: number, radius: number): void => {
+    let forward = 0;
+    while (forward + 1 < size && within((index + forward + 1) % size, index) <= radius) forward++;
+    let back = 0;
+    while (back + 1 < size && within((index - back - 1 + size) % size, index) <= radius) back++;
+    const low = index - back;
+    const high = index + forward;
+    if (forward + back + 1 >= size) {
+      first = 0;
+      last = size;
+      wrapped = size;
+    } else if (low < 0) {
+      first = 0;
+      last = high + 1;
+      wrapped = low + size;
+    } else if (high >= size) {
+      first = 0;
+      last = high - size + 1;
+      wrapped = low;
+    } else {
+      first = low;
+      last = high + 1;
+      wrapped = size;
     }
-    return found.sort((a, b) => a - b);
   };
   const spread = samples.map((sample, index) => {
     let least = sample.by;
-    for (const k of nearby(index, erode)) {
-      if (within(k, index) <= erode) least = Math.min(least, samples[k].by);
-    }
+    reachOf(index, erode);
+    for (let k = first; k < last; k++) least = Math.min(least, samples[k].by);
+    for (let k = wrapped; k < size; k++) least = Math.min(least, samples[k].by);
     return least;
   });
   const average = (values: number[], radius: number) =>
     samples.map((_, index) => {
       let sum = 0;
       let weight = 0;
-      for (const k of nearby(index, radius)) {
-        const tent = 1 - within(k, index) / radius;
-        if (tent > 0) {
-          sum += values[k] * tent;
-          weight += tent;
+      reachOf(index, radius);
+      const at = tau[index];
+      for (let pass = 0; pass < 2; pass++) {
+        const end = pass === 0 ? last : size;
+        for (let k = pass === 0 ? first : wrapped; k < end; k++) {
+          const apart = Math.abs(tau[k] - at);
+          const tent = 1 - (lapped ? Math.min(apart, lap - apart) : apart) / radius;
+          if (tent > 0) {
+            sum += values[k] * tent;
+            weight += tent;
+          }
         }
       }
       return weight ? sum / weight : values[index];
@@ -1125,7 +1340,7 @@ export function applyWeight(
   // it stays straight and meets the curves either side of it at their amount.
   segments.forEach((segment, index) => {
     if (segment.kind !== "line") return;
-    const own = samples.filter((sample) => sample.seg === index);
+    const own = samplesOf(index);
     lineBy[index] = own.reduce((sum, sample) => sum + sample.by, 0) / own.length;
     for (const sample of own) sample.by = lineBy[index];
   });
@@ -1152,22 +1367,49 @@ export function applyWeight(
     const db = b[0] * lengths[index];
     return da + db > 0 ? (a[1] * db + b[1] * da) / (da + db) : (a[1] + b[1]) / 2;
   });
-  const byAt = (index: number, t: number): number => {
-    if (segments[index].kind === "line") return lineBy[index];
+  /*
+   * Each curve's table with its two ends put on, laid out once: it is asked
+   * at every point of every trace, and building it afresh each time was a
+   * good share of the garbage a weight change made.
+   */
+  const tableTs: Float64Array[] = [];
+  const tableVs: Float64Array[] = [];
+  segments.forEach((segment, index) => {
+    if (segment.kind === "line") {
+      tableTs.push(new Float64Array(0));
+      tableVs.push(new Float64Array(0));
+      return;
+    }
     const table = bySegment[index];
     const startPin = pins[index];
     const endPin = pins[(index + 1) % count];
-    const first: [number, number] = [0, startPin ?? table[0][1]];
-    const last: [number, number] = [1, endPin ?? table[table.length - 1][1]];
-    const points = [first, ...table, last];
-    for (let k = 1; k < points.length; k++) {
-      if (t <= points[k][0]) {
-        const [t0, v0] = points[k - 1];
-        const [t1, v1] = points[k];
+    const ts = new Float64Array(table.length + 2);
+    const vs = new Float64Array(table.length + 2);
+    ts[0] = 0;
+    vs[0] = startPin ?? table[0][1];
+    table.forEach(([t, v], k) => {
+      ts[k + 1] = t;
+      vs[k + 1] = v;
+    });
+    ts[table.length + 1] = 1;
+    vs[table.length + 1] = endPin ?? table[table.length - 1][1];
+    tableTs.push(ts);
+    tableVs.push(vs);
+  });
+  const byAt = (index: number, t: number): number => {
+    if (segments[index].kind === "line") return lineBy[index];
+    const ts = tableTs[index];
+    const vs = tableVs[index];
+    for (let k = 1; k < ts.length; k++) {
+      if (t <= ts[k]) {
+        const t0 = ts[k - 1];
+        const v0 = vs[k - 1];
+        const t1 = ts[k];
+        const v1 = vs[k];
         return t1 - t0 < 1e-9 ? v1 : v0 + ((v1 - v0) * (t - t0)) / (t1 - t0);
       }
     }
-    return last[1];
+    return vs[vs.length - 1];
   };
 
   /*
@@ -1188,7 +1430,7 @@ export function applyWeight(
     if (hold.side >= 0) leaned.push({ seg: index, held: index });
     if (hold.side <= 0) leaned.push({ seg: previous, held: index });
   });
-  const lineDirection = (seg: number) => headingOn(segments[seg], 0);
+  const lineDirection = (seg: number) => headStart[seg];
   const partners = leaned.map(({ seg, held }) => {
     const t = lineDirection(seg);
     const from = segments[seg].from;
@@ -1361,8 +1603,8 @@ export function applyWeight(
         trace.push(...piece);
         continue;
       }
-      const tA = headingOn(segments[previous], 1);
-      const tB = headingOn(segments[index], 0);
+      const tA = headEnd[previous];
+      const tB = headStart[index];
       const det = cross(tA, tB);
       const apart = sub(leaving.point, arriving.point);
       const s = Math.abs(det) > 1e-9 ? cross(apart, tB) / det : Number.NaN;
@@ -1555,13 +1797,13 @@ export function applyWeight(
       const movedOut =
         t0 <= 1e-9 && smoothJoin[index]
           ? segments[previous].kind === "line"
-            ? headingOn(segments[previous], 1)
+            ? headEnd[previous]
             : normalize(sub(offsetAt(index, STEP), offsetAt(previous, 1 - STEP)))
           : normalize(sub(offsetAt(index, Math.min(1, t0 + STEP)), offsetAt(index, t0)));
       const movedIn =
         t1 >= 1 - 1e-9 && smoothJoin[next]
           ? segments[next].kind === "line"
-            ? times(headingOn(segments[next], 0), -1)
+            ? times(headStart[next], -1)
             : normalize(sub(offsetAt(index, 1 - STEP), offsetAt(next, STEP)))
           : normalize(sub(offsetAt(index, Math.max(0, t1 - STEP)), offsetAt(index, t1)));
       const agrees = (a: Vec2, b: Vec2) => a.x * b.x + a.y * b.y > 0.5;
@@ -1856,7 +2098,9 @@ function roundSwallowed(nodes: GlyphNode[], weight: number): GlyphNode[] | null 
  * as the walls of an aperture, and are left alone.
  */
 function cutLoops(trace: Vertex[], total: number, window: number, limit: number): Vertex[] {
-  let vertices = trace.map((vertex) => ({ ...vertex, nodes: [...vertex.nodes] }));
+  // The trace is the caller's to give up: its vertices are taken as they are,
+  // and the nodes they carry moved about among them.
+  let vertices = trace.slice();
   const ahead = (a: number, b: number) => (((b - a) % total) + total) % total;
   // Where a crossing on the edge from a to b sits, as a segment and parameter.
   const sideOf = (a: Vertex, b: Vertex, s: number) => {
@@ -1916,17 +2160,24 @@ function cutLoops(trace: Vertex[], total: number, window: number, limit: number)
       Math.max(gridRight - gridX, gridTop - gridY) / 64,
       1e-6,
     );
-    const filed = new Map<number, number[]>();
     const cellOf = (value: number, from: number) => Math.floor((value - from) / cell);
-    const key = (column: number, row: number) => column * 1048576 + row;
-    for (let k = 0; k < size; k++) {
+    // Filed flat, as the walls are for measuring: where each square's edges
+    // start in one list of them all, each square's in the order they run.
+    const columns = cellOf(gridRight, gridX) + 1;
+    const rows = cellOf(gridTop, gridY) + 1;
+    const squares = size > 0 ? columns * rows : 0;
+    const firstIn = new Int32Array(squares + 1);
+    for (let k = 0; k < size; k++)
       for (let column = cellOf(xMin[k], gridX); column <= cellOf(xMax[k], gridX); column++)
-        for (let row = cellOf(yMin[k], gridY); row <= cellOf(yMax[k], gridY); row++) {
-          const list = filed.get(key(column, row));
-          if (list) list.push(k);
-          else filed.set(key(column, row), [k]);
-        }
-    }
+        for (let row = cellOf(yMin[k], gridY); row <= cellOf(yMax[k], gridY); row++)
+          firstIn[row * columns + column + 1]++;
+    for (let square = 0; square < squares; square++) firstIn[square + 1] += firstIn[square];
+    const filed = new Int32Array(squares > 0 ? firstIn[squares] : 0);
+    const filling = firstIn.slice(0, squares);
+    for (let k = 0; k < size; k++)
+      for (let column = cellOf(xMin[k], gridX); column <= cellOf(xMax[k], gridX); column++)
+        for (let row = cellOf(yMin[k], gridY); row <= cellOf(yMax[k], gridY); row++)
+          filed[filling[row * columns + column]++] = k;
     const stamp = new Int32Array(size).fill(-1);
     for (let i = 0; i < size; i++) {
       const a = vertices[i].point;
@@ -1939,9 +2190,9 @@ function cutLoops(trace: Vertex[], total: number, window: number, limit: number)
       const spans: number[] = [];
       for (let column = cellOf(left, gridX); column <= cellOf(right, gridX); column++)
         for (let row = cellOf(low, gridY); row <= cellOf(high, gridY); row++) {
-          const list = filed.get(key(column, row));
-          if (!list) continue;
-          for (const j of list) {
+          const square = row * columns + column;
+          for (let slot = firstIn[square]; slot < firstIn[square + 1]; slot++) {
+            const j = filed[slot];
             if (stamp[j] === i) continue;
             stamp[j] = i;
             const span = (j - i + size) % size;
@@ -2029,25 +2280,40 @@ function cutLoops(trace: Vertex[], total: number, window: number, limit: number)
    * area, which crosses nothing and so is never cut. Its tip is taken off
    * until the outline no longer doubles back on itself.
    */
+  /*
+   * Looked for from where the last tip came off rather than from the start
+   * each time: nothing before the point before it has changed, and all of that
+   * was looked at already. The first one found is the same one, and a trace
+   * of a thousand points with a few folds in it is looked over once rather
+   * than once a fold.
+   */
+  let from = 0;
   for (let guard = 0; guard < trace.length && vertices.length > 3; guard++) {
     const size = vertices.length;
-    let removed = false;
-    for (let k = 0; k < size; k++) {
+    let removed = -1;
+    for (let k = from; k < size; k++) {
       const a = vertices[(k - 1 + size) % size].point;
       const b = vertices[k].point;
       const c = vertices[(k + 1) % size].point;
-      const one = sub(b, a);
-      const two = sub(c, b);
-      const lengths = Math.hypot(one.x, one.y) * Math.hypot(two.x, two.y);
+      const oneX = b.x - a.x;
+      const oneY = b.y - a.y;
+      const twoX = c.x - b.x;
+      const twoY = c.y - b.y;
+      const dot = oneX * twoX + oneY * twoY;
+      // Running on, or turning no more than square: no fold, and nothing to measure.
+      if (dot >= 0) continue;
+      const lengths = Math.hypot(oneX, oneY) * Math.hypot(twoX, twoY);
       if (lengths < 1e-12) continue;
-      if ((one.x * two.x + one.y * two.y) / lengths > -0.995) continue;
+      if (dot / lengths > -0.995) continue;
       const keep = distance(a, b) < distance(b, c) ? (k - 1 + size) % size : (k + 1) % size;
       vertices[keep].nodes.push(...vertices[k].nodes);
       vertices.splice(k, 1);
-      removed = true;
+      removed = k;
       break;
     }
-    if (!removed) break;
+    if (removed < 0) break;
+    // The last point gone moves the first one's neighbour: from the start again.
+    from = removed === size - 1 ? 0 : Math.max(0, removed - 1);
   }
   return vertices;
 }

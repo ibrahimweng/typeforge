@@ -14,7 +14,7 @@
  * x-height because somebody typed it; a traced one has only letters, so the
  * lines are read off the drawn ink -- the flat-topped lowercase for the
  * x-height, `H` for the capitals, the tallest ascender and the deepest
- * descender for the rest. That is the same ruler `scripts/likeness.ts` uses,
+ * descender for the rest. That is the same ruler `scripts/dev/likeness.ts` uses,
  * and for the same reason: a measurement off the drawing is a fact, and a
  * number carried over from the source file would be a claim about a font this
  * one is no longer identical to.

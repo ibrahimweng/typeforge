@@ -199,6 +199,11 @@ function withPhantoms(glyph: MasterGlyph): Array<{ x: number; y: number }> {
   ];
 }
 
+/** How many axes a master sits away from the default on. */
+function movedAxes(axes: Axis[], at: Record<string, number>): number {
+  return normalise(axes, at).filter((value) => value !== 0).length;
+}
+
 /** Whether two masters drew this glyph the same way, so one can vary the other. */
 function linesUp(one: MasterGlyph, other: MasterGlyph): boolean {
   if (one.points.length !== other.points.length) return false;
@@ -222,7 +227,18 @@ export interface GvarResult {
  * result is checked against fontTools rather than against my reading of the
  * specification.
  */
-export function buildGvar(axes: Axis[], defaults: Master, masters: Master[]): GvarResult {
+export function buildGvar(
+  axes: Axis[],
+  defaults: Master,
+  masters: Master[],
+  /**
+   * Whether some masters sit on more than one axis at once, at the corners of
+   * a grid, and are to be written as corners: see below. Off, every master is
+   * written as its whole difference from the default, which is what a star of
+   * masters wants and what the editor's versions are previewed as.
+   */
+  corners = false,
+): GvarResult {
   const count = defaults.glyphs.length;
   const unvarying: number[] = [];
   const perGlyph: Uint8Array[] = [];
@@ -239,7 +255,21 @@ export function buildGvar(axes: Axis[], defaults: Master, masters: Master[]): Gv
 
     const from = withPhantoms(base);
     const tuples: Tuple[] = [];
-    for (const master of usable) {
+    /*
+     * The masters on one axis first, then those on two, and so on.
+     *
+     * A master that moves two axes at once -- a Condensed Bold -- sits where
+     * the Bold's tuple and the Condensed's both count in full, so what it
+     * stores is only what is left of it once theirs are added: the corner of
+     * a grid, not a third difference piled on the other two. That needs the
+     * tuples it sits under written first. A design space that is a star, as
+     * every one was before there were corners, has nothing to sort and nothing
+     * to take away: no tuple of one axis reaches another's peak.
+     */
+    const ordered = corners
+      ? [...usable].sort((one, other) => movedAxes(axes, one.at) - movedAxes(axes, other.at))
+      : usable;
+    for (const master of ordered) {
       const to = withPhantoms(master.glyphs[index]);
       /*
        * The difference between the two rounded points, not the rounded
@@ -252,10 +282,20 @@ export function buildGvar(axes: Axis[], defaults: Master, masters: Master[]): Gv
        * shows up on anything thin, an s at a Thin coming out most of a per
        * cent away from the same s drawn on its own.
        */
-      const deltas = from.map((point, at) => ({
+      let deltas = from.map((point, at) => ({
         x: Math.round(to[at].x) - Math.round(point.x),
         y: Math.round(to[at].y) - Math.round(point.y),
       }));
+      // What the tuples already written say here, taken off: see above.
+      const peak = normalise(axes, master.at);
+      for (const earlier of corners ? tuples : []) {
+        const share = scalarAt(earlier, peak);
+        if (share === 0) continue;
+        deltas = deltas.map((delta, at) => ({
+          x: Math.round(delta.x - share * earlier.deltas[at].x),
+          y: Math.round(delta.y - share * earlier.deltas[at].y),
+        }));
+      }
       // A master that moves nothing is a tuple that says nothing.
       if (deltas.every((delta) => delta.x === 0 && delta.y === 0)) continue;
       tuples.push({ ...regionOf(axes, master.at, masters), deltas });

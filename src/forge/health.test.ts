@@ -14,7 +14,7 @@ import { readyToShape } from "./layers";
 import { noCuts, type Cuts } from "./cut";
 import { startFrom, type Forge } from "./document";
 import { troubles } from "./health";
-import { DISPLAY, SANS, SERIF } from "./style";
+import { BRUSH, DISPLAY, HANDWRITING, MARKER, ROUNDHAND, SANS, SERIF } from "./style";
 
 const heavier = (forge: Forge, weight: number): Forge => ({
   ...forge,
@@ -170,6 +170,39 @@ describe("what has gone wrong", () => {
     const found = troubles(tight).find((one) => one.what === "Touching the letter before it");
     expect(found).toBeDefined();
   });
+
+  it("says nothing about the join of a joined face", () => {
+    /*
+     * A joined letter reaches back into the one before on purpose -- that is
+     * the join -- and a written capital enters by a swash that hangs there.
+     * Warned about, every lowercase letter of every script was listed, a
+     * hundred and forty at a time.
+     */
+    for (const base of [HANDWRITING, ROUNDHAND]) {
+      const found = troubles(startFrom(base)).find(
+        (one) => one.what === "Touching the letter before it",
+      );
+      const joined = (found?.letters ?? []).filter((letter) => /^[a-z]$|^[BDFIPTY]$/.test(letter));
+      expect(joined, base.name).toEqual([]);
+    }
+  }, 120_000);
+
+  it("does not count an accent standing over a leaning I as touching", () => {
+    /*
+     * Stood upright to be measured, a grave over a leaning I swung left of the
+     * I's origin by its height times the lean -- but the letter before leans
+     * as far at that height, so nothing is met there.
+     */
+    for (const base of [MARKER, BRUSH]) {
+      const found = troubles(startFrom(base)).find(
+        (one) => one.what === "Touching the letter before it",
+      );
+      const accentedI = (found?.letters ?? []).filter((letter) =>
+        /^I(grave|acute|circumflex|tilde)$/.test(letter),
+      );
+      expect(accentedI, base.name).toEqual([]);
+    }
+  }, 120_000);
 
   it("names the letters rather than only the fault", () => {
     // The whole point is being able to go and look at one.

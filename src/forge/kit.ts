@@ -26,7 +26,8 @@ import { contourArea, contoursBounds, type Bounds } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
 import type { Style } from "./style";
-import type { Spine, SpineSegment, Stroke, Terminal } from "./types";
+import { penReach, reachAlong } from "./sweep";
+import type { Pen, Spine, SpineSegment, Stroke, Terminal } from "./types";
 
 // ---------------------------------------------------------------------------
 // What a kit is
@@ -207,6 +208,36 @@ export function unitOf(style: Style, grid: Grid): number {
   return style.metrics.capHeight / Math.max(1, grid.rows);
 }
 
+/**
+ * How much of a cell a stroke may fill and leave the letters legible: a row
+ * across, for a level run, since the eye of an e and the bowl of an a are one
+ * row high; and a little over a cell for an upright, since the counters
+ * between two uprights are two columns wide.
+ */
+const ROW_INK = 0.6;
+const COLUMN_INK = 0.95;
+
+/**
+ * The pen a letter on the grid is drawn with.
+ *
+ * The face's own, unless at the face's own weight it fills too much of a
+ * cell: a heavy face's pen is wider across than a row is tall less a
+ * counter, and on the grid the one-row eye of its e and the bowl of its a
+ * closed solid -- the Ribbon's and the Fairground's, whose level runs are a
+ * whole cell deep. There the pen is taken down by as much as it needs, and
+ * by that same share at every weight, so the weight control still moves the
+ * letters on the grid as it moves the rest of the font.
+ *
+ * `own` is the pen at the face's own weight, held as it is now.
+ */
+export function gridPen(pen: Pen, own: Pen, unit: number): Pen {
+  const reach = penReach(own);
+  const level = 2 * Math.abs(reachAlong({ x: 0, y: 1 }, reach).y);
+  const upright = 2 * Math.abs(reachAlong({ x: 1, y: 0 }, reach).x);
+  const share = Math.min(1, (ROW_INK * unit) / level, (COLUMN_INK * unit) / upright);
+  return share >= 1 ? pen : { ...pen, weight: pen.weight * share };
+}
+
 /** Where a cell sits, in font units. */
 export function cellBox(column: number, row: number, unit: number, left: number): Bounds {
   return {
@@ -325,8 +356,13 @@ export function assemble(tiles: Tiles, style: Style, kit: Kit): Assembled {
      * the middle, they are a straight line -- and drawn as a turn instead,
      * every horizontal arm in the font came back as a row of V's.
      */
+    // Not a diagonal that only passes through a corner, though: two arms of a
+    // Y arriving at the top corners of its stem are a fork, not a bar.
+    const diagonal = (port: Port): boolean => diagonalOnly(tiles, column, row, port);
     for (const port of [...spare]) {
-      const along = spare.find((other) => other !== port && sameEdge(port, other));
+      const along = spare.find(
+        (other) => other !== port && sameEdge(port, other) && !diagonal(port) && !diagonal(other),
+      );
       if (spare.includes(port) && along) {
         straight(port, along);
         take(port, along);
@@ -360,7 +396,14 @@ export function assemble(tiles: Tiles, style: Style, kit: Kit): Assembled {
        * middle instead, the arm grows a diagonal spur into the counter.
        */
       const along = cell.ports.find((other) => other !== port && sameEdge(port, other));
-      if (along) straight(port, along, along);
+      /*
+       * Unless the stroke through that corner is a diagonal: carried on only
+       * by the cell across the corner, not by either cell beside it. The leg
+       * of an N or a K leaves the stem's cell at its corner, and run along the
+       * edge instead it came back as a nick in the stem with a gap between
+       * the stem and the leg.
+       */
+      if (along && !diagonalOnly(tiles, column, row, port)) straight(port, along, along);
       else
         strokes.push(
           stroke(
@@ -407,6 +450,16 @@ function continues(tiles: Tiles, column: number, row: number, port: Port): boole
   return MEETS[port].some((step) =>
     tiles.cells[cellKey(column + step.column, row + step.row)]?.ports.includes(step.port),
   );
+}
+
+/** Whether a corner port is carried on across the corner and by nothing beside it. */
+function diagonalOnly(tiles: Tiles, column: number, row: number, port: Port): boolean {
+  if (port.length !== 2) return false;
+  const carries = (step: { column: number; row: number; port: Port }): boolean =>
+    tiles.cells[cellKey(column + step.column, row + step.row)]?.ports.includes(step.port) ?? false;
+  const across = MEETS[port].filter((step) => step.column !== 0 && step.row !== 0);
+  const beside = MEETS[port].filter((step) => step.column === 0 || step.row === 0);
+  return across.some(carries) && !beside.some(carries);
 }
 
 /**
@@ -462,7 +515,14 @@ function bend(from: Vec2, corner: Vec2, to: Vec2, radius: number, penHalf: numbe
 
   const halfTurn = between / 2;
   const arm = Math.min(distanceBetween(corner, from), distanceBetween(corner, to));
-  const fits = Math.min(radius, arm * Math.tan(halfTurn));
+  /*
+   * Held a thousandth short of the whole arm. A turn that takes all of it ends
+   * its arc exactly on the port, and a ring built only of such turns -- the o
+   * of the grid alphabet, a rounded square -- came out of the fuse as one
+   * solid with no counter. A thousandth of the arm is a tenth of a unit, and
+   * leaves each end a straight stub the fuse has no trouble joining.
+   */
+  const fits = Math.min(radius, arm * Math.tan(halfTurn) * 0.999);
   if (fits <= penHalf * 1.02) return square;
 
   const back = fits / Math.tan(halfTurn);

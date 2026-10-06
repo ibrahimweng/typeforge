@@ -162,6 +162,26 @@ export interface Metrics {
    */
   heavyFloor?: number;
   /**
+   * Past the Black (a blackness of `HEAVY_OPEN_FROM`, the Sans at Geist
+   * Black's stem of 194), how much of the stem gained each bowl's half-width
+   * takes back, so its counter stays about as open as the Black's rather
+   * than closing to a slit between two stems: see `pastBlack`. Left out, the
+   * bowls past the Black are drawn as before.
+   */
+  heavyOpen?: number;
+  /**
+   * Where `heavyOpen` starts, as `stemBlack` counts weight, on a face drawn
+   * heavy to begin with: `HEAVY_OPEN_FROM` when left out. The Display's own
+   * pen is nearly a Black already, and its counters are what is left.
+   */
+  heavyOpenFrom?: number;
+  /**
+   * Past the Black, how much of the stem gained a round stroke gives up at its
+   * sides, its outside held where it was: see `rounds.ts`. For a face that
+   * keeps its rounds round (`heavyFloor`) and so cannot let its bowls out.
+   */
+  heavyThin?: number;
+  /**
    * Below the pen `from`, each bowl and arch is held as wide through its
    * middle as at `from`, widening by `grow` of it over the whole way to no pen
    * at all: see `frame` in `letters/common.ts`. Left out, a lighter pen widens
@@ -174,6 +194,41 @@ export interface Metrics {
    * its Black (see `blackness`), held past it. Left out, it follows the arch.
    */
   wordSpace?: [number, number];
+  /**
+   * The superior figures and the fractions set as a text face sets them
+   * (Lora's): each figure `share` of the cap height, a superior's and a
+   * numerator's foot `foot` of the cap height up, and a fraction's two
+   * figures either side of a long slash from the line to the cap line,
+   * leaning `slope` across for every unit up and `slash` of the pen across,
+   * the figures on `pen` of the pen.
+   * Left out, a superior is six tenths of a capital hung from the cap line
+   * and a fraction's figures stand clear of a short slash.
+   */
+  superiors?: {
+    share: number;
+    foot: number;
+    slope: number;
+    slash: number;
+    pen: number;
+    /** How much wider than the face's figure set small each is drawn. */
+    wide?: Record<string, number>;
+    /** How far across a numerator's ink a fraction's slash leaves from. */
+    slashAt?: Record<string, number>;
+  };
+  /**
+   * Where a yen's two bars stand, as Lora's do: at `bars` of the cap height,
+   * reaching `reach` of it either side of the middle (moved `shift` of it),
+   * `deep` of the pen deep and even. Left out, they stand under the fork and
+   * run the letter's width, one over the other where two will not fit.
+   */
+  yen?: {
+    bars: [number, number];
+    reach: number;
+    shift: number;
+    deep: number;
+    /** Where the yen's own Y's arms meet, against the cap height: see `capitalY`. */
+    meets?: number;
+  };
   /**
    * Where the accents stand: `gap`, how far over a lowercase letter and over
    * a capital, as shares of the em; and `byFoot`, whether a grave or an
@@ -793,6 +848,7 @@ export const SANS: Style = {
     figures: "proportional",
     heavyCounter: 1.3,
     heavyContrast: 0.42,
+    heavyOpen: 0.35,
     capitalContrast: 0.61,
     // Geist Thin's capitals and figures stand on stems of 32 to its lowercase's 30.
     capitalThin: 0.067,
@@ -948,6 +1004,18 @@ export const SANS: Style = {
       grave: [0.55, 0.55],
       acute: [0.55, 0.55],
       at: [0.56, 0.57],
+      // The typographic punctuation (`letters/typographic.ts`). Geist stands
+      // its guillemets 44 off either side at the Regular and 32 at the Black,
+      // as its n; its daggers and its trade mark as far off as its H (92,
+      // the trade mark after a capital's 12 of extra); its euro 55 and 40.
+      guillemotleft: [0.55, 0.55, "closes"],
+      guillemotright: [0.55, 0.55, "closes"],
+      guilsinglleft: [0.55, 0.55, "closes"],
+      guilsinglright: [0.55, 0.55, "closes"],
+      dagger: [1.15, 1.15, "closes"],
+      daggerdbl: [1.15, 1.15, "closes"],
+      trademark: [1, 1, "closes"],
+      Euro: [0.69, 0.5],
     },
     /*
      * Each letter's width against the rhythm, fitted to Geist's by measuring
@@ -1174,6 +1242,7 @@ export const SERIF: Style = {
     five: "humanist",
     hyphen: "humanist",
     slash: "humanist",
+    backslash: "humanist",
     exclam: "humanist",
     A: "humanist",
     w: "humanist",
@@ -1188,6 +1257,50 @@ export const SERIF: Style = {
     question: "humanist",
     ampersand: "humanist",
     R: "humanist",
+    // Lora's signs: see `letters/humanist.ts`.
+    plus: "humanist",
+    equal: "humanist",
+    divide: "humanist",
+    multiply: "humanist",
+    less: "humanist",
+    greater: "humanist",
+    underscore: "humanist",
+    numbersign: "humanist",
+    percent: "humanist",
+    bracketleft: "humanist",
+    bracketright: "humanist",
+    braceleft: "humanist",
+    braceright: "humanist",
+    // Lora's punctuation and symbols: see `letters/humanist-marks.ts`.
+    // (The bullet, the cent, the dollar, the euro and the ordinals are drawn
+    // out of the full stop, the c, the S, the C and the a and o, and follow
+    // their forms.)
+    dagger: "humanist",
+    daggerdbl: "humanist",
+    asterisk: "humanist",
+    sterling: "humanist",
+    section: "humanist",
+    paragraph: "humanist",
+    trademark: "humanist",
+    copyright: "humanist",
+    registered: "humanist",
+    bar: "humanist",
+    brokenbar: "humanist",
+    periodcentered: "humanist",
+    degree: "humanist",
+    currency: "humanist",
+    asciicircum: "humanist",
+    asciitilde: "humanist",
+    logicalnot: "humanist",
+    plusminus: "humanist",
+    guilsinglleft: "humanist",
+    guilsinglright: "humanist",
+    guillemotleft: "humanist",
+    guillemotright: "humanist",
+    period: "humanist",
+    colon: "humanist",
+    comma: "humanist",
+    semicolon: "humanist",
   },
   /*
    * A text face's proportions rather than the sans's.
@@ -1224,9 +1337,71 @@ export const SERIF: Style = {
      * seven units over the stem's head at the heaviest.
      */
     risingHairline: true,
-    risingOwn: ["z", "Z", "slash", "A", "one"],
+    // Nor the signs, which draw their own: Lora's number sign, percent,
+    // multiplication sign and angle brackets are as heavy rising as falling.
+    risingOwn: [
+      "z",
+      "Z",
+      "slash",
+      "A",
+      "one",
+      "numbersign",
+      "percent",
+      "multiply",
+      "less",
+      "greater",
+      // And the marks drawn to Lora's (`letters/humanist-marks.ts`): past a
+      // Black the upper arm of a guillemet and the right side of the
+      // exclamation mark's wedge went to hairlines, and the chevron came apart.
+      "exclam",
+      "backslash",
+      "guilsinglleft",
+      "guilsinglright",
+      "guillemotleft",
+      "guillemotright",
+      "asciicircum",
+      "asterisk",
+      "dagger",
+      "daggerdbl",
+      "sterling",
+      "at",
+      "currency",
+      "Euro",
+    ],
     // Lora's word space, 263 at the Regular and the Bold, a little more past it.
     wordSpace: [263 / 500, 280 / 500],
+    // Lora's superior figures, 0.573 of a capital standing 306 up, and its
+    // fraction slash, 46 across at the Regular and 81 at the Bold, leaning
+    // 0.668: the construction's stood 26 units lower, 0.6 of a capital, beside
+    // a slash leaning 0.37 that kept the figures apart by the pen.
+    //
+    // Drawn as the figures they are, serifs and drops and all (see
+    // `dressedAs` in `letters/common.ts`), on 0.68 of the pen, and each as
+    // wide as Lora's against the Serif's figure set small: Lora's one a
+    // little wider, its two, three and four narrower. A fraction's slash
+    // leaves from three quarters across a one, under its foot serif.
+    superiors: {
+      share: 0.573,
+      foot: 306 / 700,
+      slope: 0.668,
+      slash: 0.55,
+      pen: 0.68,
+      wide: { one: 1.025, two: 0.98, three: 0.895, four: 0.96 },
+      slashAt: { one: 0.75 },
+    },
+    // Lora's yen: its bars 186 and 294 up, 345 long and 47 deep at the
+    // Regular, where the construction's lay one over the other at 127, the
+    // letter's whole width long.
+    // And its Y is Lora's, not the letter's: the arms run down to meet
+    // 0.26 of the cap height up, where the letter's meet at 0.46, so the
+    // upper bar crosses them where they close rather than under a vee.
+    yen: {
+      bars: [186 / 700, 294 / 700],
+      reach: 172.5 / 700,
+      shift: 7 / 700,
+      deep: 0.54,
+      meets: 0.26,
+    },
     // LORA-BOLD-BEGIN (fitted to Lora Bold at a pen of 142)
     bold: {
       at: 0.47,
@@ -1325,7 +1500,9 @@ export const SERIF: Style = {
       g: [1.03, 0.06],
       h: [0.76, 0.88],
       i: [1.06, 0.97],
-      j: [0.21, 2.18],
+      // The j's tail runs under the letter before it, as Lora's does (-88):
+      // held inside its advance, its stem stood 80 units off that letter.
+      j: [-2.35, 2.18],
       k: [0.76, 0.21],
       l: [0.74, 1],
       m: [1.06, 0.94],
@@ -1342,7 +1519,13 @@ export const SERIF: Style = {
       x: [0.65, 0.32],
       y: [0.21, 0.12],
       z: [1.18, 1.29],
-      A: [-0.19, -0.34],
+      /*
+       * The diagonal capitals and the J hang past their sides as Lora's do,
+       * and are held six units further in by a Black: past a Bold the
+       * capitals' extra room no longer paid for the overhang, and they met
+       * the letters either side of them.
+       */
+      A: [-0.19, -0.34, "half", [0, 0], [6, 6]],
       B: [1.22, 0.75],
       C: [0.95, 0.48],
       D: [1.22, 0.95],
@@ -1351,7 +1534,7 @@ export const SERIF: Style = {
       G: [0.98, 0.22],
       H: [1.22, 1.22],
       I: [1.22, 1.22],
-      J: [-0.19, 0.48],
+      J: [-0.19, 0.48, "half", [0, 0], [6, 0]],
       K: [1.22, -0.25],
       L: [1.22, 0.22],
       M: [0.89, 0.6],
@@ -1359,14 +1542,14 @@ export const SERIF: Style = {
       O: [0.95, 0.89],
       P: [1.22, 0.36],
       Q: [0.95, -0.11],
-      R: [1.22, -0.34],
+      R: [1.22, -0.34, "half", [0, 0], [0, 6]],
       S: [1.31, 0.89],
       T: [0.25, 0.28],
       U: [0.51, 0.48],
-      V: [-0.19, -0.34],
-      W: [-0.19, -0.34],
-      X: [-0.14, -0.34],
-      Y: [-0.19, -0.34],
+      V: [-0.19, -0.34, "half", [0, 0], [6, 6]],
+      W: [-0.19, -0.34, "half", [0, 0], [6, 6]],
+      X: [-0.14, -0.34, "half", [0, 0], [0, 6]],
+      Y: [-0.19, -0.34, "half", [0, 0], [6, 6]],
       Z: [0.86, 1.01],
       zero: [1.65, 1.62],
       one: [0.53, 1.03],
@@ -1378,21 +1561,86 @@ export const SERIF: Style = {
       seven: [0.65, 0.59],
       eight: [1.74, 1.47],
       nine: [1.41, 1.74],
-      ampersand: [1.06, 0.06],
-      question: [0.97, 1.08],
-      exclam: [2.18, 2.21],
-      period: [1.88, 1.91],
-      comma: [1.94, 1.79],
-      semicolon: [2.06, 1.97],
-      colon: [1.97, 1.94],
-      quotesingle: [1.82, 1.82],
-      quotedbl: [1.82, 1.85],
-      parenleft: [1.06, 0.5],
-      parenright: [0.53, 1.03],
-      hyphen: [1.97, 1.97],
-      slash: [0.62, 0.59],
-      at: [1.47, 1.24],
-      yen: [0.82, 0.79],
+      ampersand: [1.06, 0.06, "half", [0, 0], [-15, -13]],
+      question: [0.97, 1.08, "half", [0, 0], [17, 24]],
+      exclam: [2.18, 2.21, "half", [0, 0], [-15, -15]],
+      period: [1.88, 1.91, "half", [0, 0], [-21, -22]],
+      ellipsis: [1.88, 1.91, "half", [0, 0], [-21, -22]],
+      quotesinglbase: [1.94, 1.79, "half", [0, 0], [-24, -19]],
+      quotedblbase: [1.94, 1.79, "half", [0, 0], [-24, -19]],
+      comma: [1.94, 1.79, "half", [0, 0], [-24, -19]],
+      semicolon: [2.06, 1.97, "half", [0, 0], [-19, -9]],
+      colon: [1.97, 1.94, "half", [0, 0], [-13, -6]],
+      quotesingle: [1.82, 1.82, "half", [0, 0], [-21, -21]],
+      quotedbl: [1.82, 1.85, "half", [0, 0], [-19, -21]],
+      parenleft: [1.06, 0.5, "half", [0, 0], [-13, -9]],
+      parenright: [0.53, 1.03, "half", [0, 0], [0, -11]],
+      hyphen: [1.97, 1.97, "half", [0, 0], [-13, -11]],
+      slash: [0.62, 0.59, "half", [0, 0], [13, 15]],
+      backslash: [0.62, 0.59, "half", [0, 0], [13, 15]],
+      bar: [2.32, 2.26, "half", [0, 0], [-13, -11]],
+      ordfeminine: [1.71, 1.21, "half", [0, 0], [-10, -51]],
+      ordmasculine: [1.41, 1.35, "half", [0, 0], [-30, -50]],
+      cent: [1.06, 1.12, "half", [0, 0], [37, 13]],
+      dollar: [1.47, 1.09, "half", [0, 0], [13, 19]],
+      onesuperior: [0.9, 1.84, "half", [0, 0], [-20, -37]],
+      twosuperior: [1.5, 2.45, "half", [0, 0], [-12, 6]],
+      threesuperior: [1.65, 1.86, "half", [0, 0], [-17, -2]],
+      onequarter: [0.91, 1.53, "half", [0, 0], [-20, 15]],
+      onehalf: [0.97, 2.97, "half", [0, 0], [-20, 20]],
+      threequarters: [1.59, 1.49, "half", [0, 0], [-14, 20]],
+      sterling: [1.38, 1, "held", [0, 0], [7, 15]],
+      paragraph: [0.97, 2.91, "half", [0, 0], [24, 6]],
+      section: [1.06, 1.05, "half", [0, 0], [17, 20]],
+      copyright: [1.29, 1.24, "held", [0, 0], [4, 7]],
+      registered: [1.29, 1.26, "held", [0, 0], [4, 6]],
+      brokenbar: [2.47, 2.47, "half", [0, 0], [-9, -7]],
+      at: [1.59, 1.12, "half", [0, 0], [12, 6]],
+      yen: [0.82, 0.79, "half", [0, 0], [15, 15]],
+      // The typographic punctuation (`letters/typographic.ts`). Lora sets its
+      // closing quotes tight, 25 and 23 off, and its opening ones 46 and 52;
+      // its guillemets 32 off the side they point to and 55 off the other,
+      // the single ones 31 and 47; its bullet 50 off either side; its euro
+      // 35 and 42; its trade mark 63 (49 and a capital's extra).
+      quoteright: [0.74, 0.68, "half", [0, 0], [-2, 9]],
+      quotedblright: [0.74, 0.68, "half", [0, 0], [-2, 11]],
+      quoteleft: [1.35, 1.53, "half", [0, 0], [-13, -36]],
+      quotedblleft: [1.35, 1.53, "half", [0, 0], [-13, -36]],
+      guillemotleft: [0.94, 1.62, "half", [0, 0], [-15, -21]],
+      guillemotright: [1.62, 0.94, "half", [0, 0], [-21, -15]],
+      guilsinglleft: [0.91, 1.38, "half", [0, 0], [-15, -13]],
+      guilsinglright: [1.38, 0.91, "half", [0, 0], [-13, -15]],
+      bullet: [1.47, 1.47, "half", [0, 0], [-22, -22]],
+      trademark: [1.74, 0.94, "half", [0, 0], [40, 9]],
+      Euro: [1.03, 1.24, "half", [0, 0], [22, 4]],
+      dagger: [0.76, 0.76, "half", [0, 0], [11, 11]],
+      exclamdown: [1.85, 1.85, "half", [0, 0], [-15, -15]],
+      questiondown: [0.97, 0.88, "half", [0, 0], [22, 11]],
+      daggerdbl: [0.76, 0.76],
+      asterisk: [1.15, 1.21, "held", [0, 0], [7, 2]],
+      // Lora's signs, measured off its Regular.
+      numbersign: [0.97, 1, "half", [0, 0], [17, 15]],
+      percent: [1.06, 1.03, "half", [0, 0], [19, 19]],
+      bracketleft: [2.32, 0.35, "half", [0, 0], [-11, -17]],
+      bracketright: [0.35, 2.32, "half", [0, 0], [0, -11]],
+      braceleft: [0.21, 0.35],
+      braceright: [0.35, 0.21],
+      underscore: [1.68, 1.68],
+      plus: [1.24, 1.24, "half", [0, 0], [11, 11]],
+      equal: [1.24, 1.24, "half", [0, 0], [11, 11]],
+      divide: [1.24, 1.24, "half", [0, 0], [11, 11]],
+      multiply: [2.6, 2.6, "half", [0, 0], [7, 7]],
+      less: [1, 1.5, "half", [0, 0], [21, -7]],
+      greater: [1.24, 1.26, "half", [0, 0], [7, 6]],
+      // Lora's punctuation and symbols (`letters/humanist-marks.ts`); those
+      // Lora sets as far off at its Bold as at its Regular held there.
+      periodcentered: [1.97, 1.94, "half", [0, 0], [-32, -32]],
+      degree: [1.38, 1.38, "half", [0, 0], [-22, -22]],
+      currency: [1.79, 1.76, "held"],
+      asciicircum: [1.76, 1.76, "held"],
+      asciitilde: [1.26, 1.26, "held"],
+      logicalnot: [1.06, 1.41, "held", [0, 0], [0, -7]],
+      plusminus: [1.24, 1.24, "held"],
     },
     proportions: {
       a: 1.069,
@@ -1456,6 +1704,8 @@ export const SERIF: Style = {
     fit: 1,
     figures: "proportional",
     heavyCounter: 1.3,
+    // Lora hangs its j's tail under the letter before it: see `sides`.
+    overhangs: { j: 0.09 },
   },
   parts: {
     ...PLAIN.parts,
@@ -1511,7 +1761,15 @@ export const DISPLAY: Style = {
    * they turn. Set tight it reads as one block of colour, which is what it was
    * invented to do.
    */
-  metrics: { ...PLAIN.metrics, xHeight: 575, counterWidth: 285, sidebearing: 34, width: 1.02 },
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 575,
+    counterWidth: 285,
+    sidebearing: 34,
+    width: 1.02,
+    heavyOpen: 0.6,
+    heavyOpenFrom: 0.5,
+  },
   pen: { weight: 205, contrast: 0.55, angle: 0 },
   // The apex cut flat, which its own hint says is what a heavy face does to
   // keep the top of an A from going black.
@@ -1572,6 +1830,19 @@ export const GEOMETRIC: Style = {
     counterWidth: 380,
     sidebearing: 58,
     heavyCounter: 1.4,
+    /*
+     * Its bowls let out only a little past the Black, for the same reason:
+     * its o keeps its round and closes from the inside. What it keeps open
+     * there are the letters that stack or cross their strokes -- the 4, the
+     * #, the & and the brackets (see `pastBlack`).
+     */
+    heavyOpen: 0.05,
+    /*
+     * So it opens them from the inside instead: its round strokes give up a
+     * share of the stem gained at their sides, their outsides held, and an
+     * Ultra's o, e and 6 keep a counter rather than a slot (see `rounds.ts`).
+     */
+    heavyThin: 1.2,
     /*
      * And closing further than that past the Black: a pen a quarter of the
      * em wide leaves an o no rounder than its counter lets it, and held to a
@@ -1972,7 +2243,7 @@ export const GROTESQUE: Style = {
   name: "Grotesque",
   family: "sans",
   blurb: "A sans that has closed up: tight apertures, high shoulders, squared bowls.",
-  metrics: { ...PLAIN.metrics, xHeight: 535, width: 0.97, counterWidth: 318 },
+  metrics: { ...PLAIN.metrics, xHeight: 535, width: 0.97, counterWidth: 318, heavyOpen: 0.2 },
   pen: { weight: 104, contrast: 0.06, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them
@@ -2267,7 +2538,7 @@ export const TYPEWRITER: Style = {
  * capitals in `alternates.ts`.
  */
 const WRITTEN_CAPITALS = Object.fromEntries(
-  "BDEFHIKLMNPRTUVWXYZ".split("").map((letter) => [letter, "written"]),
+  "BDEFHIJKLMNPRTUVWXYZ".split("").map((letter) => [letter, "written"]),
 );
 
 export const HANDWRITING: Style = {
@@ -3306,7 +3577,7 @@ export const MONOLINE_SCRIPT: Style = {
  *   bounce / x-height      0.033      0.000     0.017
  *
  * The middle column is what this face measures, not what it declares -- those
- * are two numbers, and `scripts/likeness.ts` is what keeps them honest.
+ * are two numbers, and `scripts/dev/likeness.ts` is what keeps them honest.
  *
  * Read off the letters rather than out of the tables, which matters on the two
  * that disagree: both fonts declare an ascender near the top of the em, and in
@@ -3473,6 +3744,36 @@ export function blackness(style: Style): number {
   const span = Math.max(TEXT_STEM + BLACK_SPAN - from, BLACK_SPAN / 4);
   return Math.min(Math.max((pen.weight / metrics.xHeight - from) / span, 0), 1.5);
 }
+
+/**
+ * How heavy a face that keeps its counters open at a heavy weight
+ * (`metrics.heavyOpen`) is drawn, as `blackness` counts it but always from
+ * the text stem: nought at a text weight, one at about a Black, on to one
+ * and a half. `blackness` starts a face drawn heavy (the Display) at its own
+ * weight, which is right for how it grows but not for how much room its
+ * counters have left: the Display's own pen already stands where the
+ * Sans's Black does against its x-height. Nought on every other face.
+ */
+export function stemBlack(style: Style): number {
+  const { pen, metrics } = style;
+  if (!metrics.heavyOpen || metrics.xHeight <= 0) return 0;
+  if (pen.black !== undefined) return pen.black;
+  return Math.min(Math.max((pen.weight / metrics.xHeight - TEXT_STEM) / BLACK_SPAN, 0), 1.5);
+}
+
+/**
+ * How much stem a weight has gained past the Black, in units: nought up to
+ * `HEAVY_OPEN_FROM` (the Sans at Geist Black's 194) and on with the pen from
+ * there, as `stemBlack` counts it. Nought on a face that does not open its
+ * bowls past the Black (`metrics.heavyOpen`).
+ */
+export function pastBlack(style: Style): number {
+  const from = style.metrics.heavyOpenFrom ?? HEAVY_OPEN_FROM;
+  return Math.max(0, stemBlack(style) - from) * BLACK_SPAN * style.metrics.xHeight;
+}
+
+/** Where `pastBlack` starts: the Sans's blackness at a pen of 194. */
+export const HEAVY_OPEN_FROM = 0.885;
 
 /**
  * The pen at which a face reaches a given `blackness`: the same measure turned

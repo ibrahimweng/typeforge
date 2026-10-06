@@ -35,7 +35,10 @@ import {
   capped,
   BUTT,
   enclosing,
+  endLetter,
   frame,
+  type Frame,
+  inherit,
   ink,
   lighter,
   type LetterName,
@@ -52,13 +55,16 @@ import {
   seamsOf,
   wobbleOf,
 } from "./script";
-import { bowRuns, spineEnd, waveBookAt } from "./shapes";
+import { bowRuns, spineEnd, spineStart, waveBookAt } from "./shapes";
 import { blackness, scriptUnit } from "./style";
+import { penReach } from "./sweep";
+import type { Spine, Stroke, Terminal } from "./types";
 import type { Style } from "./style";
 import { LOWERCASE_RECIPES } from "./letters/lowercase";
 import { CAPITAL_RECIPES } from "./letters/capitals";
 import { FIGURE_RECIPES } from "./letters/figures";
 import { PUNCTUATION_RECIPES } from "./letters/punctuation";
+import { TYPOGRAPHIC_RECIPES } from "./letters/typographic";
 import { LATIN_RECIPES } from "./letters/latin";
 import { MARK_RECIPES } from "./letters/marks";
 import { CYRILLIC_RECIPES } from "./letters/cyrillic";
@@ -89,6 +95,7 @@ export const LETTERS: Record<LetterName, (style: Style) => Recipe> = {
   ...CAPITAL_RECIPES,
   ...FIGURE_RECIPES,
   ...PUNCTUATION_RECIPES,
+  ...TYPOGRAPHIC_RECIPES,
   ...LATIN_RECIPES,
   ...MARK_RECIPES,
   ...CYRILLIC_RECIPES,
@@ -147,8 +154,13 @@ export function recipeOf(name: LetterName, form?: string): ((style: Style) => Re
   return (style: Style) => {
     // Carried so that a symbol built out of a letter draws the same letter the
     // font does: an ordinal on a font with the single-storey a is that a.
-    beginLetter(form);
-    return connected(name, build(style), style);
+    // And handed back after, for a letter drawn inside another: see `endLetter`.
+    const was = beginLetter(form);
+    try {
+      return connected(name, build(style), style);
+    } finally {
+      endLetter(was);
+    }
   };
 }
 
@@ -302,6 +314,16 @@ let takingHigh: { entry?: boolean; exit?: boolean } = {};
  */
 let endsWithout: Partial<Ends> | null = null;
 
+/**
+ * Which halves of the join the letter being drawn now is taking high and doing
+ * without, said as a key: two drawings of a letter under different answers
+ * are different drawings, and whatever keeps one must not hand it out as the
+ * other.
+ */
+export function joiningNow(): string {
+  return `${takingHigh.entry}${takingHigh.exit}${endsWithout?.entry}${endsWithout?.exit}`;
+}
+
 export function joiningWithout<T>(which: Partial<Ends>, run: () => T): T {
   const was = endsWithout;
   endsWithout = which;
@@ -334,6 +356,47 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
  */
 export function joinWeight(style: Style): number {
   return 1 - 0.45 * Math.min(1, blackness(style));
+}
+
+/**
+ * A join, inked: a hairline of one width the whole way, square at both ends.
+ *
+ * A join is an up-stroke and a pointed or broad pen makes its up-strokes
+ * light. Drawn with the letter's own nib it was not: the seam's heading lies
+ * nearly along the thick of the Formal Script's nib, so every half of every
+ * join swelled from a hairline along the line into a black wedge where it
+ * climbed through the seam. A nib with contrast also cuts a square end on the
+ * slant of its own ellipse, and those slanted ends stood as saw teeth where one
+ * letter handed over to the next. So the join takes one width from end to end:
+ * a touch under the width the face's own pen draws when it runs level along
+ * the line, which is how the join leaves the foot of a stem -- under it, so the
+ * join's edges stay inside the stroke it leaves rather than standing proud of
+ * it (at the Formal Script's own weight the `t`'s lead-out hung three units
+ * under the curl of its foot). The two halves of a join are then the same
+ * stroke, and their square ends meet square.
+ *
+ * A written letter's own lead-in is a join too and is drawn here, or the two
+ * halves of one stroke would not match.
+ */
+/** How much of the pen's level width a join is drawn with: see `joinInk`. */
+const JOIN_UNDER = 0.94;
+
+export function joinInk(
+  f: Frame,
+  spine: Spine,
+  end: Terminal = BUTT,
+  start: Terminal = BUTT,
+): Stroke {
+  const stroke = lighter(ink(f, spine, start, end), joinWeight(f.style));
+  const { across, along, angle } = penReach(stroke.pen);
+  const level = JOIN_UNDER * 2 * Math.hypot(across * Math.sin(angle), along * Math.cos(angle));
+  // A round pen is one width every way already, and its joins were never
+  // the trouble.
+  if (stroke.pen.contrast <= 0) return stroke;
+  return inherit(stroke, {
+    ...stroke,
+    pen: { ...stroke.pen, weight: Math.min(stroke.pen.weight, level), contrast: 0 },
+  });
 }
 
 /**
@@ -469,12 +532,23 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    */
   if (script.on && script.bow > 0 && joinEnds(name).entry) {
     const half = style.pen.weight / 2;
+    /*
+     * Except a run that goes down into a descender eye. The eye is struck
+     * along that run, and bowed through a whole period the run's belly lay
+     * across the eye: the `y` and the `q` on the Handwriting kept a slit of a
+     * counter, and at a Bold the ink pooled into it and the tail ended in a
+     * black drop. A hand going down into a loop goes straight.
+     */
+    const below = -style.metrics.xHeight * 0.1;
+    const intoEye = (spine: Spine) =>
+      takesLoop(name) && !spine.closed && Math.min(spineStart(spine).y, spineEnd(spine).y) < below;
     recipe = {
       ...recipe,
-      strokes: recipe.strokes.map((stroke) => ({
-        ...stroke,
-        spine: bowRuns(stroke.spine, script.bow, half),
-      })),
+      strokes: recipe.strokes.map((stroke) =>
+        intoEye(stroke.spine)
+          ? stroke
+          : { ...stroke, spine: bowRuns(stroke.spine, script.bow, half) },
+      ),
     };
   }
   /*
@@ -645,8 +719,15 @@ function connected(name: LetterName, recipe: Recipe, style: Style): Recipe {
    * push the two ends through each other. The buried end is square because
    * nothing can see it.
    */
-  const light = joinWeight(style);
-  if (plan.entry) strokes.push(lighter(ink(f, plan.entry, BUTT, BUTT), light));
-  if (plan.exit) strokes.push(lighter(ink(f, plan.exit, BUTT, BUTT), light));
+  /*
+   * And round where it meets the letter. A join turns where it reaches the
+   * stroke it leaves or arrives on, and a square end turned that way stood
+   * its corner out past the side of the stroke: a step at the foot of every
+   * `c`, of a `k`'s leg and of a written `r`. The pen's own round end lies
+   * inside the stroke whichever way the join turns.
+   */
+  const meets: Terminal = { kind: "round" };
+  if (plan.entry) strokes.push(joinInk(f, plan.entry, meets));
+  if (plan.exit) strokes.push(joinInk(f, plan.exit, BUTT, meets));
   return { ...recipe, strokes, width: plan.width };
 }

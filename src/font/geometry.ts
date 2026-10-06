@@ -2,7 +2,6 @@
 
 import type { Contour, GlyphNode, Vec2 } from "./types";
 
-export const vec = (x: number, y: number): Vec2 => ({ x, y });
 export const add = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x + b.x, y: a.y + b.y });
 export const sub = (a: Vec2, b: Vec2): Vec2 => ({ x: a.x - b.x, y: a.y - b.y });
 export const scale = (a: Vec2, k: number): Vec2 => ({ x: a.x * k, y: a.y * k });
@@ -1048,31 +1047,125 @@ export function closestApproach(
 ): { distance: number; on: Vec2; off: Vec2 } {
   const a = flattenedLoop(one, steps);
   const b = flattenedLoop(other, steps);
-  const none = { distance: Infinity, on: { x: 0, y: 0 }, off: { x: 0, y: 0 } };
-  if (a.length < 2 || b.length < 2) return none;
-  const apart = (p: Bounds, q: Bounds) =>
-    Math.max(p.xMin - q.xMax, q.xMin - p.xMax, p.yMin - q.yMax, q.yMin - p.yMax, 0);
-  const boxesA = a.slice(1).map((point, index) => boundsOf([a[index], point]));
-  const boxesB = b.slice(1).map((point, index) => boundsOf([b[index], point]));
-  let best = none;
-  const consider = (distance: number, on: Vec2, off: Vec2) => {
-    if (distance < best.distance) best = { distance, on, off };
+  if (a.length < 2 || b.length < 2)
+    return { distance: Infinity, on: { x: 0, y: 0 }, off: { x: 0, y: 0 } };
+  /*
+   * Written out, with nothing made for a pair of pieces that is passed over:
+   * this is asked of every pair of pieces of a letter that come near each
+   * other, every time a letter is weighed, and the boxes, lists and points it
+   * made for each were most of what it cost. The pieces are asked in the same
+   * order and each distance worked out the same way, so the answer is the
+   * same one; a distance plainly longer than the best found so far is passed
+   * over on its square before it is worked out exactly.
+   */
+  const boxesA = pieceBoxes(a);
+  const boxesB = pieceBoxes(b);
+  let best = Infinity;
+  let on: Vec2 = { x: 0, y: 0 };
+  let off: Vec2 = { x: 0, y: 0 };
+  // The best distance squared, a hair long, for passing over what is further.
+  let bound = Infinity;
+  const consider = (px: number, py: number, qx: number, qy: number, pOn: boolean) => {
+    const dx = qx - px;
+    const dy = qy - py;
+    if (dx * dx + dy * dy > bound) return;
+    const gap = Math.hypot(dx, dy);
+    if (gap < best) {
+      best = gap;
+      on = pOn ? { x: px, y: py } : { x: qx, y: qy };
+      off = pOn ? { x: qx, y: qy } : { x: px, y: py };
+      bound = best * best * (1 + 1e-9) + 1e-12;
+    }
   };
-  for (let i = 0; i + 1 < a.length; i++)
-    for (let j = 0; j + 1 < b.length; j++) {
-      if (apart(boxesA[i], boxesB[j]) >= best.distance) continue;
+  // The nearest place to p on the piece from s to e, handed to `consider`.
+  const toPiece = (p: Vec2, s: Vec2, e: Vec2, pOn: boolean) => {
+    const dx = e.x - s.x;
+    const dy = e.y - s.y;
+    const length = dx * dx + dy * dy;
+    const t =
+      length > 0 ? Math.max(0, Math.min(1, ((p.x - s.x) * dx + (p.y - s.y) * dy) / length)) : 0;
+    consider(p.x, p.y, s.x + t * dx, s.y + t * dy, pOn);
+  };
+  /*
+   * The pieces of the second outline boxed a run at a time as well. A piece
+   * is passed over when its box stands at least the best distance off, and a
+   * run whose box does passes over every piece in it, each of whose boxes
+   * stands at least as far off -- so a whole run is passed over at once, and
+   * every pair that is asked is asked in the same order as before. Most of an
+   * outline is nowhere near a given piece of the other once anything close
+   * has been found.
+   */
+  const piecesB = b.length - 1;
+  const runs = Math.ceil(piecesB / RUN);
+  const runBoxes = new Float64Array(runs * 4);
+  for (let run = 0; run < runs; run++) {
+    let xMin = Infinity;
+    let xMax = -Infinity;
+    let yMin = Infinity;
+    let yMax = -Infinity;
+    for (let j = run * RUN; j < Math.min(piecesB, (run + 1) * RUN); j++) {
+      xMin = Math.min(xMin, boxesB[j * 4]);
+      xMax = Math.max(xMax, boxesB[j * 4 + 1]);
+      yMin = Math.min(yMin, boxesB[j * 4 + 2]);
+      yMax = Math.max(yMax, boxesB[j * 4 + 3]);
+    }
+    runBoxes[run * 4] = xMin;
+    runBoxes[run * 4 + 1] = xMax;
+    runBoxes[run * 4 + 2] = yMin;
+    runBoxes[run * 4 + 3] = yMax;
+  }
+  for (let i = 0; i + 1 < a.length; i++) {
+    const ai = i * 4;
+    for (let j = 0; j < piecesB; j++) {
+      if (j % RUN === 0) {
+        const bj = (j / RUN) * 4;
+        const apart = Math.max(
+          boxesA[ai] - runBoxes[bj + 1],
+          runBoxes[bj] - boxesA[ai + 1],
+          boxesA[ai + 2] - runBoxes[bj + 3],
+          runBoxes[bj + 2] - boxesA[ai + 3],
+          0,
+        );
+        if (apart >= best) {
+          j += RUN - 1;
+          continue;
+        }
+      }
+      const bj = j * 4;
+      const apart = Math.max(
+        boxesA[ai] - boxesB[bj + 1],
+        boxesB[bj] - boxesA[ai + 1],
+        boxesA[ai + 2] - boxesB[bj + 3],
+        boxesB[bj + 2] - boxesA[ai + 3],
+        0,
+      );
+      if (apart >= best) continue;
       const hit = crossingOf(a[i], a[i + 1], b[j], b[j + 1]);
       if (hit) return { distance: 0, on: hit.at, off: hit.at };
-      for (const point of [a[i], a[i + 1]]) {
-        const near = nearestOn(point, b[j], b[j + 1]);
-        consider(distance(point, near), point, near);
-      }
-      for (const point of [b[j], b[j + 1]]) {
-        const near = nearestOn(point, a[i], a[i + 1]);
-        consider(distance(point, near), near, point);
-      }
+      toPiece(a[i], b[j], b[j + 1], true);
+      toPiece(a[i + 1], b[j], b[j + 1], true);
+      toPiece(b[j], a[i], a[i + 1], false);
+      toPiece(b[j + 1], a[i], a[i + 1], false);
     }
-  return best;
+  }
+  return { distance: best, on, off };
+}
+
+/** How many pieces of an outline `closestApproach` passes over together. */
+const RUN = 16;
+
+/** The box round each piece of a polyline, as xMin, xMax, yMin, yMax in turn. */
+function pieceBoxes(points: Vec2[]): Float64Array {
+  const boxes = new Float64Array(Math.max(0, points.length - 1) * 4);
+  for (let k = 0; k + 1 < points.length; k++) {
+    const p = points[k];
+    const q = points[k + 1];
+    boxes[k * 4] = Math.min(p.x, q.x);
+    boxes[k * 4 + 1] = Math.max(p.x, q.x);
+    boxes[k * 4 + 2] = Math.min(p.y, q.y);
+    boxes[k * 4 + 3] = Math.max(p.y, q.y);
+  }
+  return boxes;
 }
 
 /**
@@ -1105,18 +1198,6 @@ function flattenedLoop(contour: Contour, steps: number): Vec2[] {
   return contour.closed && points.length > 0 ? [...points, points[0]] : points;
 }
 
-/** The nearest place to a point on a straight piece. */
-function nearestOn(point: Vec2, from: Vec2, to: Vec2): Vec2 {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = dx * dx + dy * dy;
-  const t =
-    length > 0
-      ? Math.max(0, Math.min(1, ((point.x - from.x) * dx + (point.y - from.y) * dy) / length))
-      : 0;
-  return { x: from.x + t * dx, y: from.y + t * dy };
-}
-
 /** Even-odd containment test, used to tell counters from outer shapes. */
 export function contourContainsPoint(contour: Contour, point: Vec2): boolean {
   const polygon = flattenContour(contour, 8);
@@ -1124,6 +1205,64 @@ export function contourContainsPoint(contour: Contour, point: Vec2): boolean {
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const a = polygon[i];
     const b = polygon[j];
+    if (a.y > point.y !== b.y > point.y) {
+      const x = ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
+      if (point.x < x) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * An outline flattened once, to be asked many times what lies inside it.
+ *
+ * `contourContainsPoint` flattens the outline every time it is asked, which is
+ * right for a question asked once. A serif walking out along its wing asks it
+ * of every stroke beside it every two units, and flattening the same curves a
+ * few hundred times over was most of what drawing a serifed letter cost.
+ */
+export interface Polygon {
+  points: Vec2[];
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+/** The outline as `contourContainsPoint` flattens it, with its box. */
+export function polygonOf(contour: Contour): Polygon {
+  const points = flattenContour(contour, 8);
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  for (const p of points) {
+    if (p.x < xMin) xMin = p.x;
+    if (p.x > xMax) xMax = p.x;
+    if (p.y < yMin) yMin = p.y;
+    if (p.y > yMax) yMax = p.y;
+  }
+  return { points, xMin, xMax, yMin, yMax };
+}
+
+/**
+ * The same answer `contourContainsPoint` gives, from an outline flattened
+ * already.
+ *
+ * A point outside the box is outside without looking further: below it or on
+ * its top edge, every edge of the polygon is on one side of the ray and none
+ * is crossed; to the right, every crossing is behind it; to the left, it
+ * crosses the closed outline an even number of times. The margin is for the
+ * crossing's arithmetic, which can land a hair past the corner it is on.
+ */
+export function polygonContains(polygon: Polygon, point: Vec2): boolean {
+  if (point.y < polygon.yMin || point.y >= polygon.yMax) return false;
+  if (point.x > polygon.xMax + 1e-6 || point.x < polygon.xMin - 1e-6) return false;
+  const points = polygon.points;
+  let inside = false;
+  for (let i = 0, j = points.length - 1; i < points.length; j = i++) {
+    const a = points[i];
+    const b = points[j];
     if (a.y > point.y !== b.y > point.y) {
       const x = ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y) + a.x;
       if (point.x < x) inside = !inside;
@@ -1245,6 +1384,68 @@ export function inkRunsAt(
     runs.push([crossings[index], crossings[index + 1]]);
   }
   return runs;
+}
+
+/**
+ * `inkRunsAt` for a letter that is going to be measured at many heights.
+ *
+ * The outlines are flattened once and their edges kept in flat arrays, rather
+ * than flattened again for every line laid across them: spacing a letter asks
+ * thirty-two heights of it and kerning it asks more, and the flattening was
+ * most of the cost of every one. Each crossing is worked out with exactly the
+ * arithmetic `inkRunsAt` uses, so the runs are the same to the last digit.
+ */
+export function inkRuler(
+  contours: Contour[],
+  along: "x" | "y" = "y",
+  steps = 24,
+): (at: number) => Array<[number, number]> {
+  let count = 0;
+  const flat = contours.map((contour) => {
+    const points = flattenContour(contour, steps);
+    count += points.length;
+    return points;
+  });
+  // For each edge: where it starts and ends along the ruler, the lower and
+  // higher of those, and where it starts and how far it goes across it.
+  const from = new Float64Array(count);
+  const span = new Float64Array(count);
+  const low = new Float64Array(count);
+  const high = new Float64Array(count);
+  const base = new Float64Array(count);
+  const reach = new Float64Array(count);
+  let edges = 0;
+  for (const points of flat) {
+    for (let index = 0; index < points.length; index++) {
+      const a = points[index];
+      const b = points[(index + 1) % points.length];
+      const start = along === "y" ? a.y : a.x;
+      const end = along === "y" ? b.y : b.x;
+      if (start === end) continue;
+      from[edges] = start;
+      span[edges] = end - start;
+      low[edges] = Math.min(start, end);
+      high[edges] = Math.max(start, end);
+      base[edges] = along === "y" ? a.x : a.y;
+      reach[edges] = along === "y" ? b.x - a.x : b.y - a.y;
+      edges += 1;
+    }
+  }
+  const crossings = new Float64Array(edges);
+  return (at) => {
+    let found = 0;
+    for (let edge = 0; edge < edges; edge++) {
+      if (at < low[edge] || at >= high[edge]) continue;
+      const t = (at - from[edge]) / span[edge];
+      crossings[found++] = base[edge] + t * reach[edge];
+    }
+    const sorted = crossings.subarray(0, found).sort();
+    const runs: Array<[number, number]> = [];
+    for (let index = 0; index + 1 < found; index += 2) {
+      runs.push([sorted[index], sorted[index + 1]]);
+    }
+    return runs;
+  };
 }
 
 export function contoursToPath2D(contours: Contour[]): Path2D {

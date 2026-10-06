@@ -148,16 +148,14 @@ suite("a joined face carries its joins into the file", () => {
       for (const name of begun) {
         const letter = standsFor(name);
         /*
-         * Not the written `r`, which does not only lose its entry at the start
-         * of a word: its lead-in lands on a stub at the waist and hangs over the
-         * letter before, costing its advance next to nothing, and with no
-         * lead-in the up-stroke is a flick of its own off the line into the
-         * nub, which the letter is spaced by. Carried down to the line as a
-         * stem instead, `ro` read `no`. Its seam end is held below all the same.
+         * The written `r` too, though it gives up little: its lead-in lands on
+         * a stub at the waist and hangs over the letter before, costing its
+         * advance next to nothing, and with no lead-in the up-stroke is a
+         * flick of its own off the line into the nub, which the letter is
+         * spaced by. Carried down to the line as a stem instead, `ro` read
+         * `no`. Its seam end is held below all the same.
          */
-        if (!WRITTEN_OUT.has(letter)) {
-          expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
-        }
+        expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
         /*
          * To within three units, and the first of those is the reason set out
          * below on the lone letters: this is four numbers that were each
@@ -179,10 +177,18 @@ suite("a joined face carries its joins into the file", () => {
          * What the seam does is unchanged, which is what this is guarding: the
          * lead-out still stops on the advance to the unit, and the pairs still
          * join at nothing on all four faces.
+         *
+         * One more on the written `r`. Its joins are hairlines now, and the
+         * end of a hairline lead-out stands no further right than the tip of
+         * the r's own arm, so the rightmost ink is the arm on one drawing and
+         * the lead-out on the other -- and the arm, standing well above the
+         * seam, is the part the mid-word tilt moves furthest. It reads 4 on
+         * the Handwriting; every other letter reads 1 or less.
          */
+        const slack = WRITTEN_OUT.has(letter) ? 4 : 3;
         expect([
           name,
-          Math.abs(widths[name] - right[name] - (widths[letter] - right[letter])) <= 3,
+          Math.abs(widths[name] - right[name] - (widths[letter] - right[letter])) <= slack,
         ]).toEqual([name, true]);
       }
 
@@ -190,15 +196,17 @@ suite("a joined face carries its joins into the file", () => {
       for (const name of ended) {
         const letter = standsFor(name);
         /*
-         * Not the written `r` either, whose word-final drawing is the drawn
-         * `r`: see the lead-outs below. Mid-word its lead-out is the tight
-         * foot of its own stem and its arm hangs out over the letter after,
-         * so the `r` that ends a word, with its arm inside its own advance,
-         * is the wider of the two.
+         * The other way round for the written `r`, whose word-final drawing
+         * is the drawn `r`: see the lead-outs below. Mid-word its lead-out is
+         * the tight foot of its own stem and its arm hangs out over the letter
+         * after, so the `r` that ends a word, with its arm inside its own
+         * advance, is the wider of the two.
          */
-        if (!WRITTEN_OUT.has(letter.split(".")[0])) {
-          expect([name, widths[name] < widths[letter]]).toEqual([name, true]);
-        }
+        const wider = WRITTEN_OUT.has(letter.split(".")[0]);
+        expect([
+          name,
+          wider ? widths[name] > widths[letter] : widths[name] < widths[letter],
+        ]).toEqual([name, true]);
         expect([name, left[name]]).toEqual([name, left[letter]]);
       }
 
@@ -301,7 +309,12 @@ suite("a joined face carries its joins into the file", () => {
       // not move at all. Eighteen capitals: the B D F I O P, and the T and
       // the Y, whose foot going right off a lone stem read `The` as `Lhe`,
       // never hand on.
-      expect(ended.filter((n) => /^[A-Z]\./.test(n))).toHaveLength(18);
+      expect(
+        ended
+          .filter((n) => /^[A-Z]\./.test(n))
+          .map((n) => n[0])
+          .sort(),
+      ).toEqual([..."ACEGHJKLMNQRSUVWXZ"]);
       for (const name of ended) {
         expect([name, left[name]]).toEqual([name, left[standsFor(name)]]);
       }

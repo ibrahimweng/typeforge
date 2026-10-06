@@ -1245,6 +1245,9 @@ export function App(): React.JSX.Element {
     redo: history.redo,
   });
 
+  // Whether the work and its panel go one above the other on a phone.
+  const stacks = mode !== "edit";
+
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the page is a drop target for a font file; the Open button is the keyboard path.
     <div
@@ -1348,7 +1351,18 @@ export function App(): React.JSX.Element {
       */}
       {drawingOn !== null && <OptionsBar glyphName={drawingOn} />}
 
-      <div className="flex min-h-0 flex-1">
+      {/*
+        Side by side, except on a phone in the three modes whose whole document
+        is one panel: there the panel goes under the work at full width and
+        the two scroll as one page, with the work given the first screenful.
+        Beside it, the panel took two thirds of a 390-pixel screen and left the
+        letter eighty-six pixels to be drawn in. The editor keeps its columns,
+        which are a rail and an inspector rather than a document.
+      */}
+      <div
+        className={cn("flex min-h-0 flex-1", stacks && "max-md:flex-col max-md:overflow-y-auto")}
+        data-stacks={stacks ? "phone" : undefined}
+      >
         {/*
           The tools, down the left of the whole window rather than beside the
           canvas.
@@ -1369,7 +1383,10 @@ export function App(): React.JSX.Element {
           but absent.
         */}
         {mode === "edit" && <ToolPalette drawing={drawingOn !== null} />}
-        <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
+        <div
+          ref={stageRef}
+          className={cn("flex min-w-0 flex-1 flex-col", stacks && "max-md:h-full max-md:flex-none")}
+        >
           {mode === "forge" && (
             <Wait>
               <ForgeView />

@@ -16,7 +16,8 @@
 import { describe, expect, it } from "vitest";
 
 import { emptyAssembly } from "@/assemble/document";
-import { startFrom } from "@/forge/document";
+import { familyOf, setFamily, startFrom, whole } from "@/forge/document";
+import { widthsOf } from "@/forge/family";
 import { SANS } from "@/forge/style";
 import { emptyTypeface, type Glyph, type Typeface } from "@/font/types";
 import {
@@ -662,5 +663,31 @@ describe("a document from format 1", () => {
   it("comes through untouched when it had no font in it at all", () => {
     const { edit: _, ...without } = older();
     expect(migrate(without, 1)).toEqual(without);
+  });
+});
+
+/*
+ * The widths of a drawn family, kept like its weights -- and a document from
+ * before there were widths read back as a family of one width, the Normal,
+ * which is what it was.
+ */
+describe("a drawn family's widths", () => {
+  const roundTrip = (forge: ReturnType<typeof startFrom>) =>
+    JSON.parse(JSON.stringify(toProject(snapshot({ draw: drawn({ forge }) }), WHEN)));
+
+  it("keeps the widths somebody chose", () => {
+    const forge = setFamily(startFrom(SANS), { drawn: 400, also: [700], widths: [75, 125] });
+    const read = readProject(roundTrip(forge));
+    expect(read?.draw?.forge.family).toEqual({ drawn: 400, also: [700], widths: [75, 125] });
+    expect(widthsOf(familyOf(whole(read!.draw!.forge)))).toEqual([75, 100, 125]);
+  });
+
+  it("reads a document with no widths as the Normal alone, and writes it as it was", () => {
+    const forge = setFamily(startFrom(SANS), { drawn: 400, also: [700] });
+    const written = roundTrip(forge);
+    expect(written.draw.forge.family).toEqual({ drawn: 400, also: [700] });
+    const read = readProject(written);
+    expect(read?.draw?.forge.family).toEqual({ drawn: 400, also: [700] });
+    expect(widthsOf(familyOf(whole(read!.draw!.forge)))).toEqual([100]);
   });
 });

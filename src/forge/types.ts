@@ -19,6 +19,7 @@
  */
 
 import type { Vec2 } from "@/font/types";
+import type { Style } from "./style";
 
 // ---------------------------------------------------------------------------
 // Spines
@@ -226,7 +227,16 @@ export interface Terminal {
    * units, and `way` which way it runs: minus one down, one up.
    * Settled when the end is dressed; the end itself is then a plain cut.
    */
-  beak?: { reach: number; way: number };
+  beak?: {
+    reach: number;
+    way: number;
+    /**
+     * Drawn as an upright bar `width` across, from the line at `from` to the
+     * tip, standing inside the letter from the end's outer corner: the s's
+     * and the S's, as Lora draws them.
+     */
+    bar?: { width: number; from: number };
+  };
 }
 
 /**
@@ -297,6 +307,15 @@ export interface Stroke {
    * does, so a split leaves it on rather than cutting it loose.
    */
   swash?: boolean;
+  /**
+   * A letter or figure of the face drawn small inside a symbol -- a superior
+   * figure, a fraction's, an ordinal's letter, the trade mark's T and M --
+   * which is to have its ends finished as that letter's are at that size: its
+   * serifs on its own lines, the drops on its curved ends. `style` is the
+   * small style it was drawn with and `dx`, `dy` how far it has been moved
+   * since. Left out, a stroke is finished as part of the glyph it is in.
+   */
+  setAs?: { name: string; style: Style; dx: number; dy: number };
 }
 
 export const BUTT: Terminal = { kind: "butt" };

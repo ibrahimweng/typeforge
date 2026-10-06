@@ -1681,11 +1681,112 @@ function backLoop(
   }
   const total = points.length;
   const side = (p: Vec2, q: Vec2, r: Vec2) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+  /*
+   * The box round each piece, so that two pieces nowhere near each other are
+   * passed over with four comparisons instead of four cross products. Two
+   * pieces that cross properly each reach into the other's box, so nothing
+   * this skips could have been a crossing; the pairs are still asked in the
+   * same order, so the first loop found is the same one.
+   */
+  const boxes = new Float64Array(total * 4);
+  for (let k = 0; k < total; k++) {
+    const p = points[k];
+    const q = points[(k + 1) % total];
+    boxes[k * 4] = Math.min(p.x, q.x) - 1e-9;
+    boxes[k * 4 + 1] = Math.max(p.x, q.x) + 1e-9;
+    boxes[k * 4 + 2] = Math.min(p.y, q.y) - 1e-9;
+    boxes[k * 4 + 3] = Math.max(p.y, q.y) + 1e-9;
+  }
+  /*
+   * And the pieces filed in a grid by those boxes, so that each piece is only
+   * put beside the few whose boxes can meet its own rather than beside every
+   * piece after it: a crowded outline is a few hundred pieces, and asking
+   * every pair of them was the most a heavy script letter cost to draw. The
+   * ones that can meet are still asked from the nearest on, so the first loop
+   * found is the same one.
+   */
+  let gridX = Infinity;
+  let gridY = Infinity;
+  let gridRight = -Infinity;
+  let gridTop = -Infinity;
+  let spans = 0;
+  for (let k = 0; k < total; k++) {
+    gridX = Math.min(gridX, boxes[k * 4]);
+    gridRight = Math.max(gridRight, boxes[k * 4 + 1]);
+    gridY = Math.min(gridY, boxes[k * 4 + 2]);
+    gridTop = Math.max(gridTop, boxes[k * 4 + 3]);
+    spans += boxes[k * 4 + 1] - boxes[k * 4] + (boxes[k * 4 + 3] - boxes[k * 4 + 2]);
+  }
+  const cell = Math.max(
+    (spans / Math.max(total, 1)) * 2,
+    Math.max(gridRight - gridX, gridTop - gridY) / 64,
+    1e-6,
+  );
+  const cellOf = (value: number, from: number) => Math.floor((value - from) / cell);
+  const columns = total > 0 ? cellOf(gridRight, gridX) + 1 : 0;
+  const rows = total > 0 ? cellOf(gridTop, gridY) + 1 : 0;
+  const squares = columns * rows;
+  const firstIn = new Int32Array(squares + 1);
+  for (let k = 0; k < total; k++)
+    for (
+      let column = cellOf(boxes[k * 4], gridX);
+      column <= cellOf(boxes[k * 4 + 1], gridX);
+      column++
+    )
+      for (let row = cellOf(boxes[k * 4 + 2], gridY); row <= cellOf(boxes[k * 4 + 3], gridY); row++)
+        firstIn[row * columns + column + 1]++;
+  for (let square = 0; square < squares; square++) firstIn[square + 1] += firstIn[square];
+  const filed = new Int32Array(squares > 0 ? firstIn[squares] : 0);
+  const filling = firstIn.slice(0, squares);
+  for (let k = 0; k < total; k++)
+    for (
+      let column = cellOf(boxes[k * 4], gridX);
+      column <= cellOf(boxes[k * 4 + 1], gridX);
+      column++
+    )
+      for (let row = cellOf(boxes[k * 4 + 2], gridY); row <= cellOf(boxes[k * 4 + 3], gridY); row++)
+        filed[filling[row * columns + column]++] = k;
+  const stamp = new Int32Array(total).fill(-1);
+  const near: number[] = [];
+  // The area each piece adds round the origin, summed round the outline, and
+  // how big those are all together: see where a crossing's areas are had.
+  const running = new Float64Array(total + 1);
+  let runningSize = 0;
+  for (let k = 0; k < total; k++) {
+    const p = points[k];
+    const q = points[(k + 1) % total];
+    const piece = (p.x * q.y - q.x * p.y) / 2;
+    running[k + 1] = running[k] + piece;
+    runningSize += Math.abs(piece);
+  }
   for (let i = 0; i < total; i++) {
     const a = points[i];
     const b = points[(i + 1) % total];
-    for (let j = i + 2; j < total; j++) {
+    const left = boxes[i * 4];
+    const right = boxes[i * 4 + 1];
+    const bottom = boxes[i * 4 + 2];
+    const top = boxes[i * 4 + 3];
+    near.length = 0;
+    for (let column = cellOf(left, gridX); column <= cellOf(right, gridX); column++)
+      for (let row = cellOf(bottom, gridY); row <= cellOf(top, gridY); row++) {
+        const square = row * columns + column;
+        for (let slot = firstIn[square]; slot < firstIn[square + 1]; slot++) {
+          const j = filed[slot];
+          if (j < i + 2 || stamp[j] === i) continue;
+          stamp[j] = i;
+          near.push(j);
+        }
+      }
+    near.sort((one, other) => one - other);
+    for (const j of near) {
       if (i === 0 && j === total - 1) continue;
+      if (
+        boxes[j * 4] > right ||
+        boxes[j * 4 + 1] < left ||
+        boxes[j * 4 + 2] > top ||
+        boxes[j * 4 + 3] < bottom
+      )
+        continue;
       const c = points[j];
       const d = points[(j + 1) % total];
       const d1 = side(a, b, c);
@@ -1698,25 +1799,63 @@ function backLoop(
       const u = d1 / (d1 - d2);
       // The two ways round from one crossing to the other; the loop is the
       // smaller of them.
-      const inner = [at, ...points.slice(i + 1, j + 1)];
-      const outer = [at, ...points.slice(j + 1), ...points.slice(0, i + 1)];
-      const area = (ring: Vec2[]) =>
-        ring.reduce((sum, p, k) => {
-          const q = ring[(k + 1) % ring.length];
-          return sum + (p.x * q.y - q.x * p.y) / 2;
-        }, 0);
-      const inside = area(inner);
-      const outside = area(outer);
-      const [loop, ring, rest, first, second] =
-        Math.abs(inside) <= Math.abs(outside)
-          ? [inside, inner, outer, i, j]
-          : [outside, outer, inner, j, i];
+      /*
+       * Most crossings a crowded outline makes are the loops it means, and are
+       * passed over on their area alone, as are the touches where a round join
+       * stacks its points. So both areas are first had roughly, from running
+       * sums round the outline, with a bound on how far that can be from
+       * adding them up in order; where the smaller is plainly too big to be a
+       * loop to take out, or plainly nothing, that is the answer adding them
+       * up would give.
+       */
+      const headIn = (at.x * points[(i + 1) % total].y - points[(i + 1) % total].x * at.y) / 2;
+      const tailIn = (points[j].x * at.y - at.x * points[j].y) / 2;
+      const headOut = (at.x * points[(j + 1) % total].y - points[(j + 1) % total].x * at.y) / 2;
+      const tailOut = (points[i].x * at.y - at.x * points[i].y) / 2;
+      const roughIn = headIn + (running[j] - running[i + 1]) + tailIn;
+      const roughOut = headOut + (running[total] - running[j + 1]) + running[i] + tailOut;
+      const slack =
+        8 *
+          (total + 4) *
+          Number.EPSILON *
+          (runningSize +
+            Math.abs(headIn) +
+            Math.abs(tailIn) +
+            Math.abs(headOut) +
+            Math.abs(tailOut)) +
+        1e-9;
+      const rough = Math.min(Math.abs(roughIn), Math.abs(roughOut));
+      if (rough > smallest + slack || rough + slack < 0.01) continue;
+      /*
+       * Each way round is the crossing and then the points from one piece
+       * to the other, and its area is added up in that order. Added up where
+       * the points lie rather than copied into a list first.
+       */
+      const area = (from: number, count: number): number => {
+        let sum = 0;
+        let p = at;
+        for (let k = 0; k < count; k++) {
+          const q = points[(from + k) % total];
+          sum += (p.x * q.y - q.x * p.y) / 2;
+          p = q;
+        }
+        return sum + (p.x * at.y - at.x * p.y) / 2;
+      };
+      const inside = area(i + 1, j - i);
+      const outside = area(j + 1, total - j + i);
+      const smaller = Math.abs(inside) <= Math.abs(outside);
+      const [loop, first, second] = smaller ? [inside, i, j] : [outside, j, i];
       // Nothing enclosed is nothing to take out: the points a round join
       // stacks on one spot touch rather than loop.
       if (Math.abs(loop) >= smallest || Math.abs(loop) < 0.01) continue;
       // Wound with the letter, it is only dead weight if the rest of the
       // outline covers it anyway -- a twist in the side, not a loop of ink.
-      if (Math.sign(loop) === winding && !within(rest, middleOf(ring))) continue;
+      if (Math.sign(loop) === winding) {
+        const inner = [at, ...points.slice(i + 1, j + 1)];
+        const outer = [at, ...points.slice(j + 1), ...points.slice(0, i + 1)];
+        const [ring, rest] = smaller ? [inner, outer] : [outer, inner];
+        if (!within(rest, middleOf(ring))) continue;
+      }
       const fractionOf = (index: number, share: number): EdgeAt => {
         const here = where[index];
         const next = where[(index + 1) % total];

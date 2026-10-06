@@ -47,10 +47,12 @@ import { buildGsubTable, type ChainRule, type GlyphSet, type Ligature } from "./
 import {
   anythingCut,
   effectiveParams,
+  isReshaped,
   paramsAreDefault,
   resolveAdvanceWidth,
   resolveGlyphContours,
 } from "./transform";
+import { type Resolved, resolveAll } from "./resolve-pool";
 import { readyToShape } from "@/forge/layers";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
 import {
@@ -70,7 +72,7 @@ import {
   readVariationSequences,
   rebuildPost,
 } from "./tables";
-import type { Glyph, Typeface } from "./types";
+import type { Contour, Glyph, Typeface } from "./types";
 
 export type ExportFormat = "ttf" | "otf";
 
@@ -133,6 +135,12 @@ export interface VariableOptions {
    * with a different setting.
    */
   masters: Array<{ at: Record<string, number>; typeface: Typeface }>;
+  /**
+   * Whether the masters fill a grid rather than a star: a Condensed Bold drawn
+   * as well as the Condensed and the Bold. See `buildGvar`. Draw's families
+   * with more than one width are the only thing that asks.
+   */
+  corners?: boolean;
 }
 
 export interface ExportResult {
@@ -243,11 +251,23 @@ export async function exportFont(
         });
 
   const base = `${typeface.meta.familyName}-${typeface.meta.styleName}`.replace(/\s+/g, "");
+  /*
+   * A varying font is named for its family and its axes, as Draw names the
+   * ones it writes and as every foundry does: `Family[wght].ttf`. Named for
+   * its default master instead, it downloaded under exactly the name of the
+   * static Regular written a moment before, and the browser either replaced
+   * one with the other or tacked a (1) on.
+   */
+  const varying = options.variable
+    ? `${typeface.meta.familyName.replace(/[^A-Za-z0-9]+/g, "") || "Untitled"}[${options.variable.axes
+        .map((axis) => axis.tag)
+        .join(",")}]`
+    : null;
   return {
     bytes,
     format: options.format,
     fidelity,
-    fileName: `${base || "Untitled"}.${options.format}`,
+    fileName: `${varying ?? (base || "Untitled")}.${options.format}`,
     notes,
     held,
   };
@@ -290,14 +310,16 @@ async function resolvedGlyphs(
    * came down seven kilobytes and four more letters could follow the axis.
    */
   extremes = true,
+  /** The outlines worked out already, off the main thread, where they were. */
+  pre?: Resolved | null,
 ) {
   const out: Array<{
     glyph: Typeface["glyphs"][number];
     contours: ReturnType<typeof resolveGlyphContours>;
   }> = [];
 
-  for (const glyph of typeface.glyphs) {
-    let contours = resolveGlyphContours(glyph, typeface);
+  for (const [index, glyph] of typeface.glyphs.entries()) {
+    let contours = pre?.contours[index] ?? resolveGlyphContours(glyph, typeface);
 
     // Merging first, because it introduces points where contours crossed and
     // those new curves need extremes of their own afterwards. The merge sorts
@@ -323,20 +345,12 @@ async function resolvedGlyphs(
   return out;
 }
 
-/**
- * One master, reduced to the points it would have written.
- *
- * Put through the same builder as the default, with the same tolerance and the
- * same fixed splitting, because a delta is the difference between two point
- * lists and the two have to have been made the same way. Everything else the
- * builder produces is thrown away.
- */
-async function masterOf(
-  at: Record<string, number>,
+/** One master's outlines, as the file will have them, and its advances. */
+async function masterOutlines(
   typeface: Typeface,
-  context: { tolerance: number; mergeOverlaps: boolean; roles: Roles },
-  shape: GlyfBuildInput[],
-): Promise<Master> {
+  context: { mergeOverlaps: boolean; roles: Roles },
+  pre?: Resolved | null,
+): Promise<{ resolved: Awaited<ReturnType<typeof resolvedGlyphs>>; advances: number[] }> {
   // A master, so no extremes: see `resolvedGlyphs`. The default master is
   // written without them too, or it would not line up with these.
   const resolved = await resolvedGlyphs(
@@ -345,7 +359,32 @@ async function masterOf(
     context.mergeOverlaps,
     context.roles,
     false,
+    pre,
   );
+  // Asked straight after its own outlines, before the next master's: an
+  // advance reads what the weight added beside the letter, which is kept
+  // against the glyph by whichever master last worked it out.
+  const advances = resolved.map(
+    (entry, index) => pre?.advances[index] ?? resolveAdvanceWidth(entry.glyph, typeface),
+  );
+  return { resolved, advances };
+}
+
+/**
+ * One master, reduced to the points it would have written.
+ *
+ * Put through the same builder as the default, with the same tolerance and the
+ * same fixed splitting, because a delta is the difference between two point
+ * lists and the two have to have been made the same way. Everything else the
+ * builder produces is thrown away.
+ */
+function masterOf(
+  at: Record<string, number>,
+  outlines: Awaited<ReturnType<typeof masterOutlines>>,
+  context: { tolerance: number; mergeOverlaps: boolean },
+  shape: GlyfBuildInput[],
+): Master {
+  const { resolved, advances } = outlines;
   const built = buildGlyfTables(
     resolved.map((entry, index) => ({
       contours: entry.contours,
@@ -354,6 +393,7 @@ async function masterOf(
       // not the same as one that has not moved.
       rebuild: true,
       composite: shape[index]?.composite,
+      still: shape[index]?.still,
     })),
     context.tolerance,
     PIECES_PER_CURVE,
@@ -366,12 +406,83 @@ async function masterOf(
       const drawn = resolved[index].contours.some((contour) => contour.nodes.length > 0);
       return {
         points,
-        advanceWidth: resolveAdvanceWidth(resolved[index].glyph, typeface),
+        advanceWidth: advances[index],
         leftSideBearing: drawn ? Math.round(bounds.xMin) : 0,
         xMin: bounds.xMin,
       };
     }),
   };
+}
+
+/**
+ * The pieces of each contour of a glyph that are a single point in every
+ * master, which a varying font need not write at all.
+ *
+ * A drawn letter keeps its points the same in number at every weight, and it
+ * does that by keeping a piece in place, at no length, where one weight's
+ * corner is another's curve -- the join a pen swallows at the Black, the
+ * point a round terminal folds to. Where every master has it at no length,
+ * it is nothing at any weight, and written out it was eight points a piece at
+ * four quadratics a curve, and a delta for each of them in every master: a
+ * sixth of the points of a drawn Sans. Left out of every master alike, the
+ * masters still line up point for point.
+ *
+ * At no length as the file has it, on its grid: every point of the piece on
+ * the one whole unit, in every master. Only where the glyph has the same
+ * contours and points in every master, which is the only time its points can
+ * line up at all; and never the piece that closes a contour, whose end the
+ * writer compares with the start to decide whether to write it.
+ */
+function stillPieces(
+  masters: Array<Array<{ contours: Contour[] }>>,
+): Array<boolean[][] | undefined> {
+  return masters[0].map((entry, glyph) => {
+    const all = masters.map((master) => master[glyph]?.contours);
+    const shape = entry.contours;
+    if (
+      all.some(
+        (contours) =>
+          !contours ||
+          contours.length !== shape.length ||
+          contours.some((contour, index) => contour.nodes.length !== shape[index].nodes.length),
+      )
+    )
+      return undefined;
+    let any = false;
+    const still = shape.map((contour, index) => {
+      const count = contour.nodes.length;
+      // The piece into each node but the first, which closes the contour.
+      return contour.nodes.map((_, piece) => {
+        if (piece + 1 >= count) return false;
+        const one = all.every((contours) => {
+          const a = contours![index].nodes[piece];
+          const b = contours![index].nodes[piece + 1];
+          const x = Math.round(a.point.x);
+          const y = Math.round(a.point.y);
+          return [a.handleOut, b.handleIn, b.point].every(
+            (point) => !point || (Math.round(point.x) === x && Math.round(point.y) === y),
+          );
+        });
+        if (one) any = true;
+        return one;
+      });
+    });
+    return any ? still : undefined;
+  });
+}
+
+/**
+ * The outlines of the font and of each master, resolved together off the
+ * main thread, or null where that is not worth doing: nothing reshaped means
+ * nothing to work out but the drawing itself.
+ */
+async function pooled(
+  typeface: Typeface,
+  variable: VariableOptions | undefined,
+): Promise<Resolved[] | null> {
+  const all = [typeface, ...(variable?.masters.map((master) => master.typeface) ?? [])];
+  if (!all.some((one) => one.glyphs.some((glyph) => isReshaped(glyph, one)))) return null;
+  return resolveAll(all);
 }
 
 async function exportTrueType(
@@ -388,12 +499,25 @@ async function exportTrueType(
     variable?: VariableOptions;
   },
 ): Promise<Uint8Array> {
+  /*
+   * Every outline the file needs, the masters' too, worked out across the
+   * cores there are -- a browser's workers, or Node's threads -- before
+   * anything is written: see `resolve-pool.ts`.
+   * Null where there is nothing costly to work out, or nowhere to work it out
+   * but here, and then each is resolved as it is reached, as it always was.
+   */
+  const pool = await pooled(typeface, context.variable);
   const resolved = await resolvedGlyphs(
     typeface,
     "truetype",
     context.mergeOverlaps,
     context.roles,
     !context.variable,
+    pool?.[0],
+  );
+  // After the outlines, which is what leaves each letter's advance known.
+  const advances = typeface.glyphs.map(
+    (glyph, index) => pool?.[0].advances[index] ?? resolveAdvanceWidth(glyph, typeface),
   );
   const preserving = context.fidelity === "preserve" && typeface.source !== null;
 
@@ -433,6 +557,22 @@ async function exportTrueType(
   }
   const renumber = (was: number): number | undefined => identity?.currentOf.get(was);
 
+  /*
+   * The masters' outlines, each with its advances, before anything is written:
+   * which pieces a varying font can leave out is a question about all of them.
+   */
+  const varying = context.variable;
+  const masterOutlinesList: Array<Awaited<ReturnType<typeof masterOutlines>>> = [];
+  if (varying && varying.axes.length > 0) {
+    for (const [index, master] of varying.masters.entries()) {
+      masterOutlinesList.push(await masterOutlines(master.typeface, context, pool?.[index + 1]));
+    }
+  }
+  const still =
+    varying && varying.axes.length > 0
+      ? stillPieces([resolved, ...masterOutlinesList.map((one) => one.resolved)])
+      : [];
+
   const familyChanged = hasFamilyEdits(typeface);
   const inputs: GlyfBuildInput[] = resolved.map((entry, index) => {
     const was = identity?.originalOf[index];
@@ -443,10 +583,10 @@ async function exportTrueType(
       original,
       rebuild: !preserving || familyChanged || entry.glyph.dirty || !original,
       composite: compositeRefsFor(entry.glyph, typeface),
+      still: still[index],
     };
   });
 
-  const varying = context.variable;
   const invented: Array<{ id: number; value: string }> = [];
   const built = buildGlyfTables(
     inputs,
@@ -455,11 +595,11 @@ async function exportTrueType(
     !context.mergeOverlaps,
   );
 
-  const metrics = resolved.map((entry) => {
+  const metrics = resolved.map((entry, index) => {
     const bounds = contoursBounds(entry.contours);
     const hasOutline = entry.contours.some((contour) => contour.nodes.length > 0);
     return {
-      advanceWidth: resolveAdvanceWidth(entry.glyph, typeface),
+      advanceWidth: advances[index],
       leftSideBearing: hasOutline ? Math.round(bounds.xMin) : 0,
     };
   });
@@ -500,12 +640,11 @@ async function exportTrueType(
       })),
     };
 
-    const others: Master[] = [];
-    for (const master of varying.masters) {
-      others.push(await masterOf(master.at, master.typeface, context, inputs));
-    }
+    const others: Master[] = varying.masters.map((master, index) =>
+      masterOf(master.at, masterOutlinesList[index], context, inputs),
+    );
 
-    const { gvar, unvarying } = buildGvar(varying.axes, mine, others);
+    const { gvar, unvarying } = buildGvar(varying.axes, mine, others, varying.corners === true);
     // Two name ids for every axis and instance, taken from 256 upwards, which
     // is where the format says a font may invent its own.
     const axisNameIds = varying.axes.map((_, index) => 256 + index);
@@ -554,7 +693,7 @@ async function exportTrueType(
     patchWinMetrics(tables, built.bounds);
     patchIdentityTables(tables, typeface, identity, invented);
   } else {
-    buildBaselineTables(tables, typeface, built, numberOfHMetrics, context.now, invented);
+    buildBaselineTables(tables, typeface, built, numberOfHMetrics, context.now, invented, advances);
   }
 
   applyKerning(tables, typeface, context.includeKerning, false, context.notes);
@@ -672,7 +811,7 @@ async function exportOpenType(
     license: typeface.meta.license || undefined,
     version: typeface.meta.version || undefined,
     weightClass: typeface.meta.weightClass,
-    widthClass: 5,
+    widthClass: typeface.meta.widthClass ?? 5,
     fsSelection,
     italicAngle: isItalic ? -12 : 0,
     glyphs,
@@ -868,9 +1007,7 @@ function applyAlternates(
    */
   const preserving = tables.has("GSUB") && !rebuilt;
   if (preserving && !changed) {
-    notes.push(
-      "The font's own ligatures and alternates were kept as they arrived. Nothing here changed them.",
-    );
+    notes.push(KEPT_FEATURES);
     return;
   }
   if (preserving) {
@@ -882,6 +1019,19 @@ function applyAlternates(
   }
   tables.set("GSUB", gsub);
 }
+
+/**
+ * Said of a preserve export that left the source font's features alone.
+ *
+ * A note rather than a warning: nothing went wrong and nothing needs doing, so
+ * the dialog shows it plainly and does not stay open for it. Named so the
+ * dialog can tell it from the notes that do ask for something.
+ */
+export const KEPT_FEATURES =
+  "The font's own ligatures and alternates were kept as they arrived. Nothing here changed them.";
+
+/** Notes that report what happened rather than anything to act on. */
+export const NEUTRAL_NOTES: ReadonlySet<string> = new Set([KEPT_FEATURES]);
 
 /**
  * Turn the document's kerning into a `GPOS` table.
@@ -1442,6 +1592,8 @@ function buildBaselineTables(
   now: number,
   /** Names the font invented for its own axes and instances, if it has any. */
   invented: Array<{ id: number; value: string }> = [],
+  /** Every glyph's advance, where the caller has them already. */
+  known?: number[],
 ): void {
   const mappings: Array<{ codepoint: number; glyphId: number }> = [];
   typeface.glyphs.forEach((glyph, index) => {
@@ -1449,7 +1601,7 @@ function buildBaselineTables(
   });
   const codepoints = mappings.map((entry) => entry.codepoint);
 
-  const advances = typeface.glyphs.map((glyph) => resolveAdvanceWidth(glyph, typeface));
+  const advances = known ?? typeface.glyphs.map((glyph) => resolveAdvanceWidth(glyph, typeface));
   const isItalic = /italic|oblique/i.test(typeface.meta.styleName);
   /*
    * The bold bit means "this is the bold of its family", not "this is heavy".
@@ -1517,7 +1669,7 @@ function buildBaselineTables(
         ? advances.reduce((sum, value) => sum + value, 0) / advances.length
         : 0,
       weightClass: typeface.meta.weightClass,
-      widthClass: 5,
+      widthClass: typeface.meta.widthClass ?? 5,
       isItalic,
       isBold,
       firstCharIndex: codepoints.length ? Math.min(...codepoints) : 0,

@@ -201,6 +201,15 @@ export interface FontMeta {
    * with nothing to sort them by and picked whichever it saw first for bold.
    */
   weightClass: number;
+  /**
+   * How wide this font is, one to nine, as OS/2's `usWidthClass` counts:
+   * three a Condensed, five a Normal, seven an Expanded.
+   *
+   * Left out on everything but a member of a drawn family with more than one
+   * width, which is read as a Normal -- what every file this application wrote
+   * before there were widths says.
+   */
+  widthClass?: number;
 }
 
 /** A kerning adjustment between two glyphs, in font units. Negative pulls together. */

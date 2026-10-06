@@ -1,5 +1,5 @@
 import type { Vec2 } from "@/font/types";
-import { joinWeight, LETTERS, writtenLead } from "../letters";
+import { joinInk, joinWeight, LETTERS, writtenLead } from "../letters";
 import { seamsOf } from "../script";
 import { alongSpine, bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart } from "../shapes";
 import { penReach, reachAlong } from "../sweep";
@@ -107,7 +107,6 @@ import {
 import {
   humanistA,
   humanistAmpersand,
-  humanistAt,
   humanistS,
   humanistK,
   humanistCapitalK,
@@ -138,7 +137,56 @@ import {
   humanistE,
   humanistT,
   humanistU,
+  humanistPlus,
+  humanistEqual,
+  humanistDivide,
+  humanistMultiply,
+  humanistLess,
+  humanistGreater,
+  humanistUnderscore,
+  humanistNumberSign,
+  humanistPercent,
+  humanistBracketLeft,
+  humanistBracketRight,
+  humanistBraceLeft,
+  humanistBraceRight,
+  humanistBackslash,
 } from "./humanist";
+import {
+  humanistAsciiCircum,
+  humanistAsciiTilde,
+  humanistAsterisk,
+  humanistAtSign,
+  humanistBar,
+  humanistBrokenBar,
+  humanistBullet,
+  humanistCent,
+  humanistColon,
+  humanistComma,
+  humanistCopyright,
+  humanistCurrency,
+  humanistDagger,
+  humanistDaggerDbl,
+  humanistDegree,
+  humanistDollar,
+  humanistEuro,
+  humanistGuillemotLeft,
+  humanistGuillemotRight,
+  humanistGuilsinglLeft,
+  humanistGuilsinglRight,
+  humanistLogicalNot,
+  humanistOrdFeminine,
+  humanistOrdMasculine,
+  humanistParagraph,
+  humanistPeriod,
+  humanistPeriodCentered,
+  humanistPlusMinus,
+  humanistRegistered,
+  humanistSection,
+  humanistSemicolon,
+  humanistSterling,
+  humanistTrademark,
+} from "./humanist-marks";
 import {
   roundHalf,
   arch,
@@ -267,7 +315,9 @@ function entering(
   radius: number,
   lead: Lead,
   least: number,
-): { lead: Spine; body: Spine } {
+  // The heading, in degrees, on which the nib draws its thinnest line.
+  thinnest = 0,
+): { lead: Spine; body: Spine; rise: Spine; fall: Spine } {
   const down = (FIRST_LEG * Math.PI) / 180;
   const centre = at(apex.x, apex.y - radius);
   const on = (angle: number): Vec2 =>
@@ -385,12 +435,28 @@ function entering(
     middle.y - bendRadius * Math.cos(heading),
   );
   const from = at(begins.x - way.x * back, begins.y - way.y * back);
+  // Where round the crown the pen runs on its thinnest heading, kept clear of
+  // both ends of the turn.
+  const handover = Math.min(Math.max(90 + thinnest, 90 - FIRST_LEG + 16), 90 + upDegrees - 16);
   return {
     lead: chain(
       straight(from, begins),
       turn(middle, bendRadius, (heading * 180) / Math.PI - 90, (up * 180) / Math.PI - 90),
     ),
     body: chain(straight(joins, start), over, leg),
+    /*
+     * The same path in two strokes: the up-stroke, drawn as the join it
+     * carries on from is, and the down-stroke, drawn with the nib. In one
+     * stroke the nib was at its heaviest the moment it left the lead-in, and
+     * every written `n` stood a black wedge on the end of the hairline it was
+     * entered by. They change hands in the turn over the crown, where the nib
+     * runs along its own thinnest line -- narrower there than the hairline --
+     * so its square end lies inside the up-stroke, and the up-stroke carries
+     * on a little past it to cover it, ending round (see the n below): a
+     * square end there stood out of the nib as a flag on the crown.
+     */
+    rise: chain(straight(joins, start), turn(centre, radius, 90 + upDegrees, handover - 6)),
+    fall: chain(turn(centre, radius, handover, 90 - FIRST_LEG), leg),
   };
 }
 
@@ -421,8 +487,14 @@ function unjoinedFlick(f: Frame, centre: Vec2): Stroke[] {
   return [ink(f, bowed(f, at(to.x - to.y / Math.tan(up), 0), to, 0.1), f.end, BUTT)];
 }
 
+/** The heading, from -90 to 90 degrees, on which a pen draws its thinnest line. */
+function thinnestHeading(pen: Style["pen"]): number {
+  if (pen.contrast <= 0) return 0;
+  return ((((pen.angle + 90) % 180) + 180) % 180) - 90;
+}
+
 function leadIn(f: Frame, spine: Spine) {
-  return [lighter(ink(f, spine, BUTT, BUTT), joinWeight(f.style))];
+  return [joinInk(f, spine)];
 }
 
 /**
@@ -725,16 +797,22 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         // own apex: a wide turn there is an arch, and an `n` with two of those
         // is an `m` with a leg missing.
         const radius = Math.max(f.x * 0.045, f.least);
-        const { lead, body } = entering(
+        const { lead, body, rise, fall } = entering(
           at(f.edge, f.crown),
           radius,
           writtenLead("n", style),
           // The tightest the lead-in's own pen goes round.
           f.half * joinWeight(style) * 1.15,
+          thinnestHeading(style.pen),
         );
         const stands = spineEnd(body);
         return {
-          ...finish(f, [...leadIn(f, lead), ink(f, body, BUTT, BUTT), arch(f, stands.x, f.x)]),
+          ...finish(f, [
+            ...leadIn(f, lead),
+            joinInk(f, rise, { kind: "round" }),
+            ink(f, fall, BUTT, BUTT),
+            arch(f, stands.x, f.x),
+          ]),
           entered: true,
         };
       },
@@ -1322,7 +1400,15 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
         const f = frame(style);
         const stem = f.edge;
         const span = f.arch * 1.7;
-        const waist = f.x * 0.42;
+        /*
+         * On a joined face, lower: the lead-in comes up into the loop of the
+         * stem from the lower left on much the slope the arm leaves it by,
+         * and with the arm springing from the middle of the x-height the two
+         * met the stem a little apart and read as one line struck through it.
+         * Sprung from lower down, the arm stands clear below where the
+         * lead-in arrives, as a written k's does.
+         */
+        const waist = f.x * (style.parts.script.on ? 0.3 : 0.42);
         const foot = stem + span;
         /*
          * Where the leg stops falling and starts standing.
@@ -1826,7 +1912,7 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["U", "The right side a hairline, written on the way back up.", humanistCapitalU],
   ["g", "A link swinging out to the left and an ear rising into a drop.", humanistG],
   ["ampersand", "A loop and a bowl joined across, a long diagonal into a foot.", humanistAmpersand],
-  ["at", "A small a whose tail runs out into the ring, on the face's own pen.", humanistAt],
+  ["at", "An italic a whose stem curls out into the ring round it, in one stroke.", humanistAtSign],
   ["a", "Two storeys, the bowl hung low and light under an arch ending in a drop.", humanistA],
   ["j", "The tail carried round under the line and back up into a drop.", humanistJ],
   ["G", "A short upright on the right under a serif reaching both ways.", humanistCapitalG],
@@ -1840,6 +1926,7 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["five", "A heavy flag turning up at its end, over a hairline stem.", humanistFive],
   ["hyphen", "Long and deep, a little over the middle of the x-height.", humanistHyphen],
   ["slash", "From the descender to over the ascender, leaning well over.", humanistSlash],
+  ["backslash", "From over the ascender to the descender, leaning well over.", humanistBackslash],
   ["exclam", "A wedge, round at its head, narrowing to its foot.", humanistExclam],
   ["A", "A hairline leg and a full one meeting in a point over the cap line.", humanistCapitalA],
   ["w", "Two vees crossing, the middle running up to a point with no serif.", humanistW],
@@ -1847,6 +1934,19 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
   ["s", "Run a little wider past a Black, so both counters stay open.", humanistS],
   ["S", "One S-curve from end to end, its spine on the bowls' own tangents.", humanistCapitalS],
   ["R", "The leg running straight from the bowl and turning out into a toe.", humanistCapitalR],
+  ["plus", "Wide and light, standing on the middle of the figures.", humanistPlus],
+  ["equal", "Two long light bars, standing on the middle of the figures.", humanistEqual],
+  ["divide", "A long light bar between two large dots.", humanistDivide],
+  ["multiply", "Two light bars crossing square.", humanistMultiply],
+  ["less", "Two light arms rising gently from a point.", humanistLess],
+  ["greater", "Two light arms rising gently from a point.", humanistGreater],
+  ["underscore", "A long bar hanging under the line.", humanistUnderscore],
+  ["numbersign", "Leaning uprights and long bars reaching well past them.", humanistNumberSign],
+  ["percent", "Large ovals with hairline crowns either side of a long slash.", humanistPercent],
+  ["bracketleft", "A light upright with long arms.", humanistBracketLeft],
+  ["bracketright", "A light upright with long arms.", humanistBracketRight],
+  ["braceleft", "Curved: long leaning uprights turning into a light point.", humanistBraceLeft],
+  ["braceright", "Curved: long leaning uprights turning into a light point.", humanistBraceRight],
   ["K", "A hairline arm into the stem and the leg leaving the arm.", humanistCapitalK],
   ["W", "Two vees crossing, the middle running up to a point with no serif.", humanistCapitalW],
   [
@@ -1869,6 +1969,63 @@ const HUMANIST: Array<[LetterName, string, (style: Style) => Recipe]> = [
     "The tail leaving the foot nearly level and falling away right in a long S.",
     humanistCapitalQ,
   ],
+  // The punctuation and symbols as Lora draws them: see `humanist-marks.ts`.
+  ["periodcentered", "The full stop raised to two thirds of the x-height.", humanistPeriodCentered],
+  ["bullet", "A large disc standing high in the lowercase.", humanistBullet],
+  ["degree", "A ring with heavier sides, hung from the figures' height.", humanistDegree],
+  ["currency", "An oval ring on the text pen, with long spokes.", humanistCurrency],
+  ["asciicircum", "A wide flat-topped roof, as high as the figures.", humanistAsciiCircum],
+  ["asciitilde", "One wave, heavy at its crest and trough.", humanistAsciiTilde],
+  ["logicalnot", "A long bar with a drop at its end.", humanistLogicalNot],
+  ["plusminus", "The plus over a rule on the line.", humanistPlusMinus],
+  ["guilsinglleft", "Tall, heavy at the point and light at the ends.", humanistGuilsinglLeft],
+  ["guilsinglright", "Tall, heavy at the point and light at the ends.", humanistGuilsinglRight],
+  ["guillemotleft", "A tall chevron with a smaller one inside it.", humanistGuillemotLeft],
+  ["guillemotright", "A tall chevron with a smaller one inside it.", humanistGuillemotRight],
+  ["period", "A round dot a little taller than wide, dipping under the line.", humanistPeriod],
+  ["colon", "Two of the full stops, the upper one over the x-height.", humanistColon],
+  ["comma", "A round head and a tail curling down to a blunt point.", humanistComma],
+  ["semicolon", "The comma under the colon's upper dot.", humanistSemicolon],
+  ["bar", "Long and light, from under the descender to over the ascender.", humanistBar],
+  ["brokenbar", "Long and light, broken round the middle of the lowercase.", humanistBrokenBar],
+  [
+    "copyright",
+    "A large ring on a text pen round a C seven tenths of a capital.",
+    humanistCopyright,
+  ],
+  [
+    "registered",
+    "A large ring on a text pen round an R seven tenths of a capital.",
+    humanistRegistered,
+  ],
+  ["trademark", "Its own T and M, wide and heavy, hung from the cap line.", humanistTrademark],
+  [
+    "section",
+    "Two tall s's sharing their middle, from under the line to over the capitals.",
+    humanistSection,
+  ],
+  ["paragraph", "A solid bowl on two tall stems joined across the top.", humanistParagraph],
+  [
+    "sterling",
+    "A hook ending in a drop over a leaning stem, and a wave for a foot.",
+    humanistSterling,
+  ],
+  ["cent", "Its c with a stub out of its top and one out of its foot.", humanistCent],
+  ["dollar", "Its S with a long stub out of its top and one out of its foot.", humanistDollar],
+  [
+    "ordfeminine",
+    "Its a set small and a little wide, its top over the cap height.",
+    humanistOrdFeminine,
+  ],
+  ["ordmasculine", "Its o set small, its top over the cap height.", humanistOrdMasculine],
+  ["dagger", "A round head and arms over a long stem narrowing to a point.", humanistDagger],
+  [
+    "daggerdbl",
+    "The dagger's head and arms, and the same turned over under them.",
+    humanistDaggerDbl,
+  ],
+  ["asterisk", "Five petals with round heads, narrowing to the middle.", humanistAsterisk],
+  ["Euro", "Its C with two light bars reaching well into the counter.", humanistEuro],
 ];
 for (const [name, hint, build] of HUMANIST) {
   if (!ALTERNATES[name]) ALTERNATES[name] = [];
@@ -1900,11 +2057,16 @@ const COLUMN_SERIF = 4;
  *
  * Only on the capitals whose first stroke starts at the top left at every
  * weight: the stems, the diagonals and the bars. On the round ones there is no
- * such start to land on, and on the `G` and the `J` there is one at some
- * weights and not at others -- a letter with a stroke at one weight and not at
- * the next cannot follow a weight axis.
+ * such start to land on, and on the `G` there is one at some weights and not
+ * at others -- a letter with a stroke at one weight and not at the next cannot
+ * follow a weight axis.
+ *
+ * The `J` takes one. Its one stroke starts at the head of its stem at every
+ * weight, as the `I`'s does, and left without the swash it was a leaning
+ * hairline with a curl at its foot: beside the written `I` on the Formal
+ * Script it read as a piece of a letter rather than a letter.
  */
-const WRITTEN_CAPITALS = "BDEFHIKLMNPRTUVWXYZ".split("") as LetterName[];
+const WRITTEN_CAPITALS = "BDEFHIJKLMNPRTUVWXYZ".split("") as LetterName[];
 for (const name of WRITTEN_CAPITALS) {
   if (!ALTERNATES[name]) ALTERNATES[name] = [];
   ALTERNATES[name].push({

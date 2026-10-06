@@ -61,13 +61,17 @@ tell you whether the application still works under it.
 
 ## Scripts
 
-The files in `scripts/` are for looking at things a test cannot judge — sheets
-of drawn letters, traces, measurements against a reference — and they import
-the application with the same `@/` paths it uses itself, so they run through
-Vite rather than straight on Node:
+The files in `scripts/dev/` are for looking at things a test cannot judge —
+sheets of drawn letters, traces, measurements against a reference — and
+`scripts/dev/README.md` says what each one is for. No npm script or CI job runs
+them. The one script that is not a dev tool, `scripts/build-sample-font.py`,
+which rebuilds the bundled sample font, sits at the top of `scripts/`.
+
+The TypeScript tools import the application with the same `@/` paths it uses
+itself, so they run through Vite rather than straight on Node:
 
 ```bash
-npx vite-node scripts/tally.ts
+npx vite-node scripts/dev/tally.ts
 ```
 
 `vite-node` is a devDependency, so that runs the pinned copy `npm ci` installed

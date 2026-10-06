@@ -8,7 +8,7 @@
 
 import type { Vec2 } from "@/font/types";
 import { spineEnd } from "../shapes";
-import type { Style } from "../style";
+import { stemBlack, type Style } from "../style";
 import { penReach, reachAlong } from "../sweep";
 import {
   drops,
@@ -240,7 +240,13 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * held to the regular's proportions, a black four had its counter closed
      * to a point and its bar ending flush with the stem.
      */
-    const stem = left + Math.max(width * 0.72, f.half * 4.2);
+    /*
+     * And further out again from a Bold on, on a face that keeps its
+     * counters open at a heavy weight (`metrics.heavyOpen`): at four and a
+     * fifth half-pens a Black Geometric's counter was a pinhole.
+     */
+    const open = Math.min(1.5, Math.max(0, (stemBlack(f.style) - 0.5) / 0.4));
+    const stem = left + Math.max(width * 0.72, f.half * (4.2 + 1.2 * open));
     const bar = f.cap * 0.28;
     const top = at(stem, f.hangs(f.cap));
     const reach = stem + Math.max(left + width - stem, f.half * 1.7);

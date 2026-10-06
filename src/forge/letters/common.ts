@@ -14,6 +14,7 @@
  * finished loading.
  */
 
+import { contoursBounds } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { wrapAngle } from "../angles";
 import { LETTERS, recipeOf } from "../letters";
@@ -30,7 +31,15 @@ import {
   superQuarter,
   wavy,
 } from "../shapes";
-import { blackness, heavier, spacingOf, type Style, terminalFor } from "../style";
+import {
+  blackness,
+  heavier,
+  pastBlack,
+  proportioned,
+  spacingOf,
+  type Style,
+  terminalFor,
+} from "../style";
 import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
 import { contoursIntersect } from "@/font/outline";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
@@ -735,6 +744,17 @@ export function frame(drawn: Style): Frame {
   const across = Math.abs(reachAlong(at(1, 0), penReach(pen)).x);
   const inkRound = (h: number): number =>
     metrics.heavyFloor === undefined ? h : Math.max(h + upright - across, least);
+  /*
+   * And past the Black, on a face that keeps its counters open there
+   * (`metrics.heavyOpen`), each bowl let out by a share of the stem it has
+   * gained: held to the Black's width, the stems grew into the counters
+   * from both sides and an Ultra's o, b and 6 were slits between two stems.
+   * The arches with them on a face whose counters are not closed and held
+   * by `heavyCounter` (see `narrowed`), or the fat face's o stood wider
+   * than its n.
+   */
+  const open = pastBlack(style) * (metrics.heavyOpen ?? 0);
+  const archOpen = metrics.heavyCounter ? 0 : open;
   return {
     style,
     half,
@@ -745,18 +765,20 @@ export function frame(drawn: Style): Frame {
     asc: metrics.ascender,
     desc: metrics.descender,
     over: metrics.overshoot,
-    arch: Math.max(
-      ((metrics.counterWidth + archWeight) / 2) * lightGrow * heldReach(style) * metrics.width,
-      least,
-      // A joined hand's arches open with its bowls at a Black: see `heldOpen`.
-      style.parts.script.on ? heldOpen(style, bowlH0, upright) : 0,
-    ),
-    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH0, upright)),
-    grownBowl: Math.max(
-      (heavierHeld ? bowlH0 : bowlAcross) * wide,
-      least,
-      heldOpen(style, bowlH0, upright),
-    ),
+    arch:
+      Math.max(
+        ((metrics.counterWidth + archWeight) / 2) * lightGrow * heldReach(style) * metrics.width,
+        least,
+        // A joined hand's arches open with its bowls at a Black: see `heldOpen`.
+        style.parts.script.on ? heldOpen(style, bowlH0, upright) : 0,
+      ) + archOpen,
+    bowl: Math.max(inkRound(bowlAcross) * wide, least, heldOpen(style, bowlH0, upright)) + open,
+    grownBowl:
+      Math.max(
+        (heavierHeld ? bowlH0 : bowlAcross) * wide,
+        least,
+        heldOpen(style, bowlH0, upright),
+      ) + open,
     crown: (metrics.xHeight + grownX) * style.parts.shoulder.crest,
     aside,
     bowlH,
@@ -772,8 +794,8 @@ export function frame(drawn: Style): Frame {
      * pen and three quarters there is no capital left to draw, so that is the
      * floor, and a heavy cut widens rather than closing up.
      */
-    capBowl: Math.max(capAcross * wide, half * 1.7),
-    grownCapBowl: Math.max((heavierHeld ? capBowlH : capAcross) * wide, half * 1.7),
+    capBowl: Math.max(capAcross * wide, half * 1.7) + open,
+    grownCapBowl: Math.max((heavierHeld ? capBowlH : capAcross) * wide, half * 1.7) + open,
     capBowlH,
     square: style.parts.bowl.squareness,
     superness: style.parts.bowl.superness ?? 0,
@@ -2070,7 +2092,16 @@ export function stopRadius(f: Frame): number {
    */
   if (drops(f)) {
     const regular = f.x * 0.087;
-    return Math.min(f.half * 1.345, regular * 1.345 + Math.max(0, f.half - regular) * 0.5);
+    const drawn = Math.min(f.half * 1.345, regular * 1.345 + Math.max(0, f.half - regular) * 0.5);
+    /*
+     * And a light text serif's keeps a body over its pen, as a light face's
+     * stops do: at a pen of 30 the Serif's were specks 40 across, beside
+     * letters whose serifs and drops read at that size. Kept to six tenths
+     * of the Regular's there, run in to the whole of it at the Regular.
+     */
+    if (f.style.parts.slab.shape !== "wedge" || !bookish(f)) return drawn;
+    const share = 0.4 + 0.6 * Math.min(1, (f.half * 2) / (regular * 2));
+    return Math.max(drawn, regular * 1.345 * share);
   }
   const c = ownContrast(f);
   const radius = Math.max(
@@ -3851,10 +3882,17 @@ export function twoBowls(f: Frame, top: number, reach: number): Stroke[] {
   const cross = Math.min(f.half * 0.2, f.upright * light * 0.45);
   const upperR = Math.max((high - upper) / 2 + cross, f.least);
   const lowerR = Math.max((upper - base) / 2 + cross, f.least);
+  /*
+   * And past the Black, on a face that keeps its counters open there, run
+   * out further again by as much as its bowls are let out on each side
+   * (`metrics.heavyOpen`): the lobes are shorter than a bowl, and the fat
+   * face's upper counter was a slot between the stem and the round.
+   */
+  const open = pastBlack(f.style) * (f.style.metrics.heavyOpen ?? 0);
   return [
     ink(f, straight(at(stem, 0), at(stem, top)), f.end, f.end),
-    lighter(lobe(f, stem, high - upperR * 2, high, reach * 0.98), light),
-    lighter(lobe(f, stem, base, base + lowerR * 2, reach * 1.14), light),
+    lighter(lobe(f, stem, high - upperR * 2, high, reach * 0.98 + open), light),
+    lighter(lobe(f, stem, base, base + lowerR * 2, reach * 1.14 + open), light),
   ];
 }
 
@@ -4130,7 +4168,10 @@ export function figureWidth(frame: Frame): number {
  * on top of its own bowl.
  */
 export function heavyFigure(frame: Frame): number {
-  return frame.gain * 0.8;
+  // And past the Black on a face that keeps its counters open, both sides
+  // let out as its bowls are: see `metrics.heavyOpen`.
+  const open = pastBlack(frame.style) * (frame.style.metrics.heavyOpen ?? 0);
+  return frame.gain * 0.8 + open * 2;
 }
 
 // ---------------------------------------------------------------------------
@@ -4384,7 +4425,30 @@ export function turnSpine(spine: Spine, about: Vec2): Spine {
 
 /** A stroke moved, keeping its pen, its ends and what it was built from. */
 export function shovedStroke(stroke: Stroke, dx: number, dy: number): Stroke {
-  return inherit(stroke, { ...stroke, spine: shoveSpine(stroke.spine, dx, dy) });
+  const { setAs } = stroke;
+  return inherit(stroke, {
+    ...stroke,
+    spine: shoveSpine(stroke.spine, dx, dy),
+    ...(setAs ? { setAs: { ...setAs, dx: setAs.dx + dx, dy: setAs.dy + dy } } : {}),
+  });
+}
+
+/**
+ * The strokes of a letter drawn small, marked to be finished as that letter
+ * is at that size rather than as the symbol they end up in: see
+ * `Stroke.setAs`.
+ *
+ * Finished as the symbol's, they took none of the letter's: a serif goes only
+ * where a stroke stops on one of the face's own lines, and a superior one
+ * stands nowhere near one, so the Serif's superior figures, fractions, trade
+ * mark and registered sign came out without a foot serif, a drop or a beak
+ * among them -- sans figures in a text face, where Lora draws its own with
+ * every one.
+ */
+export function dressedAs(strokes: Stroke[], name: LetterName, style: Style): Stroke[] {
+  return strokes.map((stroke) =>
+    inherit(stroke, { ...stroke, setAs: { name, style, dx: 0, dy: 0 } }),
+  );
 }
 
 export function turnedStroke(stroke: Stroke, about: Vec2): Stroke {
@@ -4428,9 +4492,26 @@ export function setSmall(
   left: number,
   foot: number,
   penShare?: number,
+  dressed = false,
 ): Stroke[] {
-  const little = sized(style, fraction, penShare);
-  const strokes = setInside(() => recipeOf(name, borrowing)!(little).strokes);
+  const small = sized(style, fraction, penShare);
+  /*
+   * Dressed as the letter it is (see `dressedAs`), it is drawn as that letter
+   * at that size all through: on an em as much smaller, so its serifs reach
+   * as far as a letter that size has them reach rather than as far as the
+   * full-size letter's, and at the width the face asks of it set small
+   * (`metrics.superiors.wide`).
+   */
+  const m = small.metrics;
+  const wide = dressed ? (style.metrics.superiors?.wide?.[name] ?? 1) : 1;
+  const little = dressed
+    ? {
+        ...small,
+        metrics: { ...m, width: m.width * wide, unitsPerEm: m.unitsPerEm * fraction },
+      }
+    : small;
+  const drawn = setInside(() => recipeOf(name, borrowing)!(little).strokes);
+  const strokes = dressed ? dressedAs(drawn, name, little) : drawn;
   return strokes.map((stroke) => shovedStroke(stroke, left - spacingOf(little), foot));
 }
 
@@ -4466,8 +4547,10 @@ export function ordinal(f: Frame, name: LetterName): Recipe {
 
 /** A superior figure: the figure, small, with its head at the cap line. */
 export function superior(f: Frame, name: LetterName): Recipe {
-  const share = 0.6;
-  return { strokes: setSmall(f.style, name, share, f.edge, f.cap * (1 - share)) };
+  const set = f.style.metrics.superiors;
+  const share = set?.share ?? 0.6;
+  const foot = set ? f.cap * set.foot : f.cap * (1 - share);
+  return { strokes: setSmall(f.style, name, share, f.edge, foot, set?.pen, set !== undefined) };
 }
 
 /**
@@ -4478,6 +4561,7 @@ export function superior(f: Frame, name: LetterName): Recipe {
  * halves are level reads as two figures with a slash in the middle.
  */
 export function fraction(f: Frame, over: LetterName, under: LetterName): Recipe {
+  if (f.style.metrics.superiors) return textFraction(f, over, under);
   const share = 0.58;
   const gap = f.style.pen.weight * 0.34;
   const numerator = setSmall(f.style, over, share, f.edge, f.cap * (1 - share));
@@ -4494,6 +4578,73 @@ export function fraction(f: Frame, over: LetterName, under: LetterName): Recipe 
       ...numerator,
       ...stroke,
       ...setSmall(f.style, under, share, spread(stroke).xMax + gap, 0),
+    ],
+  };
+}
+
+/**
+ * The style a glyph drawn at `owner`'s width draws `name` at, at its own.
+ *
+ * A fraction is drawn at its numerator's width (see `widthOf` in `build.ts`:
+ * the one and the three own the quarter and the three quarters), and its
+ * denominator came with it: the Serif's four under a one stood 0.8 as wide
+ * as the same four under a three, where Lora's is one figure in both.
+ */
+function widthFor(style: Style, owner: LetterName, name: LetterName): Style {
+  const ratio = proportioned(style, name).metrics.width / proportioned(style, owner).metrics.width;
+  if (ratio === 1) return style;
+  const m = style.metrics;
+  return { ...style, metrics: { ...m, width: m.width * ratio, stretch: (m.stretch ?? 1) * ratio } };
+}
+
+/**
+ * A fraction as a text face sets it (`metrics.superiors`): the numerator a
+ * superior figure, the denominator the same figure standing on the line, and
+ * between them a long slash from the line to the cap line, cut square, its
+ * foot under the middle of the numerator and the denominator tucked under
+ * its head -- Lora's, where the figures overlap the slash's run rather than
+ * standing clear of it.
+ */
+function textFraction(f: Frame, over: LetterName, under: LetterName): Recipe {
+  const set = f.style.metrics.superiors!;
+  const numerator = setSmall(f.style, over, set.share, f.edge, f.cap * set.foot, set.pen, true);
+  // Measured off the swept ink: the skeleton and the pen alone miss the
+  // serifs, and the slash then stood off the middle of a flagged one.
+  const inkOf = (strokes: Stroke[]) => {
+    const all = strokes.flatMap((stroke) => sweep(stroke));
+    return contoursBounds(all);
+  };
+  const top = inkOf(numerator);
+  const wide = Math.max(f.style.pen.weight * set.slash, f.cap * 0.03);
+  const low = -f.cap * 0.004;
+  const high = f.cap * 1.0007;
+  // Under the middle of the numerator, or as far across it as the face
+  // says (`metrics.superiors.slashAt`): the one's foot serif reaches right
+  // and its flag left, and Lora's slash leaves from under the serif.
+  const foot = at(top.xMin + (top.xMax - top.xMin) * (set.slashAt?.[over] ?? 0.52), low);
+  const head = at(foot.x + (high - low) * set.slope, high);
+  const drawn = ink(f, straight(foot, head), BUTT, BUTT);
+  const slash = finish(f, [
+    inherit(drawn, { ...drawn, pen: { ...f.style.pen, contrast: 0, weight: wide } }),
+  ]).strokes;
+  // The denominator's ink starts 0.41 of the cap height on from the slash's
+  // foot, under its head, as Lora's does (287 on a cap height of 700).
+  const along = foot.x + f.cap * 0.41;
+  const denominator = setSmall(
+    widthFor(f.style, over, under),
+    under,
+    set.share,
+    0,
+    0,
+    set.pen,
+    true,
+  );
+  const box = inkOf(denominator);
+  return {
+    strokes: [
+      ...numerator,
+      ...slash,
+      ...denominator.map((stroke) => shovedStroke(stroke, along - box.xMin, 0)),
     ],
   };
 }
@@ -4661,18 +4812,26 @@ export function enclosed(f: Frame, name: LetterName): Recipe {
  */
 export function chevrons(f: Frame, facing: 1 | -1): Recipe {
   const w = signWidth(f) * 0.42;
+  const step = Math.max(w * 0.92, f.style.pen.weight * f.bar * 2.1);
+  return finish(f, [chevron(f, facing, f.edge), chevron(f, facing, f.edge + step)]);
+}
+
+/**
+ * One of a guillemet's two chevrons, with its back at `left` or its tip there.
+ *
+ * A single guillemet is this and nothing else, so the two are drawn by one
+ * function and cannot drift apart: a ‹ is exactly half of a «.
+ */
+export function chevron(f: Frame, facing: 1 | -1, left: number): Stroke {
+  const w = signWidth(f) * 0.42;
   const rise = w * 1.05;
   const y = axis(f);
-  const step = Math.max(w * 0.92, f.style.pen.weight * f.bar * 2.1);
-  const one = (left: number): Stroke => {
-    const back = facing > 0 ? left : left + w;
-    const tip = facing > 0 ? left + w : left;
-    return bent(
-      f,
-      chain(straight(at(back, y + rise), at(tip, y)), straight(at(tip, y), at(back, y - rise))),
-    );
-  };
-  return finish(f, [one(f.edge), one(f.edge + step)]);
+  const back = facing > 0 ? left : left + w;
+  const tip = facing > 0 ? left + w : left;
+  return bent(
+    f,
+    chain(straight(at(back, y + rise), at(tip, y)), straight(at(tip, y), at(back, y - rise))),
+  );
 }
 
 /**
@@ -4699,7 +4858,23 @@ export function bent(f: Frame, spine: Spine): Stroke {
  * because the two things it sets live here, and a module can only assign
  * the bindings it declares.
  */
-export function beginLetter(form: string | undefined): void {
+export function beginLetter(form: string | undefined): string | undefined {
+  const was = borrowing;
   pending = [];
   borrowing = form;
+  return was;
+}
+
+/**
+ * Says the form of the letter that was being drawn before this one again.
+ *
+ * What `recipeOf` does after every letter, so that a letter drawn inside
+ * another -- the T and M of a trade mark, set in this face's own forms --
+ * hands the form back when it is done. Left set, the trade mark's grotesque M
+ * was the form the next symbol asked its letter for: a `$` or an `ª` drawn
+ * straight after it borrowed the grotesque S or a, which is not this face's
+ * letter.
+ */
+export function endLetter(was: string | undefined): void {
+  borrowing = was;
 }

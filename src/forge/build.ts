@@ -10,10 +10,12 @@
 
 import {
   contourArea,
-  contourContainsPoint,
   contoursBounds,
-  flattenContour,
+  inkRuler,
   inkRunsAt,
+  polygonContains,
+  polygonOf,
+  type Polygon,
   reverseContour,
 } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
@@ -27,6 +29,7 @@ import {
   type PartName,
   type Recipe,
   joinEnds,
+  joiningNow,
   reachesEither,
 } from "./letters";
 import {
@@ -42,7 +45,8 @@ import { effectInk, reachesEffects, type Effects } from "./effects";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
-import { assemble, hasTiles, type Kit } from "./kit";
+import { assemble, gridPen, hasTiles, type Kit, unitOf } from "./kit";
+import { thinnedRounds } from "./rounds";
 import {
   alongSpine,
   decided,
@@ -53,9 +57,14 @@ import {
   shortened,
   spineLength,
   spinePath,
+  bookInUse,
+  type Taken,
   waveBookAt,
   wavy,
+  writeAgain,
+  writing,
 } from "./shapes";
+import { enclosing, recording as partsRecording } from "./letters/common";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import {
@@ -104,7 +113,7 @@ export interface Bone {
 export function skeletonOf(name: string, style: Style, form?: string): Bone[] {
   const recipe = recipeOf(name, form);
   if (!recipe) return [];
-  return recipe(widthOf(style, name)).strokes.map((stroke) => {
+  return thinnedRounds(recipe(widthOf(style, name)), style).strokes.map((stroke) => {
     const reach = penReach(stroke.pen);
     return {
       path: spinePath(stroke.spine),
@@ -216,6 +225,17 @@ export function drawLetter(
   return made ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut } : null;
 }
 
+/**
+ * The style a letter on the grid is drawn in: the face's own, with its pen
+ * held to what a cell can take (see `gridPen`).
+ */
+function gridded(style: Style, kit: Kit): Style {
+  const base = BASES.find((one) => one.name === style.name);
+  const own = base ? { ...style.pen, weight: base.pen.weight } : style.pen;
+  const pen = gridPen(style.pen, own, unitOf(style, kit.grid));
+  return pen === style.pen ? style : { ...style, pen };
+}
+
 /** One run of a letter: its ink, and the named decisions it was built from. */
 export interface Run {
   contours: Contour[];
@@ -269,12 +289,85 @@ export function makeLetter(
    */
   effects?: Effects,
 ): Made | null {
+  // The style as it is drawn at this weight: see `blackness` in `style.ts`.
+  const style = heavier(given);
+  // A drawing whose parts are being noted has to be drawn, to be noted.
+  if (partsRecording !== null) return drawnFresh(name, style, form, cuts, kit, cast, effects);
+  const book = bookInUse();
+  const shelf = shelfFor([style, cuts, kit, cast, effects, book]);
+  const key = `${name}|${form ?? ""}|${joiningNow()}|${enclosing}|${book?.recording}`;
+  const kept = shelf.get(key);
+  if (kept) {
+    // As a fresh drawing would have: the page opened, and written again.
+    waveBookAt(name);
+    writeAgain(kept.taken);
+    return kept.made;
+  }
+  const { made, taken } = writing(() => drawnFresh(name, style, form, cuts, kit, cast, effects));
+  shelf.set(key, { made, taken });
+  return made;
+}
+
+/**
+ * Letters drawn already, for the letter asked for again with everything that
+ * decides it the same.
+ *
+ * An accented letter is its base drawn again with a mark over it, so a font
+ * drew its `a` once for itself and again under each of its accents, and every
+ * mark once for each letter wearing it. A letter is a function of its name and
+ * form, the style, the cuts, the kit, the cast and the effects, the halves of
+ * the join it is drawn without or taking high, whether it is set inside
+ * another glyph, and the wave book it is drawn against -- so it is kept
+ * against exactly those, the objects by which object they are, and handed back
+ * as it was made. Nothing that is handed one changes it.
+ *
+ * Kept per style, so a style nobody draws with any more takes its letters
+ * with it. A book being taken down is written to again as the drawing would
+ * have written it: see `writing` in `shapes.ts`.
+ */
+interface Kept {
+  made: Made | null;
+  taken: Taken;
+}
+
+type Shelves = WeakMap<object, Shelves | Map<string, Kept>>;
+const drawnAlready: Shelves = new WeakMap();
+/** What stands in for a setting that was not given, as a key. */
+const UNGIVEN = {};
+
+function shelfFor(by: Array<object | null | undefined>): Map<string, Kept> {
+  let level: Shelves = drawnAlready;
+  for (let index = 0; index < by.length - 1; index++) {
+    const at = by[index] ?? UNGIVEN;
+    let next = level.get(at) as Shelves | undefined;
+    if (!next) {
+      next = new WeakMap();
+      level.set(at, next);
+    }
+    level = next;
+  }
+  const last = by[by.length - 1] ?? UNGIVEN;
+  let shelf = level.get(last) as Map<string, Kept> | undefined;
+  if (!shelf) {
+    shelf = new Map();
+    level.set(last, shelf);
+  }
+  return shelf;
+}
+
+function drawnFresh(
+  name: string,
+  style: Style,
+  form: string | undefined,
+  cuts: Cuts | undefined,
+  kit: Kit | undefined,
+  cast: Cast | undefined,
+  effects: Effects | undefined,
+): Made | null {
   // This letter's own page in the wave book, if one is being kept: see
   // `WaveBook`. A letter built from parts keeps no page of its own -- the base
   // and the mark each open theirs as they are drawn.
   waveBookAt(name);
-  // The style as it is drawn at this weight: see `blackness` in `style.ts`.
-  const style = heavier(given);
   const parts = builtFrom(name);
   if (parts) return marked(parts, style, form, cuts, kit, cast, effects);
 
@@ -287,13 +380,15 @@ export function makeLetter(
    * letter is comes out here and nowhere else: everything after this point --
    * the ink, the lean, the spacing, the cuts -- is the same either way.
    */
-  const laid = kit?.on && hasTiles(kit, name) ? assemble(kit.glyphs[name], style, kit) : null;
+  const onGrid = kit?.on && hasTiles(kit, name) ? gridded(style, kit) : null;
+  const laid = kit && onGrid ? assemble(kit.glyphs[name], onGrid, kit) : null;
   const recipe = laid ? null : recipeOf(name, form);
   if (!laid && !recipe) return null;
-  const built: Recipe | null = recipe ? recipe(widthOf(style, name)) : null;
+  // Past the Black, a geometric face's rounds thinned at their sides: see `rounds.ts`.
+  const built: Recipe | null = recipe ? thinnedRounds(recipe(widthOf(style, name)), style) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
-  const inked = inkAll(strokes, style, name);
+  const inked = inkAll(strokes, onGrid ?? style, name);
   // Cells filled in outright are ink rather than a path for it, so they join
   // the drawing as their own run.
   if (laid && laid.blocks.length > 0) inked.push(laid.blocks);
@@ -395,6 +490,7 @@ export function makeLetter(
       : slid(solid, shortfall);
 
   let advanceWidth: number;
+  let fittedSides = false;
   /*
    * A monospaced letter keeps the width it was drawn at and is moved to sit in
    * the middle of the common advance. The shapes are not squeezed or stretched
@@ -417,6 +513,7 @@ export function makeLetter(
   } else {
     const sides = fitted(name, built!, placedSolid, style);
     if (sides) {
+      fittedSides = true;
       centring = sides.shift;
       advanceWidth = sides.advance;
     } else {
@@ -439,6 +536,22 @@ export function makeLetter(
   if (extra > 0) {
     centring += extra;
     advanceWidth += extra * 2;
+  }
+  /*
+   * And a letter that hangs past its side -- the Serif's j, whose tail runs
+   * under the letter before it as Lora's does -- hangs as far as the face
+   * lets it (`metrics.overhangs`) and no further. Its side is listed in
+   * sidebearings like any other, so a face spaced wider (a sidebearing
+   * measured off another font, say) hung the tail further back the wider it
+   * was, and into the letter before.
+   */
+  const hang = fittedSides && placedSolid.length > 0 ? overhangOf(name, style) : 0;
+  if (hang > 0) {
+    const short = -hang - (contoursBounds(placedSolid).xMin + centring);
+    if (short > 0) {
+      centring += short;
+      advanceWidth += short;
+    }
   }
   const slide = shortfall + centring;
   return {
@@ -881,9 +994,10 @@ function fitted(
     let lastRight = -1;
     let leftFlat = 0;
     let rightFlat = 0;
+    const runsAt = inkRuler(contours, "y", 16);
     for (let index = 0; index < FIT_SAMPLES; index++) {
       const y = from + ((to - from) * (index + 0.5)) / FIT_SAMPLES;
-      const runs = inkRunsAt(contours, y, "y", 16);
+      const runs = runsAt(y);
       const deepLeft = runs.length === 0 ? limit * 4 : runs[0][0] - inkLeft;
       const deepRight = runs.length === 0 ? limit * 4 : inkRight - runs[runs.length - 1][1];
       if (lastLeft >= 0 && Math.abs(deepLeft - lastLeft) > limit * FIT_JUMP) leftJumps = true;
@@ -1049,6 +1163,26 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
  * whether it is a lowercase letter, whose stems take a sloped head.
  */
 function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
+  const dressed = given.some((stroke) => stroke.setAs)
+    ? dressedSmall(given, style, name)
+    : dressedAll(given, style, name);
+  const swept = dressed.map((stroke) => sweep(stroke));
+  return dressed.map((stroke, index) => {
+    const others = swept.flatMap((one, other) => (other === index ? [] : one));
+    const as = stroke.setAs;
+    if (!as) return inkOf(stroke, style, others);
+    // A letter drawn small is inked where it was drawn, on its own lines,
+    // with what stands beside it moved there too: see `dressedSmall`.
+    return inkOf(
+      shiftedStroke(stroke, -as.dx, -as.dy),
+      as.style,
+      others.map((contour) => shiftedContour(contour, -as.dx, -as.dy)),
+    ).map((contour) => shiftedContour(contour, as.dx, as.dy));
+  });
+}
+
+/** A letter's strokes made ready to ink: thinned where they rise, and their ends dressed. */
+function dressedAll(given: Stroke[], style: Style, name: string): Stroke[] {
   const thinned =
     style.metrics.risingHairline && !style.metrics.risingOwn?.includes(decidedBy(name));
   // A text serif's vees drawn in one run are taken apart first, so their
@@ -1071,6 +1205,8 @@ function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
    * black weight the drop filled the upper counter.
    */
   const footBeak = ["S", "\u0405", "s", "\u0455"].includes(decidedBy(name));
+  // And which of them stands to the cap height: the S, and the $ drawn from it.
+  const tallS = ["S", "\u0405"].includes(decidedBy(name));
   // And the J is the one capital whose hook ends in a drop, as Lora's does:
   // cut plain, its end came to a point under the letter.
   const capitalDrop = capital && ["J", "\u0408"].includes(decidedBy(name));
@@ -1081,7 +1217,7 @@ function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
    * text face's figures read as a sans's with serifs on their feet.
    */
   const anyDrop = figure || decidedBy(name) === "question";
-  const dressed = strokes.map((stroke) =>
+  return strokes.map((stroke) =>
     dress(
       stroke,
       style,
@@ -1091,14 +1227,7 @@ function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
       footBeak,
       capitalDrop,
       anyDrop,
-    ),
-  );
-  const swept = dressed.map((stroke) => sweep(stroke));
-  return dressed.map((stroke, index) =>
-    inkOf(
-      stroke,
-      style,
-      swept.flatMap((one, other) => (other === index ? [] : one)),
+      tallS,
     ),
   );
 }
@@ -1130,6 +1259,79 @@ function risen(stroke: Stroke): Stroke {
   const thin = hairlineWeight(stroke.pen);
   if (thin >= stroke.pen.weight) return stroke;
   return { ...stroke, pen: { ...stroke.pen, weight: thin, contrast: 0 } };
+}
+
+/**
+ * `dressedAll` for a glyph some of whose strokes are a letter drawn small:
+ * see `Stroke.setAs`. Each such letter's strokes are made ready as that
+ * letter at that size -- thinned, and their ends dressed, where it was
+ * drawn, on its own lines -- and then moved back to where they stand in the
+ * glyph; the rest are made ready as the glyph's own. Handed back in the
+ * order given.
+ */
+function dressedSmall(given: Stroke[], style: Style, name: string): Stroke[] {
+  const groups = new Map<string, number[]>();
+  given.forEach((stroke, index) => {
+    const as = stroke.setAs;
+    const key = as ? `${as.name} ${as.dx} ${as.dy}` : "";
+    groups.set(key, [...(groups.get(key) ?? []), index]);
+  });
+  const dressed: Stroke[] = [];
+  for (const indices of groups.values()) {
+    const group = indices.map((index) => given[index]);
+    const as = group[0].setAs;
+    const done = as
+      ? dressedAll(
+          group.map((stroke) => shiftedStroke(stroke, -as.dx, -as.dy)),
+          as.style,
+          as.name,
+        ).map((stroke) => shiftedStroke(stroke, as.dx, as.dy))
+      : dressedAll(group, style, name);
+    indices.forEach((index, at) => {
+      dressed[index] = done[at];
+    });
+  }
+  return dressed;
+}
+
+function shiftedContour(contour: Contour, dx: number, dy: number): Contour {
+  const point = (p: Vec2): Vec2 => ({ x: p.x + dx, y: p.y + dy });
+  return {
+    ...contour,
+    nodes: contour.nodes.map((node) => ({
+      ...node,
+      point: point(node.point),
+      handleIn: node.handleIn && point(node.handleIn),
+      handleOut: node.handleOut && point(node.handleOut),
+    })),
+  };
+}
+
+/** A stroke moved, with the one height its dressed ends carry moved too. */
+function shiftedStroke(stroke: Stroke, dx: number, dy: number): Stroke {
+  const point = (p: Vec2): Vec2 => ({ x: p.x + dx, y: p.y + dy });
+  const spine: Spine = {
+    closed: stroke.spine.closed,
+    segments: stroke.spine.segments.map((segment) =>
+      segment.kind === "line"
+        ? { ...segment, from: point(segment.from), to: point(segment.to) }
+        : { ...segment, centre: point(segment.centre) },
+    ),
+  };
+  const end = (terminal: Terminal): Terminal =>
+    terminal.beak?.bar
+      ? {
+          ...terminal,
+          beak: {
+            ...terminal.beak,
+            reach: terminal.beak.reach + dy,
+            bar: { ...terminal.beak.bar, from: terminal.beak.bar.from + dy },
+          },
+        }
+      : terminal.beak
+        ? { ...terminal, beak: { ...terminal.beak, reach: terminal.beak.reach + dy } }
+        : terminal;
+  return { ...stroke, spine, start: end(stroke.start), end: end(stroke.end) };
 }
 
 /**
@@ -1166,6 +1368,7 @@ function dress(
   footBeak = false,
   capitalDrop = false,
   anyDrop = false,
+  tallS = false,
 ): Stroke {
   if (stroke.spine.closed || stroke.spine.segments.length === 0) return stroke;
   const straight = endsStraight(stroke.spine);
@@ -1218,7 +1421,9 @@ function dress(
       const curve = insideOfCurve(spine, at);
       const top = curve !== null && curve.toward.y < -0.25;
       const foot = footBeak && curve !== null && curve.toward.y > 0.25 && outward.x < -0.2;
-      const height = capital ? style.metrics.capHeight : style.metrics.xHeight;
+      // An S's beaks hang from the cap height, and so do a $'s drawn from it.
+      const tall = capital || (tallS && footBeak);
+      const height = tall ? style.metrics.capHeight : style.metrics.xHeight;
       if (decided(top || foot)) {
         return {
           kind: "butt",
@@ -1226,6 +1431,25 @@ function dress(
           beak: {
             reach: top ? height * (1 - BEAK) : height * BEAK,
             way: top ? -1 : 1,
+            /*
+             * The s's and the S's as Lora's: an upright bar from the line to
+             * the beak's depth, the curve running into its inside, where a
+             * wedge off the end read as a blob. Lora's are about half a stem
+             * across, at the Regular and the Bold.
+             */
+            bar: footBeak
+              ? {
+                  // Past the Bold gaining only a third of what the pen does,
+                  // or a Black's were blocks closing the counters.
+                  width:
+                    (tall ? S_BAR : S_BAR_SMALL) *
+                    Math.min(
+                      stroke.pen.weight,
+                      boldPen(style) + (stroke.pen.weight - boldPen(style)) / 3,
+                    ),
+                  from: top ? height + style.metrics.overshoot : 0,
+                }
+              : undefined,
           },
         };
       }
@@ -1465,10 +1689,19 @@ function rounded(stroke: Stroke, straight: { start: boolean; end: boolean }): St
 
 /** A capital in any script: a letter that is its own upper case and has a lower one. */
 function isCapitalLike(name: string): boolean {
-  if (isCapital(name)) return true;
+  if (isCapital(name) || SET_AS_CAPITALS.has(name)) return true;
   const one = [...name].length === 1 ? name : characterOf(name);
   return one !== null && one.toUpperCase() === one && one.toLowerCase() !== one;
 }
+
+/**
+ * The symbols made of capitals, which are spaced and finished as capitals: the
+ * trade mark is a small T and M, and Geist sets it as far off either side as
+ * its H (92 units). Finished as a lowercase letter instead, a joined face gave
+ * its small T and M the ends of a lowercase stem at the light weights and not
+ * at the heavy ones, and the sign changed its points along the weight axis.
+ */
+const SET_AS_CAPITALS = new Set(["trademark"]);
 
 /** Letters drawn under a name the accented tables do not carry. */
 const OTHER_LETTERS: Record<string, number> = { dotlessj: 0x237 };
@@ -1684,6 +1917,16 @@ function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
  */
 const BEAK = 0.3;
 
+/** How wide the S's beaks are drawn as bars, against its pen: Lora's are 50 on 87. */
+const S_BAR = 0.56;
+/** And the s's: Lora's are 40 on 87, and 76 on 142. */
+const S_BAR_SMALL = 0.5;
+
+/** The pen of Lora's Bold, 142 on an x-height of 500, on this face. */
+function boldPen(style: Style): number {
+  return (142 * style.metrics.xHeight) / 500;
+}
+
 /**
  * The beaks on one stroke: an upright wedge off a curved end.
  *
@@ -1717,6 +1960,24 @@ function beaksFor(stroke: Stroke): Contour[] {
         ? Math.min(beak.reach, outer.y - width * 0.8)
         : Math.max(beak.reach, outer.y + width * 0.8);
     const tip = { x: outer.x, y: tipY };
+    if (beak.bar) {
+      // An upright bar from the line to the tip, standing inside the
+      // letter from the end's outer corner: the same four nodes.
+      const inward = curve.toward.x < 0 ? -1 : 1;
+      const x = outer.x;
+      const x2 = outer.x + inward * beak.bar.width;
+      const bar: Contour = {
+        nodes: [
+          node({ x, y: beak.bar.from }),
+          node({ x, y: tipY }),
+          node({ x: x2, y: tipY }),
+          node({ x: x2, y: beak.bar.from }),
+        ],
+        closed: true,
+      };
+      out.push(contourArea(bar) < 0 ? reverseContour(bar) : bar);
+      continue;
+    }
     /*
      * The inside is one hollow curve from the tip back to the end's inner
      * corner: leaving the tip upright and arriving at the corner along the
@@ -2001,7 +2262,7 @@ function ballsFor(
   }));
   const ends = endsOf(stroke);
   // The outlines of the letter's other strokes, for keeping a ball off them.
-  const beside = others.flatMap((contour) => flattenContour(contour, 8));
+  const beside = others.flatMap((contour) => polygonFor(contour).points);
   for (const [which, [terminal, at, outward, straightEnd]] of ends.entries()) {
     if (terminal.open !== true) continue;
     /*
@@ -2210,16 +2471,106 @@ function ballsFor(
      * from: dropped its full way, a c's two stood out across its aperture
      * and met.
      */
-    const reach = !written && held > 0 ? Math.min(1, fits / held) : 1;
-    const placed = {
+    let reach = !written && held > 0 ? Math.min(1, fits / held) : 1;
+    /*
+     * And where that still leaves the two balls of one stroke touching, set
+     * back further, into the stroke's own end, until they stand apart: a
+     * c's two, each at least as wide as the stroke it closes, met across an
+     * aperture the Psychedelic all but shuts, and the letter's head and
+     * foot were one blob. Set back along the stroke they part, since each
+     * end is running towards the other.
+     */
+    if (!written && !buried && !style.parts.ball.curved && twin && held > 0) {
+      const apart = (share: number): boolean => {
+        const one = {
+          x: at.x + outward.x * held * drop * share,
+          y: at.y + outward.y * held * drop * share,
+        };
+        const two = {
+          x: twin[1].x + twin[2].x * held * drop * share,
+          y: twin[1].y + twin[2].y * held * drop * share,
+        };
+        return Math.hypot(one.x - two.x, one.y - two.y) >= held * 2 + paper;
+      };
+      if (!apart(reach) && apart(-1 / drop)) {
+        let low = -1 / drop;
+        let high = reach;
+        for (let pass = 0; pass < 30; pass++) {
+          const mid = (low + high) / 2;
+          if (apart(mid)) low = mid;
+          else high = mid;
+        }
+        reach = low;
+      }
+    }
+    let placed = {
       x: at.x + outward.x * held * drop * reach,
       y: at.y + outward.y * held * drop * reach,
     };
+    /*
+     * And where the lines would hold it in across the way it runs -- the
+     * end of a parenthesis, running up into the cap line -- set back along
+     * the stroke instead, so it stays on the end it closes: held straight
+     * down, the Psychedelic's parentheses wore their balls inside their
+     * own curves.
+     */
+    let ceiling = band.yMax;
+    let floor = band.yMin;
+    let wall = band.xMin;
+    if (!written && !buried && !style.parts.ball.curved) {
+      const over = placed.y + held - band.yMax;
+      const under = band.yMin + held - placed.y;
+      const back =
+        over > 0 && outward.y > 0.6
+          ? over / outward.y
+          : under > 0 && outward.y < -0.6
+            ? under / -outward.y
+            : 0;
+      if (back > 0) {
+        placed = { x: placed.x - outward.x * back, y: placed.y - outward.y * back };
+        /*
+         * Set back no further than leaves it covering both corners of the
+         * cut, where the letter has room above (or below) its own ink before
+         * the next line it is drawn between: set back the whole way, a
+         * parenthesis's ball left the cut's inner corner standing out beside
+         * it as an ear. A run whose ink already stops on a line keeps the
+         * whole set-back.
+         */
+        const lines = [0, style.metrics.xHeight, style.metrics.capHeight];
+        lines.push(style.metrics.ascender, style.metrics.descender);
+        const room =
+          over > 0
+            ? Math.min(...lines.filter((y) => y > band.yMax + 2)) - band.yMax
+            : band.yMin - Math.max(...lines.filter((y) => y < band.yMin - 2));
+        // How far back along the run the ball may sit and still take in
+        // both corners of the cut, which a pen with contrast puts a little
+        // ahead of and behind the end rather than square across it.
+        const shift = reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen));
+        const ahead = Math.abs(shift.x * outward.x + shift.y * outward.y);
+        const square = shift.x * shift.x + shift.y * shift.y;
+        const reachSq = (held * 0.98) ** 2 - square + ahead * ahead;
+        const covers = reachSq > 0 ? Math.sqrt(reachSq) - ahead : -Infinity;
+        const behind = { x: at.x - placed.x, y: at.y - placed.y };
+        const setBackBy =
+          Math.hypot(behind.x, behind.y) *
+          (behind.x * outward.x + behind.y * outward.y < 0 ? -1 : 1);
+        if (Number.isFinite(room) && room > 0 && covers > 0 && setBackBy > covers) {
+          const want = Math.max(covers, setBackBy - room / Math.abs(outward.y));
+          placed = { x: at.x - outward.x * want, y: at.y - outward.y * want };
+          if (over > 0) ceiling = Math.max(ceiling, placed.y + held);
+          else floor = Math.min(floor, placed.y - held);
+          // Nor held in off the left, where the corner it covers is the
+          // letter's leftmost ink: the bulge of the disc round it is all
+          // that passes it.
+          wall = Math.min(wall, placed.x - held);
+        }
+      }
+    }
     const kept = written
       ? placed
       : {
-          x: Math.max(placed.x, band.xMin + held),
-          y: Math.min(Math.max(placed.y, band.yMin + held), band.yMax - held),
+          x: Math.max(placed.x, wall + held),
+          y: Math.min(Math.max(placed.y, floor + held), ceiling - held),
         };
     /*
      * And, moved in off a line, slid along it until it still covers both
@@ -2358,7 +2709,12 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
     const written = style.parts.script.on;
     const grows = written ? stem : Math.min(stem, style.metrics.unitsPerEm * 0.12);
     const reach = spread * grows;
-    const back = depth * grows;
+    /*
+     * And never further back than the stroke runs: the dot of a grid i is
+     * half a cell long, and a swelling a pen deep on its top end ran on past
+     * its foot and down onto the stem.
+     */
+    const back = Math.min(depth * grows, spineLength(stroke.spine));
     /*
      * And only on an upright or a level run. On a diagonal cut level the
      * swelling lay along the line and stood out sideways off the slant as a
@@ -2847,8 +3203,20 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * wavy face wants: the letters it is drawn for have unbracketed serifs,
        * and what they do have is feet that ripple.
        */
+      /*
+       * And laid flat where an arm runs on along the line from the other side
+       * of the stroke -- the top and foot of an E's stem, the top of an F's:
+       * the arm waves away from the stem, and a wing waving the other way
+       * beside it put two troughs either side of the stem, which stood up
+       * between them as a spike. Flat, it reads as the arm carried on past
+       * the stem, as a slab E's corner does. The same pieces as a wave, so
+       * the letter has the same points at every weight.
+       */
+      const calm =
+        waving(style) &&
+        alongLine(at, facing, -side, inner, Math.max(thickness, inner), thickness, others);
       const shape: Contour[] = waving(style)
-        ? sweptWing(stroke, style, at, facing, side, from, tip, deep)
+        ? sweptWing(stroke, style, at, facing, side, from, tip, deep, calm)
         : [
             wing(
               /*
@@ -2887,6 +3255,26 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
 }
 
 /**
+ * Another stroke's outline, flattened for asking what lies inside it.
+ *
+ * Kept against the outline, which the sweep made for this letter and nothing
+ * changes afterwards: every stroke of a letter is told about all the others,
+ * so each outline is asked about once for every stroke beside it, and each
+ * wing walks out along it a point every two units. Flattened once, it is the
+ * same polygon `contourContainsPoint` would have made every time.
+ */
+const polygons = new WeakMap<Contour, Polygon>();
+
+function polygonFor(contour: Contour): Polygon {
+  let polygon = polygons.get(contour);
+  if (!polygon) {
+    polygon = polygonOf(contour);
+    polygons.set(contour, polygon);
+  }
+  return polygon;
+}
+
+/**
  * How far out a serif wing can reach before it comes too near another stroke.
  *
  * Walked along the middle of the band the wing would occupy, from the edge of
@@ -2908,6 +3296,7 @@ function roomBeside(
   others: Contour[],
 ): number {
   if (others.length === 0) return full;
+  const polygons = others.map(polygonFor);
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
   /*
@@ -2925,7 +3314,7 @@ function roomBeside(
       x: at.x + across.x * u + into.x * (thickness / 2),
       y: at.y + across.y * u + into.y * (thickness / 2),
     };
-    if (others.some((contour) => contourContainsPoint(contour, point))) {
+    if (polygons.some((polygon) => polygonContains(polygon, point))) {
       return inner + Math.max(0, u - inner - clear) / 2;
     }
   }
@@ -2999,6 +3388,37 @@ function crossesALine(
 const standingOn = (height: number, line: number, inner: number): boolean =>
   Math.abs(height - line) <= inner + Math.max(1, inner * 0.02);
 
+/** How much of its wave a wing laid flat keeps: enough to keep its pieces. */
+const CALM = 1e-3;
+
+/**
+ * Whether another stroke lies along the line a wing would run on, on the
+ * `side` given, from the stroke's own edge out to `reach`: an arm running on
+ * from a stem, rather than a bowl coming down beside it.
+ */
+function alongLine(
+  at: Vec2,
+  outward: Vec2,
+  side: number,
+  inner: number,
+  reach: number,
+  thickness: number,
+  others: Contour[],
+): boolean {
+  if (others.length === 0) return false;
+  const polygons = others.map(polygonFor);
+  const across = { x: -outward.y * side, y: outward.x * side };
+  const into = { x: -outward.x, y: -outward.y };
+  for (let u = inner + 1; u <= inner + reach; u += 2) {
+    const point = {
+      x: at.x + across.x * u + into.x * (thickness / 2),
+      y: at.y + across.y * u + into.y * (thickness / 2),
+    };
+    if (!polygons.some((polygon) => polygonContains(polygon, point))) return false;
+  }
+  return true;
+}
+
 /** Whether this face has a wave for a flat run to follow. */
 function waving(style: Style): boolean {
   const { depth, along } = style.parts.wave;
@@ -3026,6 +3446,8 @@ function sweptWing(
   inner: number,
   tip: number,
   thickness: number,
+  // Laid flat, in the same pieces: see `calm` where the wings are drawn.
+  calm = false,
 ): Contour[] {
   const into = { x: -outward.x, y: -outward.y };
   // Travelling so that the left of the way it goes is the inside of the
@@ -3039,7 +3461,7 @@ function sweptWing(
   const spine = wavy(
     { segments: [{ kind: "line", from, to }], closed: false },
     length,
-    depth,
+    calm ? depth * CALM : depth,
     thickness / 2,
     where,
   );

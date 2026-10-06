@@ -32,10 +32,18 @@ import {
   type Port,
   type Tiles,
 } from "./kit";
+import { drawnTiles } from "./kit-alphabet";
 import { joiningHigh, joiningWithout, recipeOf } from "./letters";
 import type { Ends } from "./script";
 import type { Imported } from "./exchange";
-import { weightClassOf, weightedStyle, type Family } from "./family";
+import {
+  NORMAL_WIDTH,
+  weightClassOf,
+  weightedStyle,
+  widthedStyle,
+  widthsOf,
+  type Family,
+} from "./family";
 import { partsUsedBy, type PartName } from "./parts";
 import { BASES, proportioned, SANS, type Parts, type Style } from "./style";
 
@@ -279,11 +287,17 @@ export function familyOf(forge: Forge): Family {
  * keeps its own version of a part -- and a part is a shape, not a weight. A p
  * with its own serif reach has that reach in the Bold too, which is what
  * somebody who set it meant.
+ *
+ * And at another width, when one is asked: the width first and the weight
+ * worked out from it, so a Condensed Bold is the Condensed made bold -- its
+ * counters give back what its stems gain from the Condensed's counters, not
+ * from the Normal's. See `widthedStyle`.
  */
-export function weighted(forge: Forge, wanted: number): Forge {
+export function weighted(forge: Forge, wanted: number, width: number = NORMAL_WIDTH): Forge {
   const family = familyOf(forge);
-  if (wanted === family.drawn) return forge;
-  return { ...forge, style: weightedStyle(forge.style, family.drawn, wanted) };
+  if (wanted === family.drawn && width === NORMAL_WIDTH) return forge;
+  const wide = widthedStyle(forge.style, width);
+  return { ...forge, style: weightedStyle(wide, family.drawn, wanted) };
 }
 
 export function startFrom(base: Style): Forge {
@@ -306,11 +320,25 @@ export function startFrom(base: Style): Forge {
   };
 }
 
-/** Say which weights the typeface has. The one being drawn is always one. */
+/**
+ * Say which weights and widths the typeface has. The one being drawn is
+ * always one of each.
+ *
+ * The widths are written only when there are some besides the Normal, so a
+ * family that never had any is the same document it always was -- and one
+ * whose last extra width is turned off goes back to being exactly that.
+ */
 export function setFamily(forge: Forge, family: Family): Forge {
+  const widths = [...new Set(family.widths ?? [])]
+    .filter((width) => width !== NORMAL_WIDTH && Number.isFinite(width) && width > 0)
+    .sort((a, b) => a - b);
   return {
     ...forge,
-    family: { drawn: family.drawn, also: [...new Set(family.also)].sort((a, b) => a - b) },
+    family: {
+      drawn: family.drawn,
+      also: [...new Set(family.also)].sort((a, b) => a - b),
+      ...(widths.length > 0 ? { widths } : {}),
+    },
   };
 }
 
@@ -535,23 +563,6 @@ export function isCutException(forge: Forge, letter: string, name?: CutName): bo
 }
 
 /**
- * What a change to this cut is about to reach, in letters.
- *
- * Said before the edit, as it is for the parts. A cut lands on every letter in
- * the font rather than on the ones that happen to have a part, so what this
- * mostly reports is how many letters are holding their own version.
- */
-export function cutReach(forge: Forge, name: CutName): { letters: string[]; held: string[] } {
-  const letters: string[] = [];
-  const held: string[] = [];
-  for (const letter of letterNames()) {
-    if (isCutException(forge, letter, name)) held.push(letter);
-    else letters.push(letter);
-  }
-  return { letters, held };
-}
-
-/**
  * Whether this document takes anything out of anything.
  *
  * The font's own cuts, and the letters that hold their own. Asked in one place
@@ -573,6 +584,19 @@ export function anythingCut(forge: Forge): boolean {
 
 export function kitOf(forge: Forge): Kit {
   return forge.kit ?? emptyKit();
+}
+
+/**
+ * The widths this document can be written at.
+ *
+ * The family's, except where letters are built on the grid: a cell is square
+ * and as tall as a share of the cap height, so those letters come out of every
+ * width the same, standing among letters that do not -- which is not a
+ * Condensed. The weights still work there, because the pen still sweeps the
+ * cells; the widths wait until the grid is switched off.
+ */
+export function widthsFor(forge: Forge): number[] {
+  return kitOf(forge).on ? [NORMAL_WIDTH] : widthsOf(familyOf(forge));
 }
 
 /** Whether this letter is built from cells rather than drawn from a skeleton. */
@@ -694,7 +718,13 @@ export function layOut(forge: Forge, letters?: string[]): Forge {
   const kit = kitOf(forge);
   const glyphs = { ...kit.glyphs };
   for (const letter of letters ?? letterNames()) {
-    const recipe = recipeOf(letter, formOf(forge, letter));
+    // Drawn for the grid where there is a drawing for it: see `kit-alphabet.ts`.
+    const drawn = drawnTiles(letter, kit.grid);
+    if (drawn) {
+      glyphs[letter] = drawn;
+      continue;
+    }
+    const recipe = recipeOf(letter, gridForm(formOf(forge, letter)));
     if (!recipe) continue;
     const style = styleFor(letter, forge);
     // Laid out at the letter's own width, as it is drawn: see `proportioned`.
@@ -703,6 +733,26 @@ export function layOut(forge: Forge, letters?: string[]): Forge {
     else delete glyphs[letter];
   }
   return withKit(forge, { glyphs });
+}
+
+/**
+ * The form a letter is laid onto the grid from.
+ *
+ * The measured forms -- the grotesque's and the geometric's, which the Sans
+ * and the Geometric take by default -- are copied off real faces: a c whose
+ * terminals nearly close, an s on a flat spine, a G with a spur, an M with its
+ * vertex cut level. Every one of those details is smaller than a cell, and a
+ * grid can only keep or drop it, so it drops the aperture of the c and keeps
+ * a spur as a hook: the c came back as an o, the s and S as an 8 and a delta.
+ * The plain skeletons say only where the strokes go, which is all a grid can
+ * use, so those are what the cells are laid from. Any other form -- a two
+ * storey g, a footed one -- is a different letter rather than a finer drawing
+ * of the same one, and is laid out as chosen.
+ */
+const MEASURED_FORMS = new Set(["grotesque", "geometric"]);
+
+function gridForm(form: string): string {
+  return MEASURED_FORMS.has(form) ? "" : form;
 }
 
 /** Every cut that some letter has been told to differ in. */
@@ -956,10 +1006,11 @@ export function draw(letter: string, forge: Forge): Drawn | null {
      * which sat in the middle of the word solid. A cut is a decision about the
      * font, and a letter that has joined the font is in it.
      *
-     * Four of the six reach it. The other two are made out of the skeleton --
-     * a groove is the spine swept again, a break is where two spines meet --
-     * and there is no skeleton here, so they do nothing. Said in the panel
-     * rather than left to be discovered.
+     * Five of the six reach it. The other is made out of the skeleton -- a
+     * break is where two spines meet -- and there is no skeleton here, so it
+     * does nothing (`FROM_SKELETON` in `font/cuts.ts`). The groove used to be
+     * the other: it is the letter shrunk by a wall now, which any outline can
+     * be. Said in the panel rather than left to be discovered.
      *
      * Measured against the font's own pen, because the letter has none: a slot
      * through the ampersand is the thickness a slot is in this font.

@@ -70,8 +70,12 @@ import {
 
 /** How much further round the e's tail runs than the construction's, in degrees. */
 const E_TAIL = 5;
-/** And how much shorter at the heaviest, so its aperture stays open. */
-const E_SHORT = 8;
+/**
+ * And how much further still at the heaviest, where the bowl starts later
+ * and the bar stands higher (`E_LIFT`): cut short of the construction's, a
+ * heavy tail ended in a chop standing down on the line.
+ */
+const E_FURTHER = 2;
 /** And how many degrees further round its bowl starts at the heaviest, lifting its bar. */
 const E_LIFT = 14;
 
@@ -116,7 +120,7 @@ export function humanistE(style: Style): Recipe {
 }
 
 /** Whether a face is a text serif's -- wedge serifs on a pen with contrast. */
-function textSerif(f: ReturnType<typeof frame>): boolean {
+export function textSerif(f: ReturnType<typeof frame>): boolean {
   return bookish(f) && f.style.parts.slab.shape === "wedge";
 }
 
@@ -192,9 +196,10 @@ function eyed(
   /*
    * And the tail carried on round, as far as Lora's reaches -- out under the
    * side of the bowl and up to a fifth of the x-height -- to a Bold; back to
-   * the construction's by a Black; and short of it past a Black, where the
-   * heavy pen carried the tail up into the bar's underside and the aperture
-   * closed, the tail's end sliced off against the bar.
+   * the construction's by a Black; and a little further again past a Black,
+   * where the bar is lifted clear of it. Cut short there instead, the tail
+   * ended low in a heavy chop reaching down to the line, which read as a
+   * flare under the letter.
    */
   const f = frame(style);
   // A text serif's: on a sans drawing this e, past a Black was left as it was.
@@ -202,7 +207,7 @@ function eyed(
   // Lora's reach is a text serif's: another face choosing this e keeps the
   // construction's tail to a Black.
   const reaches = textSerif(f) ? E_TAIL * Math.min(1, Math.max(0, 1 - (heavy - 0.44) / 0.56)) : 0;
-  const more = heavy <= 1 ? reaches : -E_SHORT * Math.min(1, (heavy - 1) / 0.5);
+  const more = heavy <= 1 ? reaches : E_FURTHER * Math.min(1, (heavy - 1) / 0.5);
   /*
    * On the last piece that turns: a bend ends on pieces of no length, kept so
    * every weight has the same points, and those are moved to the new end.
@@ -713,7 +718,9 @@ export function humanistCapitalN(style: Style): Recipe {
 export function humanistG(style: Style): Recipe {
   const f = frame(style);
   const heavy = heaviness(f);
-  const loopHalf = Math.max(f.bowl * 1.0, f.least * 1.4);
+  // A text serif's as narrow as Lora's, whose loop stops 40 units short of
+  // the ear on the right, where the construction's ran out under it.
+  const loopHalf = Math.max(f.bowl * (textSerif(f) ? G_LOOP : 1), f.least * 1.4);
   const left = f.edge;
   const upperH = Math.max(f.x * 0.33, f.upright + f.half * 0.45, f.least);
   const upperW = Math.max(upperH * f.wide * 1.0, f.least);
@@ -734,7 +741,13 @@ export function humanistG(style: Style): Recipe {
   const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
   // The ear, out of the bowl's top right, up over the x-height and down into its drop.
   const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 22, f.curve);
-  const earEnd = at(upper.x + upperW + Math.max(f.bowl * 0.45, f.half * 1.6), f.x + f.x * 0.1);
+  // A text serif's reaching as far as Lora's past its narrower loop, as far
+  // as the Regular's does; the Bold's already did.
+  const earOut = textSerif(f) ? f.bowl * bySize(style, G_EAR, 0) : 0;
+  const earEnd = at(
+    upper.x + upperW + Math.max(f.bowl * 0.45, f.half * 1.6) + earOut,
+    f.x + f.x * 0.1,
+  );
   return {
     ...finish(
       f,
@@ -774,6 +787,10 @@ export function humanistG(style: Style): Recipe {
 
 /** How far the g's link swings out to the left of its chord. */
 const LINK_BOW = 0.3;
+/** How wide a text serif's g's loop is, against a bowl. */
+const G_LOOP = 0.91;
+/** And how much further its ear reaches, against a bowl. */
+const G_EAR = 0.1;
 /** How far the g's ear arches over its chord. */
 const EAR_BOW = 0.45;
 
@@ -926,43 +943,83 @@ export function humanistHyphen(style: Style): Recipe {
   ]);
 }
 
-/** The solidus as Lora draws it: from the descender to over the ascender, leaning well over. */
+/**
+ * The solidus as Lora draws it: from under the descender to over the
+ * ascender, leaning 0.59 across for every unit up, cut square at both ends,
+ * and heavy: 68 across the stroke at the Regular and 93 at the Bold. Drawn
+ * with the face's pen and lightened, it was a hairline of 57 at the Regular;
+ * cut level, it ran 46 units wider than Lora's.
+ */
 export function humanistSlash(style: Style): Recipe {
+  return solidusOf(style, 1);
+}
+
+/** The backslash as Lora's: the solidus leaning the other way. */
+export function humanistBackslash(style: Style): Recipe {
+  return solidusOf(style, -1);
+}
+
+function solidusOf(style: Style, way: 1 | -1): Recipe {
   const f = frame(style);
   const foot = f.desc - f.over;
   const head = f.asc + f.over * 0.3;
-  const lean = (head - foot) * 0.53;
-  return finish(f, [
-    lighter(ink(f, straight(at(f.edge, foot), at(f.edge + lean, head)), LEVEL, LEVEL), 0.72),
-  ]);
+  if (!textSerif(f)) {
+    const lean = (head - foot) * 0.53;
+    const from = at(way === 1 ? f.edge : f.edge + lean, foot);
+    const to = at(way === 1 ? f.edge + lean : f.edge, head);
+    return finish(f, [lighter(ink(f, straight(from, to), LEVEL, LEVEL), 0.72)]);
+  }
+  const u = loraUnit(f);
+  const slope = bySize(style, 0.592, 0.581);
+  const across = byPen(style, 68, 93) * u;
+  const low = bySize(style, -253, -245.5) * u;
+  const high = bySize(style, 739.5, 726) * u;
+  const lean = (high - low) * slope;
+  const from = at(way === 1 ? f.edge : f.edge + lean, low);
+  const to = at(way === 1 ? f.edge + lean : f.edge, high);
+  return finish(f, [signStroke(f, straight(from, to), across)]);
 }
 
 /**
- * The exclamation mark as a pen draws it: a wedge, round at its head and
- * a stem and a quarter across there, narrowing to half a stem at its foot.
+ * The exclamation mark as Lora's: a wedge, round at its head at 716 and 116
+ * across there at the Regular and 144 at the Bold, narrowing to 37 and 68 at
+ * its foot 230 and 213 up, over Lora's full stop. The construction's
+ * narrowed only to half its head, and its dot stood on the line.
  */
 export function humanistExclam(style: Style): Recipe {
   const f = frame(style);
+  const u = loraUnit(f);
   const stop = stopRadius(f);
   const x = f.edge + f.half * 0.25;
-  const head = f.crest(f.cap) + f.upright;
-  // A stem and a quarter across at a text weight, and hardly more than the
-  // stem at a Black, or the head is a ball over a sliver of a stem.
-  const cap = f.half * (1.22 - 0.2 * Math.min(1, heaviness(f)));
-  const foot = Math.max(f.cap * 0.33, stop * 2 + f.half * 0.9);
-  const side = (dir: number): Stroke => {
-    const drawn = ink(
+  // Hardly more than the stem at a Black, or the head is a ball over a
+  // sliver of a stem.
+  const cap = Math.min((byPen(style, 116, 144) * u) / 2, f.half * 1.22);
+  const head = 716 * u - cap;
+  const footWide = Math.min(Math.max(byPen(style, 37, 68) * u, f.half * 0.6), cap * 2);
+  const foot = Math.max(bySize(style, 230, 213) * u, stop * 2 - DIP * u + f.half * 0.9);
+  // Three runs: one down the middle as wide as the foot, and one either side
+  // from the head's edge in to the foot, each wide enough to meet the middle
+  // one under the head.
+  const w = Math.max(footWide, (cap * 2) / 3 + 2 * u);
+  const side = (dir: number): Stroke =>
+    signStroke(
       f,
-      straight(at(x + dir * cap * 0.5, head - cap), at(x + dir * f.half * 0.04, foot)),
+      straight(at(x + dir * (cap - w / 2), head), at(x + (dir * (footWide - w)) / 2, foot)),
+      w,
       BUTT,
-      BUTT,
+      LEVEL,
     );
-    return inherit(drawn, {
-      ...drawn,
-      pen: { ...f.style.pen, contrast: 0, weight: cap },
-    });
+  return {
+    strokes: [
+      ...finish(f, [
+        side(-1),
+        signStroke(f, straight(at(x, head), at(x, foot)), footWide, BUTT, LEVEL),
+        side(1),
+        dot(f, at(x, head), cap),
+      ]).strokes,
+      loraDot(f, x, 0),
+    ],
   };
-  return finish(f, [side(-1), side(1), dot(f, at(x, head - cap), cap), dot(f, at(x, stop), stop)]);
 }
 
 /**
@@ -1144,8 +1201,23 @@ function doubleVee(f: ReturnType<typeof frame>, half: number, top: number): Reci
 
 export function humanistW(style: Style): Recipe {
   const f = frame(style);
-  return doubleVee(f, Math.max(roundHalf(f) * 0.57, f.arch * 0.68), f.x);
+  if (!textSerif(f)) return doubleVee(f, Math.max(roundHalf(f) * 0.57, f.arch * 0.68), f.x);
+  /*
+   * A text serif's drawn lighter past the Bold, as a Black's w is, and laid
+   * out for the pen it is drawn with: four arms on the stem's pen in an
+   * x-height filled the w's two lower counters to half its height at the
+   * heaviest, and it read as a band with a zigzag on top.
+   */
+  const past = Math.min(1, Math.max(0, style.pen.weight - 142) / 118);
+  const light = frame({
+    ...style,
+    pen: { ...style.pen, weight: style.pen.weight * (1 - W_LIGHTER * past) },
+  });
+  return doubleVee(light, Math.max(roundHalf(f) * 0.57, f.arch * 0.68), f.x);
 }
+
+/** How much lighter a text serif's w is drawn at the heaviest than its pen. */
+const W_LIGHTER = 0.3;
 
 export function humanistCapitalW(style: Style): Recipe {
   const f = frame(style);
@@ -1477,7 +1549,15 @@ function bookSpine(
    */
   const didone = Math.max(0, f.style.pen.contrast - 0.6) / 0.2;
   const roundest = half * (1.05 + 0.45 * Math.min(1, didone));
-  const slope = 30 - S_BEND - (30 - S_BEND) * Math.min(1, didone);
+  /*
+   * A text serif's spine lies flatter, and is held to it: Lora's crosses its
+   * s at about twenty-five degrees off level, where the construction's
+   * stood at forty and the s read as a slanted stroke between two hooks.
+   */
+  const text = textSerif(f);
+  // Eased back to the didone's as the contrast rises, as the rest is.
+  const slope = (text ? S_FLAT : 30 - S_BEND) * (1 - Math.min(1, didone));
+  const held = text ? 5 - 4.5 * Math.min(1, didone) : 0.5;
   let shape = laid(width / 2, width / 2.6, 30);
   let best = Infinity;
   /*
@@ -1506,7 +1586,7 @@ function bookSpine(
         const cost =
           ((tried.across - 2 * a) / a) ** 2 * 40 +
           (a / b - 1.3) ** 2 +
-          ((slope - degrees) / 30) ** 2 * 0.5 +
+          ((slope - degrees) / 30) ** 2 * held +
           (k / 20) ** 2 * 12 +
           (Math.max(0, roundest - tried.r.side) / roundest) ** 2 * 200 +
           (Math.max(0, tall * 0.05 - tried.fall) / tall) ** 2 * 400;
@@ -1592,7 +1672,7 @@ export function humanistS(style: Style): Recipe {
       : style;
   const recipe = { ...bookS(widened, false), air: 1.05 };
   // As the rounds' sides are, and fading out by the Bold as theirs do.
-  const swell = 1 + (S_SPINE - 1) * Math.max(0, 1 - (blackness(style) / 0.47) * 0.8);
+  const swell = sSwell(style);
   return {
     ...recipe,
     strokes: recipe.strokes.map((stroke) =>
@@ -1607,6 +1687,29 @@ export function humanistS(style: Style): Recipe {
  * then steepens again into the other, one S-curve with no straight in it.
  */
 const S_BEND = 24;
+
+/** How far off level a text serif's s spine is asked to lie, in the terms of `bookSpine`. */
+const S_FLAT = 18;
+
+/**
+ * How much heavier a text serif's s and S are drawn across than the pen, to
+ * the Bold, as Lora's are: at `S_SPINE` their sides stood 110 across where
+ * Lora's are 80, and the whole letter read heavy beside the o.
+ */
+const S_TEXT_SWELL = 1.1;
+
+/**
+ * How much heavier across than the pen the s and the S are drawn: as the
+ * rounds' sides are, fading out by the Bold as theirs do; on a text serif
+ * `S_TEXT_SWELL`, held to the Bold and gone by a Black.
+ */
+function sSwell(style: Style): number {
+  const black = blackness(style);
+  if (textSerif(frame(style))) {
+    return 1 + (S_TEXT_SWELL - 1) * Math.min(1, Math.max(0, 1 - (black - 0.47) / 0.53));
+  }
+  return 1 + (S_SPINE - 1) * Math.max(0, 1 - (black / 0.47) * 0.8);
+}
 
 /** How much lighter the lowercase s is drawn at a Black than its stem, along its level runs. */
 const S_LIGHTER = 0.2;
@@ -1624,91 +1727,6 @@ const S_SPINE = 1.25;
 
 /** How much wider the s runs per unit of blackness past a Black. */
 const S_WIDEN = 0.5;
-
-/**
- * The at sign as Lora draws it: a small a -- a bowl and a stem -- whose stem
- * turns at its foot into a tail running out and up into the ring, which goes
- * on round over the top, down the left and under the letter to stop short at
- * the lower right, all on the face's own pen, so the ring is thick at its
- * sides and a hairline over the top and under the foot.
- *
- * Sized by the ring, as Lora's is the same size at every weight: where the
- * construction sized its inner bowl first and grew the ring round it, the
- * mark ran twice the height of the capitals at a Black. A heavy weight draws
- * the ring and the bowl lighter than the stem, as a Black's small counters
- * are, and grows the ring only as far as the bowl and the tail need to stay
- * open inside it.
- */
-export function humanistAt(style: Style): Recipe {
-  const f = frame(style);
-  const heavy = Math.min(1, heaviness(f) / 1.5);
-  const share = 1 - 0.4 * heavy;
-  const weight = f.style.pen.weight * share;
-  const side = weight / 2;
-  const bowlShare = share * (0.9 - 0.1 * heavy);
-  const bowlSide = (f.style.pen.weight * bowlShare) / 2;
-  // The least a counter inside it keeps open.
-  const least = Math.max(f.half * (0.4 - 0.2 * heavy), 12);
-  // How much of the inside the bowl takes across, from the stem's middle.
-  const across = 0.5 + 0.08 * heavy;
-  const inside = Math.max(
-    f.cap * AT_RADIUS - side * 2,
-    (least + side / 2) / 0.375,
-    (bowlSide * 2 + least) / across,
-  );
-  const R = inside + side;
-  const centre = at(f.edge + R, f.cap * AT_MIDDLE);
-  const stem = centre.x + inside * 0.25;
-  const bowlW = inside * across - bowlSide;
-  /*
-   * No more than so much taller than it is wide: past twice, an oval is drawn
-   * with flat sides (see `ovalCorner`), and a heavy weight's a in the ring
-   * was a slot with straight walls.
-   */
-  const bowlH = Math.min(inside * 0.74 - bowlSide * (1 - f.style.pen.contrast), bowlW * AT_TALL);
-  const bowl = at(stem - bowlW, centre.y + inside * 0.08);
-  const tail = (centre.x + R - stem) / 2;
-  const turnY = Math.min(bowl.y - bowlH + tail, centre.y - 1);
-  const top = bowl.y + bowlH + bowlSide * (1 - f.style.pen.contrast);
-  const run = (end: number) =>
-    lighter(
-      ink(
-        f,
-        inPieces(
-          chain(
-            straight(at(stem, top), at(stem, turnY)),
-            turn(at(stem + tail, turnY), tail, 180, 360),
-            straight(at(centre.x + R, turnY), at(centre.x + R, centre.y)),
-            turn(centre, R, 0, end),
-          ),
-          4,
-        ),
-        BUTT,
-        BUTT,
-      ),
-      share,
-    );
-  /*
-   * Stopping sooner where the ring's end would reach back over the tail's
-   * turn: cut square across a pen held at -60 past a Black, it did, and the
-   * one outline crossed itself. The points are the same either way.
-   */
-  let drawn = run(AT_END);
-  for (let end = AT_END - 6; end >= AT_END - 36 && contoursIntersect(sweep(drawn)); end -= 6) {
-    drawn = run(end);
-  }
-  return finish(f, [lighter(ink(f, ring(f, bowl, bowlW, bowlH)), bowlShare), drawn], true);
-}
-
-/** Where the at sign's ring stops, in degrees round from its right. */
-const AT_END = 312;
-
-/** Lora's at sign's ink reaches this far from its middle, against the cap height. */
-const AT_RADIUS = 0.51;
-/** How much taller than wide the at sign's small a may be. */
-const AT_TALL = 1.75;
-/** And its middle stands this high, against the cap height. */
-const AT_MIDDLE = 0.39;
 
 /** The s or the S on `bookSpine`, as wide as the construction's text s. */
 function bookS(style: Style, capital: boolean): Recipe {
@@ -1759,7 +1777,7 @@ function bookS(style: Style, capital: boolean): Recipe {
 /** The S as the s is drawn: see `bookSpine`. */
 export function humanistCapitalS(style: Style): Recipe {
   const recipe = bookS(style, true);
-  const swell = 1 + (S_SPINE - 1) * Math.max(0, 1 - (blackness(style) / 0.47) * 0.8);
+  const swell = sSwell(style);
   return {
     ...recipe,
     strokes: recipe.strokes.map((stroke) => hairlined(stroke, swell)),
@@ -1893,10 +1911,14 @@ export function humanistQuestion(style: Style): Recipe {
   };
   let enters = degrees(other, touch);
   if (enters < 0) enters += 360;
-  return finish(f, [
-    ink(f, chain(hook, inPieces(turn(other, r, enters, 180), 2)), f.end, f.end),
-    dot(f, at(foot.x, radiusDot), radiusDot),
-  ]);
+  // Over Lora's full stop, dipping under the line.
+  return {
+    strokes: [
+      ...finish(f, [ink(f, chain(hook, inPieces(turn(other, r, enters, 180), 2)), f.end, f.end)])
+        .strokes,
+      loraDot(f, foot.x, 0),
+    ],
+  };
 }
 
 /**
@@ -2105,7 +2127,8 @@ export function humanistAmpersand(style: Style): Recipe {
   const loopFrom = degrees(theta) + 180;
   // The arm, standing on the bowl's right a little up from its middle.
   const armFrom = pointOn(bowlAt, R, ARM_LEAVES);
-  const head = Math.max(f.hangs(C * 0.5), armFrom.y + f.half);
+  // The arm up to Lora's serif, 387 on a cap height of 700.
+  const head = Math.max(f.hangs(C * 0.553), armFrom.y + f.half);
   const armTop = at(armFrom.x + R * ARM_OUT, head);
   /*
    * The diagonal, laid through the bowl's lower right, where the arm leaves
@@ -2173,7 +2196,8 @@ export function humanistAmpersand(style: Style): Recipe {
           pinned(turn(loopAt, r, leaves - 12, leaves), 1),
           straight(from, knee),
           pinned(turn(turnAt, foot, 220, 270), 1),
-          straight(heel, at(heel.x + Math.min(f.half * 1.2, C * 0.07), line)),
+          // Out along the line as far as Lora's, 93 past the turn.
+          straight(heel, at(heel.x + Math.min(f.half * 2.7, C * 0.165), line)),
         ),
         BUTT,
         BUTT,
@@ -2317,3 +2341,478 @@ const R_KICK = 1.6;
 const R_TOE = 0.25;
 /** And at the Bold, where the bowl drawn here is nearly as wide as Lora's toe reaches. */
 const R_TOE_BOLD = 0.04;
+
+// ---------------------------------------------------------------------------
+// The Serif's signs, as Lora draws them
+// ---------------------------------------------------------------------------
+
+type Framed = ReturnType<typeof frame>;
+
+/**
+ * A measure of Lora's taken at its Regular (a pen of 87) and its Bold (142),
+ * run on along the same line to either side: a stroke's weight, which goes
+ * on growing with the pen past the Bold and thinning under the Regular.
+ */
+export function byPen(style: Style, regular: number, bold: number): number {
+  return regular + ((bold - regular) * (style.pen.weight - 87)) / 55;
+}
+
+/**
+ * A measure of Lora's at its Regular and its Bold, held at the Regular's
+ * under it and past the Bold growing on by `past` units a unit of pen: a
+ * sign's size, which follows the weight only as far as its counters need.
+ */
+export function bySize(style: Style, regular: number, bold: number, past = 0): number {
+  const t = Math.min(Math.max((style.pen.weight - 87) / 55, 0), 1);
+  return regular + (bold - regular) * t + Math.max(0, style.pen.weight - 142) * past;
+}
+
+/** A stroke drawn with an even pen of its own, as a sign's strokes are. */
+export function signStroke(
+  f: Framed,
+  spine: Spine,
+  weight: number,
+  start: Terminal = BUTT,
+  end: Terminal = BUTT,
+): Stroke {
+  const drawn = ink(f, spine, start, end);
+  return inherit(drawn, {
+    ...drawn,
+    pen: { ...f.style.pen, weight: Math.max(weight, 1), contrast: 0, angle: 0 },
+  });
+}
+
+/** Lora's units -- a thousand to the em on an x-height of 500 -- in the face's. */
+export function loraUnit(f: Framed): number {
+  return f.xOwn / 500;
+}
+
+/** The middle of the arithmetic signs in Lora: 362 up, on an x-height of 500. */
+export const SIGN_MIDDLE = 362;
+
+/** How far Lora's dots dip under the line they stand on, in its units. */
+export const DIP = 16;
+
+/**
+ * One of Lora's dots: the full stop's width across and a little taller, 117
+ * by 129 at the Regular and 145 by 156 at the Bold, dipping `DIP` under
+ * `foot` as a round letter does. The construction's was round and stood on
+ * the line.
+ */
+export function loraDot(f: Framed, x: number, foot: number): Stroke {
+  const u = loraUnit(f);
+  const radius = stopRadius(f);
+  const tall = bySize(f.style, 12, 11) * u;
+  const low = foot - DIP * u + radius;
+  const round: Terminal = { kind: "round" };
+  return {
+    spine: straight(at(x, low), at(x, low + tall)),
+    pen: { ...f.style.pen, contrast: 0, angle: 0, weight: radius * 2 },
+    start: round,
+    end: round,
+  };
+}
+
+/**
+ * The plus as Lora's: 446 across and as tall, its middle 362 up, the bars
+ * 50 deep at the Regular and 78 at the Bold. The construction's was a fifth
+ * smaller, hung 130 units lower and drew its bars at the stem's weight.
+ * Past the Bold the arms grow as fast as the bars do, or they were stubs.
+ */
+export function humanistPlus(style: Style): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const bar = byPen(style, 50, 78) * u;
+  const reach = (446 * u + Math.max(0, bar - 78 * u)) / 2;
+  const x = f.edge + reach;
+  const y = SIGN_MIDDLE * u;
+  return finish(f, [
+    signStroke(f, straight(at(x - reach, y), at(x + reach, y)), bar),
+    signStroke(f, straight(at(x, y - reach), at(x, y + reach)), bar),
+  ]);
+}
+
+/**
+ * The equals sign as Lora's: two bars 446 long, 50 deep at the Regular and
+ * 78 at the Bold, 150 apart at the Regular and 178 at the Bold, about 365
+ * up. The construction's were 80 units short and stood with their middle at
+ * the x-height's.
+ */
+export function humanistEqual(style: Style): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const bar = byPen(style, 50, 78) * u;
+  const apart = (75 + Math.max(0, byPen(style, 50, 78) - 50) * 0.5) * u;
+  const y = 365 * u;
+  const long = 446 * u + Math.max(0, bar - 78 * u);
+  return finish(
+    f,
+    [y - apart, y + apart].map((level) =>
+      signStroke(f, straight(at(f.edge, level), at(f.edge + long, level)), bar),
+    ),
+  );
+}
+
+/**
+ * The division sign as Lora's: the plus's bar with a dot 129 across at the
+ * Regular (156 at the Bold) standing 166 over and under its middle.
+ */
+export function humanistDivide(style: Style): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const bar = byPen(style, 50, 78) * u;
+  const long = 446 * u + Math.max(0, bar - 78 * u);
+  const y = SIGN_MIDDLE * u;
+  const radius = Math.max(byPen(style, 64.5, 78) * u, stopRadius(f));
+  // Held off the bar by at least what Lora's Bold keeps, so a heavy dot
+  // stands clear of it.
+  const reach = Math.max(166 * u, bar / 2 + radius + 45 * u);
+  return finish(f, [
+    signStroke(f, straight(at(f.edge, y), at(f.edge + long, y)), bar),
+    dot(f, at(f.edge + long / 2, y + reach), radius),
+    dot(f, at(f.edge + long / 2, y - reach), radius),
+  ]);
+}
+
+/**
+ * The multiplication sign as Lora's: two bars crossing square at 362 up,
+ * 318 from end to end across and as tall, cut square, at the plus's weight.
+ */
+export function humanistMultiply(style: Style): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const bar = byPen(style, 50, 78) * u;
+  const half = (318 * u + Math.max(0, bar - 78 * u)) / 2;
+  const x = f.edge + half;
+  const y = SIGN_MIDDLE * u;
+  return finish(f, [
+    signStroke(f, straight(at(x - half, y - half), at(x + half, y + half)), bar),
+    signStroke(f, straight(at(x - half, y + half), at(x + half, y - half)), bar),
+  ]);
+}
+
+/**
+ * The less-than and the greater-than as Lora's: two arms rising 0.44
+ * across off level from a point 315 up, their spines meeting there so the
+ * point is cut upright as the ends are, 445 across at the Regular and 450
+ * at the Bold, the arms 64 deep at the Regular and 101 at the Bold. The
+ * construction's were steeper, came down under the line and drew their
+ * arms at the stem's weight.
+ */
+function loraAngle(style: Style, way: 1 | -1): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const slope = 0.44;
+  const cos = 1 / Math.hypot(1, slope);
+  const deep = byPen(style, 64, 101) * u;
+  const middle = 315 * u;
+  // Past the Bold reaching further as the arms grow deeper, or the inside
+  // closed.
+  const wide = bySize(style, 445, 450) * u + Math.max(0, deep - 101 * u) * 1.2;
+  const rise = wide * slope;
+  const x = (along: number) => (way === 1 ? f.edge + along : f.edge + wide - along);
+  const cut: Terminal = { kind: "butt", aligned: true };
+  return finish(
+    f,
+    ([1, -1] as const).map((side) =>
+      signStroke(
+        f,
+        straight(at(x(0), middle), at(x(wide), middle + side * rise)),
+        deep * cos,
+        cut,
+        cut,
+      ),
+    ),
+  );
+}
+
+export const humanistLess = (style: Style): Recipe => loraAngle(style, 1);
+export const humanistGreater = (style: Style): Recipe => loraAngle(style, -1);
+
+/**
+ * The underscore as Lora's: a bar 615 long hanging from 50 under the line,
+ * 61 deep at the Regular and 105 at the Bold. The construction's was a
+ * quarter of that long.
+ */
+export function humanistUnderscore(style: Style): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const deep = byPen(style, 61, 105) * u;
+  const y = -50 * u - deep / 2;
+  return finish(f, [signStroke(f, straight(at(f.edge, y), at(f.edge + 615 * u, y)), deep)]);
+}
+
+/**
+ * The number sign as Lora's: two uprights leaning 0.236 across for every
+ * unit up, from under the line to the cap line and 280 apart, and two bars
+ * reaching 166 past them either side, cut along the uprights' lean. The
+ * uprights are 70 across at
+ * the Regular and 105 at the Bold, the bars 60 and 89 deep, about 208 and
+ * 499 up. The construction's was half as wide and heavier than a stem, and
+ * past a Black its bars filled the counter.
+ */
+export function humanistNumberSign(style: Style): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const slope = 0.236;
+  const cos = 1 / Math.hypot(1, slope);
+  const across = byPen(style, 70, 105) * u;
+  const deep = byPen(style, 60, 89) * u;
+  const apart = bySize(style, 280, 275, 0.45) * u;
+  const left = f.edge;
+  const foot = -f.over;
+  const head = f.cap + f.over;
+  const lower = bySize(style, 208, 198.5, -0.1) * u;
+  const upper = bySize(style, 499, 484.5, 0.1) * u;
+  // How far each bar reaches past the outside of the upright it ends at.
+  const past = bySize(style, 166, 165, 0.2) * u;
+  const upright = (x: number): Stroke =>
+    signStroke(
+      f,
+      straight(at(x + slope * foot, foot), at(x + slope * head, head)),
+      across * cos,
+      LEVEL,
+      LEVEL,
+    );
+  /*
+   * Each bar a short run up the uprights' lean, as tall as the bar is deep
+   * and cut level, drawn with a pen as wide as the bar is long, so its ends
+   * lie along the lean as Lora's do.
+   */
+  const bar = (y: number): Stroke => {
+    const from = left + slope * y - across / 2 - past;
+    const to = left + apart + slope * y + across / 2 + past;
+    const middle = (from + to) / 2;
+    const rise = deep / 2;
+    return signStroke(
+      f,
+      straight(at(middle - slope * rise, y - rise), at(middle + slope * rise, y + rise)),
+      (to - from) * cos,
+      LEVEL,
+      LEVEL,
+    );
+  };
+  return finish(f, [upright(left), upright(left + apart), bar(lower), bar(upper)]);
+}
+
+/**
+ * The percent as Lora's: two ovals drawn with the face's own pen -- heavy
+ * at their sides, hairlines at their crowns -- the upper at the left
+ * standing on the cap line, the lower at the right on the baseline, and a
+ * long slash between them leaning 0.81 across for every unit up. The rings
+ * are 365 across and 381 tall at the Regular (376 and 391 at the Bold). The
+ * construction's rings were two thirds of that, and past a Black the sign
+ * widened round its rings until it was three letters wide.
+ */
+export function humanistPercent(style: Style): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  // Lighter than the stem from the Regular on: Lora Bold's sides are 122.
+  const w = style.pen.weight;
+  const side = Math.min(w, 87 + (w - 87) * (35 / 55), 122 + (w - 142) * 0.4) * u;
+  const ringFrame = { ...f, half: side / 2 };
+  const crown = side * (1 - Math.min(Math.max(f.style.pen.contrast, 0), 0.9));
+  const halfW = bySize(style, 182.5, 188, 0.35) * u;
+  const halfH = bySize(style, 190.5, 195.5) * u;
+  const across = byPen(style, 74, 120) * u;
+  const slope = bySize(style, 0.81, 0.857);
+  const cos = 1 / Math.hypot(1, slope);
+  // The lower ring's middle from the upper's: past the Bold moving apart as
+  // the rings and the slash grow.
+  const apart =
+    bySize(style, 433.5, 446.5) * u +
+    Math.max(0, halfW - 188 * u) * 2 +
+    Math.max(0, across - 120 * u) * 0.5;
+  const foot = -f.over;
+  const head = f.cap + f.over;
+  const upper = at(f.edge - f.half + halfW, head - halfH);
+  const lower = at(upper.x + apart, foot + halfH);
+  const oval = (centre: Vec2): Stroke => {
+    const drawn = ink(ringFrame, ring(ringFrame, centre, halfW - side / 2, halfH - crown / 2));
+    return inherit(drawn, { ...drawn, pen: { ...f.style.pen, weight: side } });
+  };
+  const mid = at((upper.x + lower.x) / 2, (upper.y + lower.y) / 2);
+  return finish(
+    f,
+    [
+      oval(upper),
+      signStroke(
+        f,
+        straight(
+          at(mid.x + slope * (foot - mid.y), foot),
+          at(mid.x + slope * (head - mid.y), head),
+        ),
+        across * cos,
+        LEVEL,
+        LEVEL,
+      ),
+      oval(lower),
+    ],
+    true,
+  );
+}
+
+/**
+ * The square brackets as Lora's: an upright 72 across at the Regular and
+ * 127 at the Bold, from the descender to the ascender, and arms 62 and 74
+ * deep reaching 268 and 323 from its outside, cut upright. The
+ * construction's arms were stubs and its upright heavier than a stem.
+ */
+function loraBracket(style: Style, facing: 1 | -1): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const across = byPen(style, 72, 127) * u;
+  const deep = byPen(style, 62, 74) * u;
+  const reach = byPen(style, 268, 323) * u;
+  const foot = f.desc;
+  const head = f.asc;
+  const X = (x: number) => (facing > 0 ? f.edge + x : f.edge + reach - x);
+  return finish(f, [
+    signStroke(f, straight(at(X(across / 2), foot), at(X(across / 2), head)), across, LEVEL, LEVEL),
+    ...[head - deep / 2, foot + deep / 2].map((y) =>
+      signStroke(f, straight(at(X(across / 2), y), at(X(reach), y)), deep),
+    ),
+  ]);
+}
+
+export const humanistBracketLeft = (style: Style): Recipe => loraBracket(style, 1);
+export const humanistBracketRight = (style: Style): Recipe => loraBracket(style, -1);
+
+/**
+ * A run of arcs and straights laid end to end from `from`, setting off at
+ * `heading` degrees: each step either runs straight on for `run`, or turns
+ * through `turn` degrees (anticlockwise where positive) on `radius`.
+ */
+function steered(
+  from: Vec2,
+  heading: number,
+  steps: Array<{ run: number } | { radius: number; turn: number }>,
+): { spine: Spine; to: Vec2 } {
+  const rad = (degrees: number) => (degrees * Math.PI) / 180;
+  let point = from;
+  let going = heading;
+  const parts: Spine[] = [];
+  for (const step of steps) {
+    if ("run" in step) {
+      const to = at(
+        point.x + Math.cos(rad(going)) * step.run,
+        point.y + Math.sin(rad(going)) * step.run,
+      );
+      parts.push(straight(point, to));
+      point = to;
+      continue;
+    }
+    const side = step.turn > 0 ? 1 : -1;
+    // The centre stands a right angle round from the way it is going, on the
+    // side it turns towards.
+    const centre = at(
+      point.x + step.radius * Math.cos(rad(going + 90 * side)),
+      point.y + step.radius * Math.sin(rad(going + 90 * side)),
+    );
+    const start = going - 90 * side;
+    parts.push(turn(centre, step.radius, start, start + step.turn));
+    going += step.turn;
+    point = at(
+      centre.x + step.radius * Math.cos(rad(start + step.turn)),
+      centre.y + step.radius * Math.sin(rad(start + step.turn)),
+    );
+  }
+  return { spine: chain(...parts), to: point };
+}
+
+/** A spine mirrored across the level `about` (axis "y") or the upright (axis "x"). */
+function mirrored(spine: Spine, axis: "x" | "y", about: number): Spine {
+  const over = (p: Vec2) => (axis === "y" ? at(p.x, 2 * about - p.y) : at(2 * about - p.x, p.y));
+  return {
+    closed: spine.closed,
+    segments: spine.segments.map((one) =>
+      one.kind === "line"
+        ? { kind: "line", from: over(one.from), to: over(one.to) }
+        : {
+            ...one,
+            centre: over(one.centre),
+            startAngle: axis === "y" ? -one.startAngle : Math.PI - one.startAngle,
+            endAngle: axis === "y" ? -one.endAngle : Math.PI - one.endAngle,
+            sweepPositive: !one.sweepPositive,
+          },
+    ),
+  };
+}
+
+/** How steeply each half of Lora's brace leaves its point, in degrees off level. */
+const BRACE_POINT = 8;
+/** How far it runs from the point before turning up, in Lora's units. */
+const BRACE_NUB = 45;
+/** How far past upright its upright leans back in, in degrees. */
+const BRACE_BACK = 5;
+
+/**
+ * The braces as Lora's: curved, not angled. Each half leaves the point at
+ * 263 up heading out at 22 degrees and swells round a wide turn to stand
+ * furthest out 137 over it, leans back in a little up the upright, and turns
+ * over into a short level end cut upright -- drawn with the face's own pen,
+ * so the upright is heavy and the ends and the point light. 315 across at
+ * the Regular and 364 at the Bold, from 271 under the line to 760 over it,
+ * the lower half the longer. The construction's turned in straight corners,
+ * and past a Black came to an arrowhead.
+ */
+function loraBrace(style: Style, facing: 1 | -1): Recipe {
+  const f = frame(style);
+  const u = loraUnit(f);
+  const w = style.pen.weight;
+  const rad = (degrees: number) => (degrees * Math.PI) / 180;
+  // Lora's upright is 80 across at the Regular and 138 at the Bold.
+  // Past the Bold gaining only half what the stem does, or its point was a
+  // block and its inside a slot.
+  const share = Math.min(1, 0.92 + Math.max(0, w - 87) * (0.05 / 55));
+  const pen =
+    f.style.pen.weight * share - Math.max(0, f.style.pen.weight - 142 * (f.xOwn / 500)) * 0.5;
+  const half = pen / 2;
+  const point = 263 * u;
+  // The level end's spine stands half its own depth under the ink's reach.
+  const endDepth = pen * (1 - Math.min(Math.max(f.style.pen.contrast, 0), 0.9));
+  // Where the half stands out furthest, how far over the point, and the
+  // turns into and out of the upright, none tighter than the pen can go
+  // round.
+  const furthest = byPen(style, 166, 185.5) * u;
+  const rise = bySize(style, 137, 157) * u;
+  const nub = BRACE_NUB * u;
+  const sin = Math.sin(rad(BRACE_POINT));
+  const cos = Math.cos(rad(BRACE_POINT));
+  const into = Math.max((rise - nub * sin) / cos, half * 1.15);
+  const over = Math.max(byPen(style, 152, 129) * u, half * 1.15);
+  const right = byPen(style, 322, 364) * u;
+  const heading = 90 + BRACE_BACK;
+  const halfOf = (reach: number): Spine => {
+    const top = point + reach - endDepth / 2;
+    const tip = at(f.edge + furthest - into + into * sin - nub * cos, point);
+    const round = steered(tip, BRACE_POINT, [
+      { run: nub },
+      { radius: into, turn: heading - BRACE_POINT },
+    ]);
+    // Up until the turn over lands the end on `top`.
+    const upright = Math.max(
+      (top - round.to.y - over * (1 - Math.cos(rad(heading)))) / Math.sin(rad(heading)),
+      1,
+    );
+    const up = steered(round.to, heading, [{ run: upright }, { radius: over, turn: -heading }]);
+    return chain(
+      round.spine,
+      up.spine,
+      straight(up.to, at(Math.max(f.edge + right, up.to.x + 1), up.to.y)),
+    );
+  };
+  // From under the descender to over the ascender, as the slash runs.
+  const upper = halfOf(f.asc + f.over * 0.3 - point);
+  const lower = mirrored(halfOf(point - f.desc + f.over), "y", point);
+  const flip = (spine: Spine) => (facing > 0 ? spine : mirrored(spine, "x", f.edge + right / 2));
+  // The point cut upright, where the two halves meet; the ends too.
+  const cut: Terminal = { kind: "butt", aligned: true };
+  const lap = (spine: Spine): Stroke => {
+    const drawn = ink(f, flip(spine), cut, cut);
+    return inherit(drawn, { ...drawn, pen: { ...drawn.pen, weight: pen } });
+  };
+  return finish(f, [lap(upper), lap(lower)]);
+}
+export const humanistBraceLeft = (style: Style): Recipe => loraBrace(style, 1);
+export const humanistBraceRight = (style: Style): Recipe => loraBrace(style, -1);

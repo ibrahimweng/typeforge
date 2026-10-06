@@ -123,6 +123,29 @@ const CODEPOINTS: Record<string, number> = {
   questiondown: 0xbf,
   multiply: 0xd7,
   divide: 0xf7,
+
+  // The typographic punctuation past Latin-1, under the names the Adobe Glyph
+  // List gives them: see `letters/typographic.ts`.
+  endash: 0x2013,
+  emdash: 0x2014,
+  quoteleft: 0x2018,
+  quoteright: 0x2019,
+  quotesinglbase: 0x201a,
+  quotedblleft: 0x201c,
+  quotedblright: 0x201d,
+  quotedblbase: 0x201e,
+  dagger: 0x2020,
+  daggerdbl: 0x2021,
+  bullet: 0x2022,
+  ellipsis: 0x2026,
+  guilsinglleft: 0x2039,
+  guilsinglright: 0x203a,
+  Euro: 0x20ac,
+  trademark: 0x2122,
+  minus: 0x2212,
+  // The per mille and the florin: see `letters/typographic.ts`.
+  perthousand: 0x2030,
+  florin: 0x0192,
 };
 
 /**
@@ -134,6 +157,15 @@ const CODEPOINTS: Record<string, number> = {
  */
 const ALSO: Record<string, number[]> = {
   grave: [0x0060],
+  /*
+   * And the spacing circumflex and tilde, which the Adobe Glyph List names
+   * `circumflex` and `tilde` and every font that carries both draws as the
+   * combining ones are: Geist's and Lora's are the same drawing at the same
+   * height. Without them a word processor's ˆ and ˜ fell through to
+   * whatever font was behind this one.
+   */
+  circumflex: [0x02c6],
+  tilde: [0x02dc],
   // Romanian's comma-below T, which is the same drawing as the one Extended-A
   // names for a comma and draws with one. Two characters, one glyph.
   Tcommaaccent: [0x021a],
@@ -235,6 +267,12 @@ export interface ForgeExportOptions {
    */
   weightClass?: number;
   /**
+   * How wide this member of the family is, as OS/2's `usWidthClass`: see
+   * `FontMeta.widthClass`. Left out for a Normal, which is what it was before
+   * there were widths and so writes the same file.
+   */
+  widthClass?: number;
+  /**
    * Fuse the overlapping strokes.
    *
    * On for anything leaving the application. Off is for looking at the pieces,
@@ -291,6 +329,7 @@ export async function toTypeface(forge: Forge, options: ForgeExportOptions): Pro
     familyName: options.familyName,
     styleName: options.styleName,
     weightClass: options.weightClass ?? 400,
+    ...(options.widthClass !== undefined ? { widthClass: options.widthClass } : {}),
     // Said plainly in the file itself, because it is the reason this half of
     // the application exists.
     copyright: `${options.familyName}. Drawn from a skeleton; not derived from any existing typeface.`,

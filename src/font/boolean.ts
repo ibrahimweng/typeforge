@@ -340,20 +340,10 @@ export function unite(
    * beside the boolean, and a counter filled in is wrong on every line
    * through it.
    */
-  let given: { lines: number[]; cover: number[] } | null = null;
+  let given: Cover | null = null;
   const unlike = (answer: Contour[]): number => {
-    if (!given) {
-      const lines = coverLines(drawable);
-      given = { lines, cover: coverAlong(drawable, roomFor, lines) };
-    }
-    return linesUnlike(
-      given.cover,
-      coverAlong(
-        answer,
-        answer.map((contour) => contourArea(contour) >= 0),
-        given.lines,
-      ),
-    );
+    given ??= coverOf(drawable, roomFor);
+    return linesUnlike(given, answer);
   };
   const gaveUp = (answer: Contour[]): boolean =>
     answer.length === 0 ||
@@ -821,17 +811,66 @@ function stillDraws(answer: Contour[], given: Contour[], roles: Roles): boolean 
  * Where to measure a set of shapes across: a few dozen levels spread over its
  * height, each set off its step by an irrational share so none of them lies
  * along a level edge, where which side a line is on is a coin toss.
+ *
+ * Spread over the shapes' own height, so the count is the same share of a
+ * letter at any em: a 2048 unit o is crossed on the same lines as a 1000 unit
+ * one, only further apart.
  */
 function coverLines(contours: Contour[]): number[] {
   const box = contoursBounds(contours);
   const height = box.yMax - box.yMin;
   if (!(height > 0)) return [];
-  const count = 48;
+  const count = COVER_LINES;
   const lines: number[] = [];
   for (let at = 0; at < count; at++) {
     lines.push(box.yMin + (height * (at + 0.3819660112501051)) / count);
   }
   return lines;
+}
+
+/** How many levels `coverLines` measures a set of shapes on. */
+const COVER_LINES = 48;
+
+/**
+ * How much two measurements of one line may differ and still be the same
+ * ground, beside the hundredth of the line `linesUnlike` also allows: the
+ * error of drawing a curve as a polyline, which is a share of how big the
+ * curve is rather than a number of units.
+ *
+ * It was four units, which is right for a letter on a 1000 unit em and half
+ * of what the same letter needs on a 2048 unit one. Half a per cent of the
+ * shapes' larger side is four units on a letter 800 across, the size the four
+ * was chosen at, and the same share of the letter at any em.
+ *
+ * Never less than the four, though. A small piece -- a dot, a serif, one band
+ * of a shadow -- is judged with the rounding a boolean does as well as with
+ * its flattening, and the rounding is not a share of anything: held to half a
+ * per cent of itself, a dot forty units across could be out by a fifth of a
+ * unit, and every union with one in it was called a failure and done again.
+ */
+const COVER_SLACK = 1 / 200;
+const COVER_SLACK_LEAST = 4;
+
+/**
+ * A set of shapes measured across: the lines, how much of each is in the ink,
+ * and how far an answer measured on the same lines may stray from that.
+ */
+export interface Cover {
+  lines: number[];
+  cover: number[];
+  slack: number;
+}
+
+/** Measure these shapes across, with each one's role as stated. */
+export function coverOf(contours: Contour[], isOuter: boolean[]): Cover {
+  const box = contoursBounds(contours);
+  const size = Math.max(box.xMax - box.xMin, box.yMax - box.yMin, 0);
+  const lines = coverLines(contours);
+  return {
+    lines,
+    cover: coverAlong(contours, isOuter, lines),
+    slack: Math.max(COVER_SLACK_LEAST, Number.isFinite(size) ? size * COVER_SLACK : 0),
+  };
 }
 
 /**
@@ -878,13 +917,21 @@ function coverAlong(contours: Contour[], isOuter: boolean[], lines: number[]): n
 }
 
 /**
- * On how many lines two measurements disagree by more than drawing a curve as
- * a polyline can account for: a few units, or a hundredth of the line.
+ * On how many lines an answer, which states its roles by winding as a fuse
+ * does, disagrees with the shapes it was made from by more than drawing a
+ * curve as a polyline can account for: the slack those shapes allow, or a
+ * hundredth of the line.
  */
-function linesUnlike(given: number[], answer: number[]): number {
+export function linesUnlike(given: Cover, answer: Contour[]): number {
+  const measured = coverAlong(
+    answer,
+    answer.map((contour) => contourArea(contour) >= 0),
+    given.lines,
+  );
   let unlike = 0;
-  for (let at = 0; at < given.length; at++) {
-    if (Math.abs(given[at] - answer[at]) > 4 + given[at] * 0.01) unlike++;
+  for (let at = 0; at < given.cover.length; at++) {
+    const room = given.slack + given.cover[at] * 0.01;
+    if (Math.abs(given.cover[at] - measured[at]) > room) unlike++;
   }
   return unlike;
 }
@@ -966,6 +1013,7 @@ function contoursOf(item: paper.PathItem): Contour[] {
       .filter((path) => path.segments && path.segments.length >= 2)
       .map(fromPath)
       .map(withoutStutter)
+      .filter((contour): contour is Contour => contour !== null)
       /*
        * Without the specks paper leaves behind.
        *
@@ -1001,10 +1049,15 @@ function contoursOf(item: paper.PathItem): Contour[] {
  * curve that leaves a point and comes back to it round a loop is a shape. And
  * a corner where a straight edge turns straight back on itself is no corner:
  * the outline goes on from the one before it to the one after.
+ *
+ * Taken out until there are none left, since taking one out can make the
+ * next: the node either side of a spike can be a spike of its own once the
+ * tip has gone. And an outline that folds away to fewer than two nodes was
+ * never anything but folds, so it is dropped rather than handed back folded.
  */
 const SAME_PLACE = 1e-3;
 
-function withoutStutter(contour: Contour): Contour {
+export function withoutStutter(contour: Contour): Contour | null {
   let nodes = contour.nodes;
   if (nodes.length < 3) return contour;
   const same = (a: Vec2, b: Vec2): boolean =>
@@ -1044,7 +1097,8 @@ function withoutStutter(contour: Contour): Contour {
   };
 
   let changed = false;
-  for (let pass = 0; pass < nodes.length && nodes.length >= 3; pass++) {
+  // Every pass takes out at least one node, so this ends.
+  while (nodes.length >= 3) {
     const count = nodes.length;
     let at = -1;
     let merge = false;
@@ -1083,7 +1137,8 @@ function withoutStutter(contour: Contour): Contour {
     } else kept.splice(at, 1);
     nodes = kept;
   }
-  return changed && nodes.length >= 2 ? { ...contour, nodes } : contour;
+  if (!changed) return contour;
+  return nodes.length >= 2 ? { ...contour, nodes } : null;
 }
 
 /** A node's handles are absolute here and relative to the point in paper. */

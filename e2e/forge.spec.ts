@@ -654,6 +654,75 @@ test("draws the symbols and writes them into the font", async ({ page }) => {
 });
 
 /**
+ * The typographic punctuation, end to end: curly and low quotes, single
+ * guillemets, dashes, the ellipsis, the bullet, the minus, the euro, the trade
+ * mark and the daggers.
+ *
+ * Every base drew 452 glyphs and none of these, so "don’t" -- or any text that
+ * has been through a word processor -- set with holes in it. The grid has no
+ * fixed count to update: it is every glyph the font draws, so it grew by
+ * seventeen to 469, and what is checked is that the new ones are in it, in a
+ * line of type, and in the file under the codepoints and names other fonts
+ * use.
+ */
+test("draws the typographic punctuation and writes it into the font", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  for (const name of ["quoteleft", "quoteright", "endash", "emdash", "ellipsis", "Euro"]) {
+    await expect(page.locator(`[data-forge-cell="${name}"]`)).toBeVisible();
+  }
+
+  const text = "‘’“”‚„‹›–—…•−€™†‡";
+  await page.locator('input[value="Handgloves"]').fill(text);
+  const line = page.getByRole("img", { name: "Specimen" });
+  await expect.poll(() => line.locator("path").count()).toBe([...text].length);
+
+  const download = await Promise.race([
+    page.waitForEvent("download", { timeout: 90_000 }),
+    page
+      .getByRole("button", { name: "Export", exact: true })
+      .click()
+      .then(() =>
+        page
+          .getByRole("dialog")
+          .getByRole("button", { name: "Download", exact: true })
+          .click()
+          .then(() => page.waitForEvent("download", { timeout: 90_000 })),
+      ),
+  ]);
+  const bytes = readFileSync((await download.path())!);
+
+  /*
+   * Set by the browser from the font rather than from whatever is behind it --
+   * a reader that is not this application. The names and codepoints the glyphs
+   * go out under are checked in `src/forge/typographic.test.ts`; the browser
+   * job has no Python libraries to read them with here.
+   */
+  const measured = await page.evaluate(
+    async ({ data, text }) => {
+      const face = new FontFace("Typographic", new Uint8Array(data).buffer as ArrayBuffer);
+      await face.load();
+      document.fonts.add(face);
+      await document.fonts.load("100px Typographic");
+      const context = document.createElement("canvas").getContext("2d")!;
+      const width = (one: string, behind: string) => {
+        context.font = `100px Typographic, ${behind}`;
+        return context.measureText(one).width;
+      };
+      return [...text].map((one) => [one, width(one, "monospace"), width(one, "serif")] as const);
+    },
+    { data: [...bytes], text },
+  );
+  const missing = measured
+    .filter(([, mono, serif]) => mono === 0 || mono !== serif)
+    .map(([character]) => character);
+  expect(missing.join(" "), "the font went out without these").toBe("");
+  expect(errors).toEqual([]);
+});
+
+/**
  * A family rather than a font.
  *
  * The application drew one weight, which is a specimen rather than something
@@ -708,6 +777,90 @@ test("draws a family and downloads every weight of it", async ({ page }) => {
     .trim()
     .split("\n");
   expect(listed).toEqual(["Untitled-Bold.ttf", "Untitled-Light.ttf", "Untitled-Regular.ttf"]);
+  expect(errors).toEqual([]);
+});
+
+/**
+ * Widths beside the weights, in one file with two sliders.
+ *
+ * Ticked in the dialog and checked in the file by something that is not this
+ * application: fontTools reads the axes and the named instances, which is
+ * what a font menu shows somebody, and pins the font at the Condensed Bold to
+ * see that it is narrower than the Bold.
+ */
+test("draws a Condensed beside the Bold and downloads both sliders", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator('[data-width="100"]')).toBeDisabled();
+  await expect(dialog.locator('[data-width="100"]')).toHaveAttribute("data-width-on", "yes");
+  await expect(dialog.locator('[data-width="75"]')).toHaveAttribute("data-width-on", "no");
+  // One weight and one width: nothing to slide between yet.
+  await expect(dialog.locator('[data-format="variable"]')).toBeDisabled();
+
+  await dialog.locator('[data-width="75"]').click();
+  await dialog.locator('[data-weight="700"]').click();
+  await expect(dialog.locator('[data-width="75"]')).toHaveAttribute("data-width-on", "yes");
+  await expect(dialog.locator("[data-download-family]")).toHaveText("Download 4");
+
+  // OpenType says that it cannot keep two widths in one file.
+  await dialog.locator('[data-format="otf"]').click();
+  await expect(dialog.locator("[data-width-note]")).toContainText("holds one width");
+
+  await dialog.locator('[data-format="variable"]').click();
+  await expect(dialog.locator('[data-format="variable"]')).toContainText("width slider");
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 180_000 }),
+    dialog.locator("[data-download-family]").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("Untitled[wdth,wght].ttf");
+  const bytes = readFileSync((await download.path())!);
+
+  // The axes, read straight out of the file's fvar table.
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const tag = (at: number) => String.fromCharCode(...bytes.subarray(at, at + 4));
+  let fvar = -1;
+  for (let entry = 0; entry < view.getUint16(4); entry += 1) {
+    const at = 12 + entry * 16;
+    if (tag(at) === "fvar") fvar = view.getUint32(at + 8);
+  }
+  expect(fvar).toBeGreaterThan(0);
+  const axesAt = fvar + view.getUint16(fvar + 4);
+  const axisSize = view.getUint16(fvar + 10);
+  const axes = Array.from({ length: view.getUint16(fvar + 8) }, (_, i) =>
+    tag(axesAt + i * axisSize),
+  );
+  expect(axes).toEqual(["wght", "wdth"]);
+
+  /*
+   * And the sliders move the letters in a renderer that is not this
+   * application: the browser sets "n" from the file, Bold, at the Normal and at
+   * the Condensed. The instance names and the corners are checked against
+   * fontTools in `test/varying-widths.integration.test.ts`, where the export
+   * tests keep it; the browser job has no Python libraries.
+   */
+  const wide = await page.evaluate(
+    async (data) => {
+      const face = new FontFace("Widths", new Uint8Array(data).buffer as ArrayBuffer);
+      await face.load();
+      document.fonts.add(face);
+      const at = (width: number) => {
+        const span = document.createElement("span");
+        span.textContent = "n";
+        span.style.cssText = `font: 200px Widths; font-variation-settings: "wght" 700, "wdth" ${width}; position: absolute; white-space: pre;`;
+        document.body.append(span);
+        const measured = span.getBoundingClientRect().width;
+        span.remove();
+        return measured;
+      };
+      return { normal: at(100), condensed: at(75) };
+    },
+    [...bytes],
+  );
+  expect(wide.condensed).toBeLessThan(wide.normal * 0.9);
   expect(errors).toEqual([]);
 });
 

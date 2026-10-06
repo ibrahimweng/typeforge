@@ -119,5 +119,34 @@ export default defineConfig({
    * add an import to something that renders on the first screen, check what it
    * reaches before you do.
    */
-  build: { target: "es2022", sourcemap: process.env.MAPS === "1" },
+  /*
+   * One chunking rule, and it is not the one the note above warns about: React
+   * gets a file of its own.
+   *
+   * react-dom was a third of the entry chunk -- about 180 kB of the 608 kB --
+   * and it was what pushed the entry over the 500 kB warning. It is needed on
+   * the first screen whatever happens, so this moves no bytes off the first
+   * load and is not meant to: index.html preloads the file beside the entry,
+   * exactly as it already preloads the small `react` chunk the bundler split
+   * out on its own. What it buys is the entry chunk back under the limit and a
+   * vendor file whose hash changes when React is upgraded rather than every
+   * time the application does, so a returning visitor keeps it in cache.
+   *
+   * Only these three packages, because everything they match is on the first
+   * screen already. A group that matched something only a deferred chunk
+   * needs -- the icon set, say -- would pull that into the first load.
+   */
+  build: {
+    target: "es2022",
+    sourcemap: process.env.MAPS === "1",
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: [
+            { name: "react", test: /[\\/]node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
 });

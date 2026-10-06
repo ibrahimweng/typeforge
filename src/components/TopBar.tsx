@@ -302,7 +302,7 @@ export function TopBar({
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {/*
           Shown where it belongs, which for most of them is everywhere.
 
@@ -320,8 +320,18 @@ export function TopBar({
               // ran to three hundred and fifty pixels of "DejaVu Sans - 6,253
               // glyphs" and pushed the Export button clean off the right-hand
               // edge of a thirteen-hundred-wide window. The full text is on
-              // the hover; the first few words are all it needs to show.
-              "min-w-0 max-w-40 shrink truncate text-2xs",
+              // the hover; the first few words are all it needs to show. From
+              // 2xl the bar has room to spare, and at ten rem "Opened — 221
+              // glyphs, with …" lost the half of the sentence that mattered.
+              //
+              // Not from xl. At 1280 the two groups leave the message about
+              // two hundred and fifty pixels, not the 288 of eighteen rem, and
+              // the bar wraps on the content's whole width before it shrinks
+              // anything -- so a long message dropped the right-hand group to
+              // a second row, the header grew twenty pixels, and the stage and
+              // the letter on it shrank under the person the moment "Took the
+              // ink" appeared. A message must never move the work.
+              "min-w-0 max-w-40 shrink truncate text-2xs 2xl:max-w-72",
               state.status.tone === "error" && "text-destructive",
               state.status.tone === "success" && "text-muted-foreground",
               state.status.tone === "info" && "text-muted-foreground",

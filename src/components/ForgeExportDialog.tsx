@@ -18,8 +18,8 @@ import { anyEffect } from "@/font/effects";
 import { enter, refuse } from "@/anim/motion";
 import type { ExportFormat } from "@/font/export";
 import { deliver } from "@/forge/deliver";
-import { familyOf } from "@/forge/document";
-import { WEIGHTS, weightsOf } from "@/forge/family";
+import { familyOf, kitOf, widthsFor } from "@/forge/document";
+import { NORMAL_WIDTH, WEIGHTS, WIDTHS, weightsOf, widthsOf } from "@/forge/family";
 import { forgeStore, useForge } from "@/state/useForge";
 import { OUTLINE_ACTION, PRIMARY_ACTION } from "@/components/controls";
 import { cn } from "@/cn";
@@ -62,11 +62,21 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
 
   const family = familyOf(state.forge);
   const weights = weightsOf(family);
-  // A variable font of one weight is a font, so the choice steps back to a
+  /*
+   * The widths, and whether they can be had at all. Letters built on the grid
+   * are made of square cells, which come out the same at every width, so the
+   * widths wait until the grid is off -- and the family is written with the
+   * Normal alone meanwhile, whatever was chosen before.
+   */
+  const gridded = kitOf(state.forge).on;
+  const chosenWidths = widthsOf(family);
+  const widths = widthsFor(state.forge);
+  const members = weights.length * widths.length;
+  // A variable font of one member is a font, so the choice steps back to a
   // plain one rather than being refused at the moment somebody presses it.
   React.useEffect(() => {
-    if (kind === "variable" && weights.length < 2) setKind("ttf");
-  }, [kind, weights.length]);
+    if (kind === "variable" && members < 2) setKind("ttf");
+  }, [kind, members]);
 
   const download = async (): Promise<void> => {
     setWorking(true);
@@ -207,6 +217,72 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
           </select>
         </label>
 
+        <p className="pb-1 pt-1 text-2xs leading-snug text-muted-foreground" data-weight-note>
+          {weights.length === 1
+            ? "One weight. Add another and the whole family is drawn from this one — the stems in proportion to the number, the counters giving back four fifths of what the stems gain, the spacing left alone."
+            : kind === "variable"
+              ? `${weights.length} weights in one file, and every weight between them: the file carries the ends and works out the rest.`
+              : `${weights.length} weights, downloaded together as a zip. They install as one family.`}
+        </p>
+
+        {/*
+          The widths, beside the weights and on the same terms.
+
+          Each one is drawn here at that width rather than squeezed out of the
+          Normal: the bowls narrower and the counters closer with the same pen,
+          so the stems keep their weight. The Normal is the one being drawn and
+          cannot be turned off, as the drawn weight cannot.
+        */}
+        <span className="block pt-3 text-2xs text-muted-foreground">Widths</span>
+        <div className="flex flex-wrap gap-1 pb-1 pt-1.5" role="group" aria-label="Widths">
+          {WIDTHS.map(({ width, name }) => {
+            const normal = width === NORMAL_WIDTH;
+            const on = gridded ? normal : chosenWidths.includes(width);
+            return (
+              <button
+                key={width}
+                type="button"
+                onClick={() => forgeStore.toggleWidth(width)}
+                disabled={normal || gridded}
+                aria-pressed={on}
+                data-width={width}
+                data-width-on={on ? "yes" : "no"}
+                title={
+                  normal
+                    ? "Normal is the width you are drawing, so it is always in the family"
+                    : gridded
+                      ? "Not with letters built on the grid: see below"
+                      : `${name} — drawn from what is on screen at ${width}% of its width`
+                }
+                className={cn(
+                  "rounded-md border px-2 py-1 text-2xs transition-colors",
+                  on
+                    ? "border-[color:var(--accent)] bg-[color:color-mix(in_oklab,var(--accent)_10%,transparent)] text-foreground"
+                    : "border-border text-muted-foreground hover:border-muted-foreground hover:bg-card",
+                  normal && "cursor-default",
+                  gridded &&
+                    !normal &&
+                    "cursor-default opacity-50 hover:border-border hover:bg-transparent",
+                )}
+              >
+                {name}
+                {normal && <span className="opacity-60"> ·</span>}
+              </button>
+            );
+          })}
+        </div>
+        <p className="pb-3 pt-1 text-2xs leading-snug text-muted-foreground" data-width-note>
+          {gridded
+            ? "Letters built on the grid are square cells, the same at every width, so the family is drawn at the Normal width only."
+            : widths.length === 1
+              ? "One width. Add another and it is drawn at that width — narrower or wider bowls and counters, the same pen."
+              : kind === "otf"
+                ? `${widths.length} widths. An OpenType file holds one width, so each comes as its own file in the zip.`
+                : kind === "variable"
+                  ? `${widths.length} widths, with a width slider beside the weight.`
+                  : `${widths.length} widths, each weight at each width as its own file.`}
+        </p>
+
         {textured && (
           /*
            * Said here rather than discovered afterwards.
@@ -225,14 +301,6 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
           </p>
         )}
 
-        <p className="pb-4 pt-1 text-2xs leading-snug text-muted-foreground" data-weight-note>
-          {weights.length === 1
-            ? "One weight. Add another and the whole family is drawn from this one — the stems in proportion to the number, the counters giving back four fifths of what the stems gain, the spacing left alone."
-            : kind === "variable"
-              ? `${weights.length} weights in one file, and every weight between them: the file carries the ends and works out the rest.`
-              : `${weights.length} weights, downloaded together as a zip. They install as one family.`}
-        </p>
-
         <span className="text-2xs text-muted-foreground">Format</span>
         <div className="flex gap-2 pb-4 pt-1.5">
           {(
@@ -244,10 +312,14 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
                 "Variable",
                 textured
                   ? "Not with a tool on the font: see below."
-                  : weights.length > 1
-                    ? "One file with a weight slider from end to end."
-                    : "Needs more than one weight.",
-                weights.length > 1 && !textured,
+                  : members > 1
+                    ? widths.length === 1
+                      ? "One file with a weight slider from end to end."
+                      : weights.length === 1
+                        ? "One file with a width slider from end to end."
+                        : "One file with a weight slider and a width slider."
+                    : "Needs more than one weight or width.",
+                members > 1 && !textured,
               ],
             ] as Array<["ttf" | "otf" | "variable", string, string, boolean]>
           ).map(([id, label, note, allowed]) => (
@@ -293,11 +365,7 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
             data-download-family
             className={PRIMARY_ACTION}
           >
-            {working
-              ? "Writing…"
-              : weights.length === 1
-                ? "Download"
-                : `Download ${weights.length}`}
+            {working ? "Writing…" : members === 1 ? "Download" : `Download ${members}`}
           </button>
         </div>
       </div>

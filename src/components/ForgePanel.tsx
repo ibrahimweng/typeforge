@@ -640,7 +640,7 @@ function Tool(): React.JSX.Element {
       cuts={effectsOf(forge)}
       onChange={(name, patch, phase) => forgeStore.changeEffect(name, patch as never, phase)}
       unitsPerEm={forge.style.metrics.unitsPerEm}
-      scopeNote="A decision about the whole font, never about one letter."
+      scopeNote="A decision about the whole font, never about one letter. Shown in the proof beside the letter and in the exported font, not on the letters above: worked out across the whole alphabet on every change, it would hold up every drag."
     />
   );
 }
@@ -1208,6 +1208,20 @@ function Joining(): React.JSX.Element {
                 forgeStore.changeScript({ [control.key]: next } as never, phase)
               }
             />
+            {/*
+              Said where the dimming starts rather than under the last of it:
+              the reason used to be the paragraph at the foot of the section,
+              five dimmed rows below, and "· as bounce" on a Sans read as a
+              control that was broken rather than one that was waiting.
+            */}
+            {control.key === "on" && !joined && (
+              <p
+                className="pb-1 text-2xs leading-snug text-muted-foreground"
+                data-forge-joining-idle
+              >
+                The rest are about how the letters join, so they wait for joining to be on.
+              </p>
+            )}
           </div>
         );
       })}

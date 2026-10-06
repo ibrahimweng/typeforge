@@ -65,6 +65,8 @@ export interface FontToolsReport {
   /** What OS/2 says this face weighs, and whether it claims to be the bold. */
   weightClass: number;
   isBold: boolean;
+  /** What OS/2 says this face's width is, one to nine: five is a Normal. */
+  widthClass: number;
   /**
    * Every glyph's name, as the file carries them.
    *
@@ -99,7 +101,7 @@ out = {"outlineFormat": "unknown", "tables": [], "numGlyphs": 0, "unitsPerEm": 0
        "contoursOf": {}, "inkOf": {},
        "winAscent": 0, "winDescent": 0,
        "yMax": 0, "yMin": 0,
-       "names": {}, "weightClass": 0, "isBold": False,
+       "names": {}, "weightClass": 0, "isBold": False, "widthClass": 0,
        "glyphNames": [], "advanceWidths": {}, "sidebearings": {},
        "rightEdges": {}}
 try:
@@ -120,6 +122,7 @@ try:
         out["winDescent"] = f["OS/2"].usWinDescent
         out["weightClass"] = f["OS/2"].usWeightClass
         out["isBold"] = bool(f["OS/2"].fsSelection & 0x20)
+        out["widthClass"] = f["OS/2"].usWidthClass
 
     if "name" in f:
         for rec in f["name"].names:
@@ -419,6 +422,8 @@ export interface VariableReport {
    * is this the same drawing as the one in the separate file?
    */
   inkAt: Record<string, Record<string, number>>;
+  /** Each named glyph's advance at each position asked for, keyed as `inkAt` is. */
+  advanceAt: Record<string, Record<string, number>>;
   error?: string;
 }
 
@@ -431,7 +436,7 @@ import io
 
 path, glyphs, wants = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
 out = {"axes": [], "instances": [], "statAxes": [], "movingGlyphs": 0,
-       "recompiles": False, "inkAt": {}}
+       "recompiles": False, "inkAt": {}, "advanceAt": {}}
 try:
     f = TTFont(path)
     names = f["name"]
@@ -454,10 +459,12 @@ try:
         drawings = v.getGlyphSet()
         key = ",".join(f"{k}={v2}" for k, v2 in sorted(want.items()))
         out["inkAt"][key] = {}
+        out["advanceAt"][key] = {}
         for name in glyphs:
             area = AreaPen(drawings)
             drawings[name].draw(area)
             out["inkAt"][key][name] = area.value
+            out["advanceAt"][key][name] = v["hmtx"][name][0]
 except Exception as error:
     out["error"] = f"{type(error).__name__}: {error}"
 print(json.dumps(out))
