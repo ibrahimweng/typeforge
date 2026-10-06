@@ -368,6 +368,32 @@ export function familyNames(meta: FontMeta): {
   typographicStyle: string;
 } {
   const style = meta.styleName.trim() || "Regular";
+  /*
+   * A width other than the Normal belongs to the family in the old pair.
+   *
+   * "Condensed Bold" is a Bold, and the old pair can hold a Bold -- but only in
+   * a family of its own that is condensed throughout, because ids 1 and 2 have
+   * no way to say how wide a face is. So the width goes up into the family,
+   * "Family Condensed", and what is left is the style there; the typographic
+   * pair says the whole of it, which is what groups all the widths and weights
+   * under the one family in a menu that reads it. The style name starts with
+   * its width: see `memberOf` in `forge/family.ts`.
+   *
+   * Only for a font that says it is not a Normal. Nothing but a drawn family
+   * with widths does, so every other name stays exactly as it was.
+   */
+  if (meta.widthClass !== undefined && meta.widthClass !== 5) {
+    const [wide, ...rest] = style.split(/\s+/);
+    const remainder = rest.join(" ") || "Regular";
+    const named = familyNames({ ...meta, widthClass: undefined, styleName: remainder });
+    const within = named.typographicFamily ? named.familyName.slice(meta.familyName.length) : "";
+    return {
+      familyName: `${meta.familyName} ${wide}${within}`.trim(),
+      styleName: named.styleName,
+      typographicFamily: meta.familyName,
+      typographicStyle: style,
+    };
+  }
   if (RIBBI.has(style)) {
     return {
       familyName: meta.familyName,
@@ -471,6 +497,7 @@ const NAME_IDS_OF: Record<keyof FontMeta, number[]> = {
   designer: [9],
   license: [13],
   weightClass: [],
+  widthClass: [1, 2, 16, 17],
 };
 
 /**

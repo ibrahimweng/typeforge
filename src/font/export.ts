@@ -135,6 +135,12 @@ export interface VariableOptions {
    * with a different setting.
    */
   masters: Array<{ at: Record<string, number>; typeface: Typeface }>;
+  /**
+   * Whether the masters fill a grid rather than a star: a Condensed Bold drawn
+   * as well as the Condensed and the Bold. See `buildGvar`. Draw's families
+   * with more than one width are the only thing that asks.
+   */
+  corners?: boolean;
 }
 
 export interface ExportResult {
@@ -549,7 +555,7 @@ async function exportTrueType(
       others.push(await masterOf(master.at, master.typeface, context, inputs, pool?.[index + 1]));
     }
 
-    const { gvar, unvarying } = buildGvar(varying.axes, mine, others);
+    const { gvar, unvarying } = buildGvar(varying.axes, mine, others, varying.corners === true);
     // Two name ids for every axis and instance, taken from 256 upwards, which
     // is where the format says a font may invent its own.
     const axisNameIds = varying.axes.map((_, index) => 256 + index);
@@ -716,7 +722,7 @@ async function exportOpenType(
     license: typeface.meta.license || undefined,
     version: typeface.meta.version || undefined,
     weightClass: typeface.meta.weightClass,
-    widthClass: 5,
+    widthClass: typeface.meta.widthClass ?? 5,
     fsSelection,
     italicAngle: isItalic ? -12 : 0,
     glyphs,
@@ -1574,7 +1580,7 @@ function buildBaselineTables(
         ? advances.reduce((sum, value) => sum + value, 0) / advances.length
         : 0,
       weightClass: typeface.meta.weightClass,
-      widthClass: 5,
+      widthClass: typeface.meta.widthClass ?? 5,
       isItalic,
       isBold,
       firstCharIndex: codepoints.length ? Math.min(...codepoints) : 0,

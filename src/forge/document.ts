@@ -36,7 +36,14 @@ import { drawnTiles } from "./kit-alphabet";
 import { joiningHigh, joiningWithout, recipeOf } from "./letters";
 import type { Ends } from "./script";
 import type { Imported } from "./exchange";
-import { weightClassOf, weightedStyle, type Family } from "./family";
+import {
+  NORMAL_WIDTH,
+  weightClassOf,
+  weightedStyle,
+  widthedStyle,
+  widthsOf,
+  type Family,
+} from "./family";
 import { partsUsedBy, type PartName } from "./parts";
 import { BASES, proportioned, SANS, type Parts, type Style } from "./style";
 
@@ -280,11 +287,17 @@ export function familyOf(forge: Forge): Family {
  * keeps its own version of a part -- and a part is a shape, not a weight. A p
  * with its own serif reach has that reach in the Bold too, which is what
  * somebody who set it meant.
+ *
+ * And at another width, when one is asked: the width first and the weight
+ * worked out from it, so a Condensed Bold is the Condensed made bold -- its
+ * counters give back what its stems gain from the Condensed's counters, not
+ * from the Normal's. See `widthedStyle`.
  */
-export function weighted(forge: Forge, wanted: number): Forge {
+export function weighted(forge: Forge, wanted: number, width: number = NORMAL_WIDTH): Forge {
   const family = familyOf(forge);
-  if (wanted === family.drawn) return forge;
-  return { ...forge, style: weightedStyle(forge.style, family.drawn, wanted) };
+  if (wanted === family.drawn && width === NORMAL_WIDTH) return forge;
+  const wide = widthedStyle(forge.style, width);
+  return { ...forge, style: weightedStyle(wide, family.drawn, wanted) };
 }
 
 export function startFrom(base: Style): Forge {
@@ -307,11 +320,25 @@ export function startFrom(base: Style): Forge {
   };
 }
 
-/** Say which weights the typeface has. The one being drawn is always one. */
+/**
+ * Say which weights and widths the typeface has. The one being drawn is
+ * always one of each.
+ *
+ * The widths are written only when there are some besides the Normal, so a
+ * family that never had any is the same document it always was -- and one
+ * whose last extra width is turned off goes back to being exactly that.
+ */
 export function setFamily(forge: Forge, family: Family): Forge {
+  const widths = [...new Set(family.widths ?? [])]
+    .filter((width) => width !== NORMAL_WIDTH && Number.isFinite(width) && width > 0)
+    .sort((a, b) => a - b);
   return {
     ...forge,
-    family: { drawn: family.drawn, also: [...new Set(family.also)].sort((a, b) => a - b) },
+    family: {
+      drawn: family.drawn,
+      also: [...new Set(family.also)].sort((a, b) => a - b),
+      ...(widths.length > 0 ? { widths } : {}),
+    },
   };
 }
 
@@ -557,6 +584,19 @@ export function anythingCut(forge: Forge): boolean {
 
 export function kitOf(forge: Forge): Kit {
   return forge.kit ?? emptyKit();
+}
+
+/**
+ * The widths this document can be written at.
+ *
+ * The family's, except where letters are built on the grid: a cell is square
+ * and as tall as a share of the cap height, so those letters come out of every
+ * width the same, standing among letters that do not -- which is not a
+ * Condensed. The weights still work there, because the pen still sweeps the
+ * cells; the widths wait until the grid is switched off.
+ */
+export function widthsFor(forge: Forge): number[] {
+  return kitOf(forge).on ? [NORMAL_WIDTH] : widthsOf(familyOf(forge));
 }
 
 /** Whether this letter is built from cells rather than drawn from a skeleton. */
