@@ -264,6 +264,29 @@ describe("the Wavy's serifs beside a bowl", () => {
   });
 });
 
+describe("the Wavy's T", () => {
+  it("stops its stem inside its arm rather than standing up into the troughs", () => {
+    /*
+     * The arm waves under the cap line, and a stem carried up to the line
+     * stood square between two troughs where it met the arm. At the stem's
+     * edges the ink now tops out where the arm's does just beside them.
+     */
+    for (const weight of [undefined, 30, 87]) {
+      const style = at("Wavy", weight);
+      const contours = ink("T", style);
+      const box = contoursBounds(contours);
+      const middle = (box.xMin + box.xMax) / 2;
+      const half = style.pen.weight / 2;
+      const top = (x: number): number => down(contours, x).at(-1)![1];
+      for (const side of [-1, 1]) {
+        const edge = middle + side * (half - 2);
+        const beside = middle + side * (half + 6);
+        expect(top(edge) - top(beside), `${weight} ${side}`).toBeLessThan(8);
+      }
+    }
+  });
+});
+
 describe("the Fairground's s and e", () => {
   it("stops the e's bar flush with the bowl rather than standing out past it", () => {
     const style = at("Fairground");
