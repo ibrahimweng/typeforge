@@ -228,10 +228,113 @@ function thinnedSides(stroke: Stroke, by: number, span: { low: number; high: num
       moved[index] = { ...one, from: endOf(moved[beforeIndex], "end") };
     }
   }
+  /*
+   * And never a run that would fold. Its sides are told apart by where its
+   * pieces lie, which is all a ring or a c needs; a bowl drawn as two open
+   * halves meeting at its top and foot, or a hood running on into a tail, has
+   * pieces at that top that read as both sides at once, and moved apart they
+   * sent the spine back over itself: the Grotesque a, d, q, D and 9 drawn on
+   * the Geometric folded from 194 up. And a slanting piece stretched across
+   * the top turns as it stretches (see `foldsBack`). Such a run is left as it
+   * was drawn.
+   */
+  if (foldsBack(stroke.spine, moved)) return stroke;
   const contrast = 1 - along / weight;
   return inherit(stroke, {
     ...stroke,
     spine: { ...stroke.spine, segments: moved },
     pen: { ...pen, weight, contrast },
   });
+}
+
+type Point = { x: number; y: number };
+
+function pointAt(one: SpineSegment, which: "start" | "end"): Point {
+  if (one.kind === "line") return which === "start" ? one.from : one.to;
+  const angle = which === "start" ? one.startAngle : one.endAngle;
+  return {
+    x: one.centre.x + one.radius * Math.cos(angle),
+    y: one.centre.y + one.radius * Math.sin(angle),
+  };
+}
+
+/** Which way a piece travels at one of its ends, or null for a line with no length. */
+function headingAt(one: SpineSegment, which: "start" | "end"): Point | null {
+  if (one.kind === "line") {
+    const dx = one.to.x - one.from.x;
+    const dy = one.to.y - one.from.y;
+    const length = Math.hypot(dx, dy);
+    return length > TINY ? { x: dx / length, y: dy / length } : null;
+  }
+  const angle = which === "start" ? one.startAngle : one.endAngle;
+  const way = one.sweepPositive ? 1 : -1;
+  return { x: -Math.sin(angle) * way, y: Math.cos(angle) * way };
+}
+
+const apart = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/**
+ * Whether a run, moved apart at its sides, would sweep into a fold: it comes
+ * apart where it was joined, a straight piece now runs against the way the
+ * run went there as drawn, or a join turns by more or less than it did.
+ */
+function foldsBack(spine: Stroke["spine"], moved: SpineSegment[]): boolean {
+  const { segments, closed } = spine;
+  const n = segments.length;
+  const at = (index: number): number =>
+    index >= 0 && index < n ? index : closed ? (index + n) % n : -1;
+  for (let index = 0; index < n; index++) {
+    const after = at(index + 1);
+    if (after < 0) continue;
+    const joined = apart(pointAt(segments[index], "end"), pointAt(segments[after], "start")) < 1e-3;
+    if (joined && apart(pointAt(moved[index], "end"), pointAt(moved[after], "start")) >= 1e-3) {
+      return true;
+    }
+  }
+  for (let index = 0; index < n; index++) {
+    const going = moved[index].kind === "line" ? headingAt(moved[index], "start") : null;
+    if (!going) continue;
+    // The way the run went here: the piece's own way, or for one drawn with
+    // no length, the way of the nearest piece before it, or after it, that
+    // has one.
+    let was = headingAt(segments[index], "start");
+    for (let step = 1; !was && step < n; step++) {
+      const before = at(index - step);
+      const after = at(index + step);
+      if (before < 0 && after < 0) break;
+      was =
+        (before >= 0 ? headingAt(segments[before], "end") : null) ??
+        (after >= 0 ? headingAt(segments[after], "start") : null);
+    }
+    if (was && going.x * was.x + going.y * was.y < -TINY) return true;
+  }
+  /*
+   * Nor a join bent where it was not. The arcs only move, so they keep their
+   * way; a slanting straight piece whose two ends move apart turns as it
+   * stretches, and where it ran into a turn it was tangent to it now met it
+   * at a hair of a corner -- which, on the inside of the turn, the sweep
+   * draws as a fold: the Grotesque a's top on the Geometric, from 230 up.
+   */
+  const bend = (pieces: SpineSegment[], index: number): number => {
+    let out: Point | null = null;
+    for (let step = 0; !out && step < n; step++) {
+      const before = at(index - step);
+      if (before < 0) break;
+      out = headingAt(pieces[before], "end");
+    }
+    let into: Point | null = null;
+    for (let step = 1; !into && step <= n; step++) {
+      const after = at(index + step);
+      if (after < 0) break;
+      into = headingAt(pieces[after], "start");
+    }
+    return out && into ? out.x * into.y - out.y * into.x : 0;
+  };
+  for (let index = 0; index < n; index++) {
+    if (at(index + 1) < 0) continue;
+    const was = bend(segments, index);
+    const now = bend(moved, index);
+    if (Math.abs(now - was) > 1e-6) return true;
+  }
+  return false;
 }
