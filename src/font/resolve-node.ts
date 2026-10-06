@@ -13,7 +13,7 @@
  * of it reaches a browser.
  */
 
-import { availableParallelism } from "node:os";
+import { availableParallelism, loadavg } from "node:os";
 import { Worker } from "node:worker_threads";
 
 import type { PoolReply, Thread } from "./resolve-pool";
@@ -26,8 +26,18 @@ export function canThread(): boolean {
   return Boolean((process.features as { typescript?: string | false }).typescript);
 }
 
-export function cores(): number {
-  return availableParallelism();
+/**
+ * How many cores nothing else is busy on: all of them, less the load on the
+ * machine over the last minute, which counts this process's own thread too.
+ *
+ * Threads only pay where there are idle cores to run them on. On a busy
+ * machine -- a test run with every file in a process of its own -- three more
+ * threads each reading the source and warming up only fight the rest for the
+ * same cores: an opened font with slots cut in it took longer to write on
+ * threads than in place, and past the time its test allows.
+ */
+export function idleCores(): number {
+  return Math.floor(availableParallelism() - loadavg()[0]);
 }
 
 export function thread(): Thread {

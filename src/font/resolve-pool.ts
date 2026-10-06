@@ -72,16 +72,26 @@ function browserThread(): Thread {
  */
 const NODE_THREADS = "./resolve-node";
 
-/** How to start a thread here, and how many cores there are, or null for neither. */
-async function threads(): Promise<{ start: () => Thread; cores: number } | null> {
+/**
+ * How to start a thread here, how many to start, and how much work makes
+ * starting them worth it -- or null where there are none to start.
+ */
+async function threads(): Promise<{
+  start: () => Thread;
+  count: number;
+  worthIt: number;
+} | null> {
   if (typeof Worker !== "undefined") {
     const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-    return { start: browserThread, cores };
+    return { start: browserThread, count: Math.max(1, Math.min(6, cores - 1)), worthIt: WORTH_IT };
   }
   if (typeof process === "undefined" || !process.versions?.node) return null;
   try {
     const node = (await import(/* @vite-ignore */ NODE_THREADS)) as typeof import("./resolve-node");
-    return node.canThread() ? { start: node.thread, cores: node.cores() } : null;
+    if (!node.canThread()) return null;
+    // Only onto cores nothing else is using: see `idleCores`.
+    const count = Math.min(6, node.idleCores());
+    return count >= 2 ? { start: node.thread, count, worthIt: NODE_WORTH_IT } : null;
   } catch {
     return null;
   }
@@ -89,6 +99,13 @@ async function threads(): Promise<{ start: () => Thread; cores: number } | null>
 
 /** Fewer glyph resolutions than this are done where they are asked for. */
 const WORTH_IT = 400;
+/**
+ * And in Node, which starts a thread by reading the source afresh -- seconds of
+ * each thread's time before it resolves a letter, where a browser's worker
+ * comes bundled. On DejaVu at two masters a thousand glyphs came out slower on
+ * threads than in place, and the whole font faster.
+ */
+const NODE_WORTH_IT = 5000;
 /** Glyphs to a batch: enough to be worth a message, few enough to share out evenly. */
 const BATCH = 48;
 
@@ -104,8 +121,8 @@ export async function resolveAll(typefaces: Typeface[]): Promise<Resolved[] | nu
   const glyphs = first.glyphs.length;
   if (glyphs * typefaces.length < WORTH_IT) return null;
   const kind = await threads();
-  if (!kind) return null;
-  const count = Math.max(1, Math.min(6, kind.cores - 1));
+  if (!kind || glyphs * typefaces.length < kind.worthIt) return null;
+  const { count } = kind;
 
   // The source tables are what a preserving writer copies from, a megabyte or
   // more, and nothing a letter's outline depends on.
