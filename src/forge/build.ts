@@ -2317,6 +2317,9 @@ function ballsFor(
      * down, the Psychedelic's parentheses wore their balls inside their
      * own curves.
      */
+    let ceiling = band.yMax;
+    let floor = band.yMin;
+    let wall = band.xMin;
     if (!written && !buried && !style.parts.ball.curved) {
       const over = placed.y + held - band.yMax;
       const under = band.yMin + held - placed.y;
@@ -2326,13 +2329,51 @@ function ballsFor(
           : under > 0 && outward.y < -0.6
             ? under / -outward.y
             : 0;
-      if (back > 0) placed = { x: placed.x - outward.x * back, y: placed.y - outward.y * back };
+      if (back > 0) {
+        placed = { x: placed.x - outward.x * back, y: placed.y - outward.y * back };
+        /*
+         * Set back no further than leaves it covering both corners of the
+         * cut, where the letter has room above (or below) its own ink before
+         * the next line it is drawn between: set back the whole way, a
+         * parenthesis's ball left the cut's inner corner standing out beside
+         * it as an ear. A run whose ink already stops on a line keeps the
+         * whole set-back.
+         */
+        const lines = [0, style.metrics.xHeight, style.metrics.capHeight];
+        lines.push(style.metrics.ascender, style.metrics.descender);
+        const room =
+          over > 0
+            ? Math.min(...lines.filter((y) => y > band.yMax + 2)) - band.yMax
+            : band.yMin - Math.max(...lines.filter((y) => y < band.yMin - 2));
+        // How far back along the run the ball may sit and still take in
+        // both corners of the cut, which a pen with contrast puts a little
+        // ahead of and behind the end rather than square across it.
+        const shift = reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen));
+        const ahead = Math.abs(shift.x * outward.x + shift.y * outward.y);
+        const square = shift.x * shift.x + shift.y * shift.y;
+        const reachSq = (held * 0.98) ** 2 - square + ahead * ahead;
+        const covers = reachSq > 0 ? Math.sqrt(reachSq) - ahead : -Infinity;
+        const behind = { x: at.x - placed.x, y: at.y - placed.y };
+        const setBackBy =
+          Math.hypot(behind.x, behind.y) *
+          (behind.x * outward.x + behind.y * outward.y < 0 ? -1 : 1);
+        if (Number.isFinite(room) && room > 0 && covers > 0 && setBackBy > covers) {
+          const want = Math.max(covers, setBackBy - room / Math.abs(outward.y));
+          placed = { x: at.x - outward.x * want, y: at.y - outward.y * want };
+          if (over > 0) ceiling = Math.max(ceiling, placed.y + held);
+          else floor = Math.min(floor, placed.y - held);
+          // Nor held in off the left, where the corner it covers is the
+          // letter's leftmost ink: the bulge of the disc round it is all
+          // that passes it.
+          wall = Math.min(wall, placed.x - held);
+        }
+      }
     }
     const kept = written
       ? placed
       : {
-          x: Math.max(placed.x, band.xMin + held),
-          y: Math.min(Math.max(placed.y, band.yMin + held), band.yMax - held),
+          x: Math.max(placed.x, wall + held),
+          y: Math.min(Math.max(placed.y, floor + held), ceiling - held),
         };
     /*
      * And, moved in off a line, slid along it until it still covers both
