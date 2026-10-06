@@ -177,8 +177,24 @@ test("an export dialog can be used on a short window", async ({ page }) => {
   await openFont(page);
   await page.getByRole("button", { name: "Export", exact: true }).click();
 
-  // The bottom of the dialog: reachable, and the button there still exports.
-  const download = page.getByRole("dialog").getByRole("button", { name: "Download" });
+  // The bottom of the dialog: reachable.
+  const dialog = page.getByRole("dialog");
+  const download = dialog.getByRole("button", { name: "Download" });
+  await download.scrollIntoViewIfNeeded();
+  await expect(download).toBeInViewport();
+
+  // And the top of it: the panel scrolls rather than clipping what it cannot fit.
+  const family = page.locator("[data-export-family]");
+  await family.scrollIntoViewIfNeeded();
+  await expect(family).toBeInViewport();
+
+  /*
+   * And the button down there still exports. Looked at before the download
+   * rather than after: an export with nothing to ask about closes the dialog,
+   * and this one has nothing -- the note that the font's own ligatures were
+   * kept only reports, and stopped holding the dialog open (ExportDialog's
+   * `NEUTRAL_NOTES`). So it closes, and says what it wrote.
+   */
   await download.scrollIntoViewIfNeeded();
   await expect(download).toBeInViewport();
   const file = await Promise.race([
@@ -186,9 +202,6 @@ test("an export dialog can be used on a short window", async ({ page }) => {
     download.click().then(() => page.waitForEvent("download", { timeout: 60_000 })),
   ]);
   expect(file.suggestedFilename()).toMatch(/\.ttf$/);
-
-  // And the top of it: the panel scrolls rather than clipping what it cannot fit.
-  const family = page.locator("[data-export-family]");
-  await family.scrollIntoViewIfNeeded();
-  await expect(family).toBeInViewport();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText(`Exported ${file.suggestedFilename()}`)).toBeVisible();
 });
