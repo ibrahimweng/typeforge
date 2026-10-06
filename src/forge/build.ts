@@ -395,6 +395,7 @@ export function makeLetter(
       : slid(solid, shortfall);
 
   let advanceWidth: number;
+  let fittedSides = false;
   /*
    * A monospaced letter keeps the width it was drawn at and is moved to sit in
    * the middle of the common advance. The shapes are not squeezed or stretched
@@ -417,6 +418,7 @@ export function makeLetter(
   } else {
     const sides = fitted(name, built!, placedSolid, style);
     if (sides) {
+      fittedSides = true;
       centring = sides.shift;
       advanceWidth = sides.advance;
     } else {
@@ -439,6 +441,22 @@ export function makeLetter(
   if (extra > 0) {
     centring += extra;
     advanceWidth += extra * 2;
+  }
+  /*
+   * And a letter that hangs past its side -- the Serif's j, whose tail runs
+   * under the letter before it as Lora's does -- hangs as far as the face
+   * lets it (`metrics.overhangs`) and no further. Its side is listed in
+   * sidebearings like any other, so a face spaced wider (a sidebearing
+   * measured off another font, say) hung the tail further back the wider it
+   * was, and into the letter before.
+   */
+  const hang = fittedSides && placedSolid.length > 0 ? overhangOf(name, style) : 0;
+  if (hang > 0) {
+    const short = -hang - (contoursBounds(placedSolid).xMin + centring);
+    if (short > 0) {
+      centring += short;
+      advanceWidth += short;
+    }
   }
   const slide = shortfall + centring;
   return {
