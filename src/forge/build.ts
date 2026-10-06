@@ -43,6 +43,7 @@ import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, hasTiles, type Kit } from "./kit";
+import { thinnedRounds } from "./rounds";
 import {
   alongSpine,
   decided,
@@ -104,7 +105,7 @@ export interface Bone {
 export function skeletonOf(name: string, style: Style, form?: string): Bone[] {
   const recipe = recipeOf(name, form);
   if (!recipe) return [];
-  return recipe(widthOf(style, name)).strokes.map((stroke) => {
+  return thinnedRounds(recipe(widthOf(style, name)), style).strokes.map((stroke) => {
     const reach = penReach(stroke.pen);
     return {
       path: spinePath(stroke.spine),
@@ -290,7 +291,8 @@ export function makeLetter(
   const laid = kit?.on && hasTiles(kit, name) ? assemble(kit.glyphs[name], style, kit) : null;
   const recipe = laid ? null : recipeOf(name, form);
   if (!laid && !recipe) return null;
-  const built: Recipe | null = recipe ? recipe(widthOf(style, name)) : null;
+  // Past the Black, a geometric face's rounds thinned at their sides: see `rounds.ts`.
+  const built: Recipe | null = recipe ? thinnedRounds(recipe(widthOf(style, name)), style) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
   const inked = inkAll(strokes, style, name);
