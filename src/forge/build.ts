@@ -42,7 +42,7 @@ import { effectInk, reachesEffects, type Effects } from "./effects";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
-import { assemble, hasTiles, type Kit } from "./kit";
+import { assemble, gridPen, hasTiles, type Kit, unitOf } from "./kit";
 import { thinnedRounds } from "./rounds";
 import {
   alongSpine,
@@ -217,6 +217,17 @@ export function drawLetter(
   return made ? { contours: made.contours, advanceWidth: made.advanceWidth, cut: made.cut } : null;
 }
 
+/**
+ * The style a letter on the grid is drawn in: the face's own, with its pen
+ * held to what a cell can take (see `gridPen`).
+ */
+function gridded(style: Style, kit: Kit): Style {
+  const base = BASES.find((one) => one.name === style.name);
+  const own = base ? { ...style.pen, weight: base.pen.weight } : style.pen;
+  const pen = gridPen(style.pen, own, unitOf(style, kit.grid));
+  return pen === style.pen ? style : { ...style, pen };
+}
+
 /** One run of a letter: its ink, and the named decisions it was built from. */
 export interface Run {
   contours: Contour[];
@@ -288,14 +299,15 @@ export function makeLetter(
    * letter is comes out here and nowhere else: everything after this point --
    * the ink, the lean, the spacing, the cuts -- is the same either way.
    */
-  const laid = kit?.on && hasTiles(kit, name) ? assemble(kit.glyphs[name], style, kit) : null;
+  const onGrid = kit?.on && hasTiles(kit, name) ? gridded(style, kit) : null;
+  const laid = kit && onGrid ? assemble(kit.glyphs[name], onGrid, kit) : null;
   const recipe = laid ? null : recipeOf(name, form);
   if (!laid && !recipe) return null;
   // Past the Black, a geometric face's rounds thinned at their sides: see `rounds.ts`.
   const built: Recipe | null = recipe ? thinnedRounds(recipe(widthOf(style, name)), style) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
-  const inked = inkAll(strokes, style, name);
+  const inked = inkAll(strokes, onGrid ?? style, name);
   // Cells filled in outright are ink rather than a path for it, so they join
   // the drawing as their own run.
   if (laid && laid.blocks.length > 0) inked.push(laid.blocks);
@@ -2512,7 +2524,12 @@ function flaresFor(stroke: Stroke, style: Style): Contour[] {
     const written = style.parts.script.on;
     const grows = written ? stem : Math.min(stem, style.metrics.unitsPerEm * 0.12);
     const reach = spread * grows;
-    const back = depth * grows;
+    /*
+     * And never further back than the stroke runs: the dot of a grid i is
+     * half a cell long, and a swelling a pen deep on its top end ran on past
+     * its foot and down onto the stem.
+     */
+    const back = Math.min(depth * grows, spineLength(stroke.spine));
     /*
      * And only on an upright or a level run. On a diagonal cut level the
      * swelling lay along the line and stood out sideways off the slant as a
