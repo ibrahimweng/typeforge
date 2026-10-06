@@ -30,7 +30,7 @@
  * the sidebearings could not see coming, which is what a closest approach is.
  */
 
-import { contoursBounds, inkRunsAt } from "@/font/geometry";
+import { contoursBounds, inkRuler } from "@/font/geometry";
 import type { Contour, KernClass, KernPair } from "@/font/types";
 
 /** How many heights the letters are measured at. */
@@ -127,8 +127,10 @@ export function profileOf(contours: Contour[], advance: number, heights: number[
   const right: number[] = [];
   const left: number[] = [];
   const ink: boolean[] = [];
+  // Flattened once for every height rather than once a height: see `inkRuler`.
+  const runsAt = inkRuler(contours);
   for (const height of heights) {
-    const runs = inkRunsAt(contours, height);
+    const runs = runsAt(height);
     if (runs.length === 0) {
       right.push(0);
       left.push(0);

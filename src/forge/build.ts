@@ -10,10 +10,12 @@
 
 import {
   contourArea,
-  contourContainsPoint,
   contoursBounds,
-  flattenContour,
+  inkRuler,
   inkRunsAt,
+  polygonContains,
+  polygonOf,
+  type Polygon,
   reverseContour,
 } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
@@ -27,6 +29,7 @@ import {
   type PartName,
   type Recipe,
   joinEnds,
+  joiningNow,
   reachesEither,
 } from "./letters";
 import {
@@ -53,9 +56,14 @@ import {
   shortened,
   spineLength,
   spinePath,
+  bookInUse,
+  type Taken,
   waveBookAt,
   wavy,
+  writeAgain,
+  writing,
 } from "./shapes";
+import { enclosing, recording as partsRecording } from "./letters/common";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import {
@@ -269,12 +277,85 @@ export function makeLetter(
    */
   effects?: Effects,
 ): Made | null {
+  // The style as it is drawn at this weight: see `blackness` in `style.ts`.
+  const style = heavier(given);
+  // A drawing whose parts are being noted has to be drawn, to be noted.
+  if (partsRecording !== null) return drawnFresh(name, style, form, cuts, kit, cast, effects);
+  const book = bookInUse();
+  const shelf = shelfFor([style, cuts, kit, cast, effects, book]);
+  const key = `${name}|${form ?? ""}|${joiningNow()}|${enclosing}|${book?.recording}`;
+  const kept = shelf.get(key);
+  if (kept) {
+    // As a fresh drawing would have: the page opened, and written again.
+    waveBookAt(name);
+    writeAgain(kept.taken);
+    return kept.made;
+  }
+  const { made, taken } = writing(() => drawnFresh(name, style, form, cuts, kit, cast, effects));
+  shelf.set(key, { made, taken });
+  return made;
+}
+
+/**
+ * Letters drawn already, for the letter asked for again with everything that
+ * decides it the same.
+ *
+ * An accented letter is its base drawn again with a mark over it, so a font
+ * drew its `a` once for itself and again under each of its accents, and every
+ * mark once for each letter wearing it. A letter is a function of its name and
+ * form, the style, the cuts, the kit, the cast and the effects, the halves of
+ * the join it is drawn without or taking high, whether it is set inside
+ * another glyph, and the wave book it is drawn against -- so it is kept
+ * against exactly those, the objects by which object they are, and handed back
+ * as it was made. Nothing that is handed one changes it.
+ *
+ * Kept per style, so a style nobody draws with any more takes its letters
+ * with it. A book being taken down is written to again as the drawing would
+ * have written it: see `writing` in `shapes.ts`.
+ */
+interface Kept {
+  made: Made | null;
+  taken: Taken;
+}
+
+type Shelves = WeakMap<object, Shelves | Map<string, Kept>>;
+const drawnAlready: Shelves = new WeakMap();
+/** What stands in for a setting that was not given, as a key. */
+const UNGIVEN = {};
+
+function shelfFor(by: Array<object | null | undefined>): Map<string, Kept> {
+  let level: Shelves = drawnAlready;
+  for (let index = 0; index < by.length - 1; index++) {
+    const at = by[index] ?? UNGIVEN;
+    let next = level.get(at) as Shelves | undefined;
+    if (!next) {
+      next = new WeakMap();
+      level.set(at, next);
+    }
+    level = next;
+  }
+  const last = by[by.length - 1] ?? UNGIVEN;
+  let shelf = level.get(last) as Map<string, Kept> | undefined;
+  if (!shelf) {
+    shelf = new Map();
+    level.set(last, shelf);
+  }
+  return shelf;
+}
+
+function drawnFresh(
+  name: string,
+  style: Style,
+  form: string | undefined,
+  cuts: Cuts | undefined,
+  kit: Kit | undefined,
+  cast: Cast | undefined,
+  effects: Effects | undefined,
+): Made | null {
   // This letter's own page in the wave book, if one is being kept: see
   // `WaveBook`. A letter built from parts keeps no page of its own -- the base
   // and the mark each open theirs as they are drawn.
   waveBookAt(name);
-  // The style as it is drawn at this weight: see `blackness` in `style.ts`.
-  const style = heavier(given);
   const parts = builtFrom(name);
   if (parts) return marked(parts, style, form, cuts, kit, cast, effects);
 
@@ -881,9 +962,10 @@ function fitted(
     let lastRight = -1;
     let leftFlat = 0;
     let rightFlat = 0;
+    const runsAt = inkRuler(contours, "y", 16);
     for (let index = 0; index < FIT_SAMPLES; index++) {
       const y = from + ((to - from) * (index + 0.5)) / FIT_SAMPLES;
-      const runs = inkRunsAt(contours, y, "y", 16);
+      const runs = runsAt(y);
       const deepLeft = runs.length === 0 ? limit * 4 : runs[0][0] - inkLeft;
       const deepRight = runs.length === 0 ? limit * 4 : inkRight - runs[runs.length - 1][1];
       if (lastLeft >= 0 && Math.abs(deepLeft - lastLeft) > limit * FIT_JUMP) leftJumps = true;
@@ -2063,7 +2145,7 @@ function ballsFor(
   }));
   const ends = endsOf(stroke);
   // The outlines of the letter's other strokes, for keeping a ball off them.
-  const beside = others.flatMap((contour) => flattenContour(contour, 8));
+  const beside = others.flatMap((contour) => polygonFor(contour).points);
   for (const [which, [terminal, at, outward, straightEnd]] of ends.entries()) {
     if (terminal.open !== true) continue;
     /*
@@ -3010,6 +3092,26 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
 }
 
 /**
+ * Another stroke's outline, flattened for asking what lies inside it.
+ *
+ * Kept against the outline, which the sweep made for this letter and nothing
+ * changes afterwards: every stroke of a letter is told about all the others,
+ * so each outline is asked about once for every stroke beside it, and each
+ * wing walks out along it a point every two units. Flattened once, it is the
+ * same polygon `contourContainsPoint` would have made every time.
+ */
+const polygons = new WeakMap<Contour, Polygon>();
+
+function polygonFor(contour: Contour): Polygon {
+  let polygon = polygons.get(contour);
+  if (!polygon) {
+    polygon = polygonOf(contour);
+    polygons.set(contour, polygon);
+  }
+  return polygon;
+}
+
+/**
  * How far out a serif wing can reach before it comes too near another stroke.
  *
  * Walked along the middle of the band the wing would occupy, from the edge of
@@ -3031,6 +3133,7 @@ function roomBeside(
   others: Contour[],
 ): number {
   if (others.length === 0) return full;
+  const polygons = others.map(polygonFor);
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
   /*
@@ -3048,7 +3151,7 @@ function roomBeside(
       x: at.x + across.x * u + into.x * (thickness / 2),
       y: at.y + across.y * u + into.y * (thickness / 2),
     };
-    if (others.some((contour) => contourContainsPoint(contour, point))) {
+    if (polygons.some((polygon) => polygonContains(polygon, point))) {
       return inner + Math.max(0, u - inner - clear) / 2;
     }
   }
@@ -3140,6 +3243,7 @@ function alongLine(
   others: Contour[],
 ): boolean {
   if (others.length === 0) return false;
+  const polygons = others.map(polygonFor);
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
   for (let u = inner + 1; u <= inner + reach; u += 2) {
@@ -3147,7 +3251,7 @@ function alongLine(
       x: at.x + across.x * u + into.x * (thickness / 2),
       y: at.y + across.y * u + into.y * (thickness / 2),
     };
-    if (!others.some((contour) => contourContainsPoint(contour, point))) return false;
+    if (!polygons.some((polygon) => polygonContains(polygon, point))) return false;
   }
   return true;
 }

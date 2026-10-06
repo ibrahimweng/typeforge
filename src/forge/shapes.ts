@@ -129,6 +129,60 @@ export function openWaveBook(next: WaveBook | null): WaveBook | null {
   return was;
 }
 
+/** What a letter wrote in the book, in the order it wrote it. */
+export type Taken = Array<[keyof Omit<WaveBook, "recording">, string, number | boolean | null]>;
+
+/** Whoever is listening to what the book is told, if anyone: see `writing`. */
+let listening: Taken | null = null;
+
+function takeDown(
+  kind: keyof Omit<WaveBook, "recording">,
+  page: string,
+  value: number | boolean | null,
+): void {
+  if (!book) return;
+  const pages = book[kind] as Map<string, Array<number | boolean | null>>;
+  const list = pages.get(page);
+  if (list) list.push(value);
+  else pages.set(page, [value]);
+  listening?.push([kind, page, value]);
+}
+
+/**
+ * The book this drawing is made against, and whether it is taking down or
+ * reading back: what a drawing depends on beyond its letter and its style.
+ */
+export function bookInUse(): WaveBook | null {
+  return book;
+}
+
+/**
+ * Do this, and hand back what it wrote in the book along with what it made.
+ *
+ * For a drawing that is kept and handed out again rather than drawn again: a
+ * book being taken down is written to by every drawing, and a letter handed
+ * out again without writing what drawing it would have written leaves the
+ * pages short. Heard by whoever was listening outside this too, so a letter
+ * kept inside another keeps its share of the outer one's writing.
+ */
+export function writing<T>(run: () => T): { made: T; taken: Taken } {
+  const outer = listening;
+  const taken: Taken = [];
+  listening = taken;
+  try {
+    return { made: run(), taken };
+  } finally {
+    listening = outer;
+    if (outer) for (const one of taken) outer.push(one);
+  }
+}
+
+/** Write again what a drawing wrote, for the drawing handed out again. */
+export function writeAgain(taken: Taken): void {
+  if (!book?.recording) return;
+  for (const [kind, page, value] of taken) takeDown(kind, page, value);
+}
+
 /** Begin a letter: its runs are read and written under its own name. */
 export function waveBookAt(name: string): void {
   bookAt = name;
@@ -163,9 +217,7 @@ export function folded(mine: boolean): boolean {
   const at = cornerCursor;
   cornerCursor += 1;
   if (book.recording) {
-    const list = book.corners.get(bookAt);
-    if (list) list.push(mine);
-    else book.corners.set(bookAt, [mine]);
+    takeDown("corners", bookAt, mine);
     return mine;
   }
   const list = book.corners.get(bookAt);
@@ -177,9 +229,7 @@ export function decided(mine: boolean): boolean {
   const at = ballCursor;
   ballCursor += 1;
   if (book.recording) {
-    const list = book.balls.get(bookAt);
-    if (list) list.push(mine);
-    else book.balls.set(bookAt, [mine]);
+    takeDown("balls", bookAt, mine);
     return mine;
   }
   const list = book.balls.get(bookAt);
@@ -214,9 +264,7 @@ function counted(mine: number | null): number | null {
   const at = bookCursor;
   bookCursor += 1;
   if (book.recording) {
-    const list = book.lengths.get(bookAt);
-    if (list) list.push(mine);
-    else book.lengths.set(bookAt, [mine]);
+    takeDown("lengths", bookAt, mine);
     return mine;
   }
   const list = book.lengths.get(bookAt);
@@ -232,9 +280,7 @@ function begun(mine: number): number {
   const at = bowlCursor;
   bowlCursor += 1;
   if (book.recording) {
-    const list = book.bowls.get(bookAt);
-    if (list) list.push(mine);
-    else book.bowls.set(bookAt, [mine]);
+    takeDown("bowls", bookAt, mine);
     return mine;
   }
   const list = book.bowls.get(bookAt);
@@ -988,13 +1034,17 @@ function searchOvalCorner(w: number, h: number, pen: number): OvalSplit | null {
    * fit a round oval closely, and a long one badly -- an end arc several
    * times tighter than the next reads as a point there.
    */
-  const uneven = (one: {
-    side: number;
-    tight: number;
-    crown: number;
-    sideTurn: number;
-    crownTurn: number;
-  }): number => {
+  const uneven = (
+    one: {
+      side: number;
+      tight: number;
+      crown: number;
+      sideTurn: number;
+      crownTurn: number;
+    },
+    // Only whether it is under this is wanted: see the search below.
+    under = Infinity,
+  ): number => {
     // How far the three arcs stray from the ellipse the box holds, at worst.
     const first = { x: w - one.side, y: 0 };
     const middle = {
@@ -1018,6 +1068,7 @@ function searchOvalCorner(w: number, h: number, pen: number): OvalSplit | null {
         const x = centre.x + radius * Math.cos(angle);
         const y = centre.y + radius * Math.sin(angle);
         worst = Math.max(worst, Math.abs(Math.hypot(x / w, y / h) - 1));
+        if (worst >= under) return worst;
       }
     }
     return worst;
@@ -1042,7 +1093,9 @@ function searchOvalCorner(w: number, h: number, pen: number): OvalSplit | null {
     for (let b = 4; a + b <= 86; b++) {
       const tried = solve(a * degree, b * degree);
       if (!tried || Math.min(tried.side, tried.crown) < pen * 0.999) continue;
-      const off = uneven(tried);
+      // Given up on as soon as it strays as far as the best found so far,
+      // which it cannot then beat.
+      const off = uneven(tried, cost);
       if (off < cost) {
         cost = off;
         best = tried;

@@ -72,7 +72,7 @@ import {
   readVariationSequences,
   rebuildPost,
 } from "./tables";
-import type { Glyph, Typeface } from "./types";
+import type { Contour, Glyph, Typeface } from "./types";
 
 export type ExportFormat = "ttf" | "otf";
 
@@ -345,21 +345,12 @@ async function resolvedGlyphs(
   return out;
 }
 
-/**
- * One master, reduced to the points it would have written.
- *
- * Put through the same builder as the default, with the same tolerance and the
- * same fixed splitting, because a delta is the difference between two point
- * lists and the two have to have been made the same way. Everything else the
- * builder produces is thrown away.
- */
-async function masterOf(
-  at: Record<string, number>,
+/** One master's outlines, as the file will have them, and its advances. */
+async function masterOutlines(
   typeface: Typeface,
-  context: { tolerance: number; mergeOverlaps: boolean; roles: Roles },
-  shape: GlyfBuildInput[],
+  context: { mergeOverlaps: boolean; roles: Roles },
   pre?: Resolved | null,
-): Promise<Master> {
+): Promise<{ resolved: Awaited<ReturnType<typeof resolvedGlyphs>>; advances: number[] }> {
   // A master, so no extremes: see `resolvedGlyphs`. The default master is
   // written without them too, or it would not line up with these.
   const resolved = await resolvedGlyphs(
@@ -370,6 +361,30 @@ async function masterOf(
     false,
     pre,
   );
+  // Asked straight after its own outlines, before the next master's: an
+  // advance reads what the weight added beside the letter, which is kept
+  // against the glyph by whichever master last worked it out.
+  const advances = resolved.map(
+    (entry, index) => pre?.advances[index] ?? resolveAdvanceWidth(entry.glyph, typeface),
+  );
+  return { resolved, advances };
+}
+
+/**
+ * One master, reduced to the points it would have written.
+ *
+ * Put through the same builder as the default, with the same tolerance and the
+ * same fixed splitting, because a delta is the difference between two point
+ * lists and the two have to have been made the same way. Everything else the
+ * builder produces is thrown away.
+ */
+function masterOf(
+  at: Record<string, number>,
+  outlines: Awaited<ReturnType<typeof masterOutlines>>,
+  context: { tolerance: number; mergeOverlaps: boolean },
+  shape: GlyfBuildInput[],
+): Master {
+  const { resolved, advances } = outlines;
   const built = buildGlyfTables(
     resolved.map((entry, index) => ({
       contours: entry.contours,
@@ -378,6 +393,7 @@ async function masterOf(
       // not the same as one that has not moved.
       rebuild: true,
       composite: shape[index]?.composite,
+      still: shape[index]?.still,
     })),
     context.tolerance,
     PIECES_PER_CURVE,
@@ -390,12 +406,69 @@ async function masterOf(
       const drawn = resolved[index].contours.some((contour) => contour.nodes.length > 0);
       return {
         points,
-        advanceWidth: pre?.advances[index] ?? resolveAdvanceWidth(resolved[index].glyph, typeface),
+        advanceWidth: advances[index],
         leftSideBearing: drawn ? Math.round(bounds.xMin) : 0,
         xMin: bounds.xMin,
       };
     }),
   };
+}
+
+/**
+ * The pieces of each contour of a glyph that are a single point in every
+ * master, which a varying font need not write at all.
+ *
+ * A drawn letter keeps its points the same in number at every weight, and it
+ * does that by keeping a piece in place, at no length, where one weight's
+ * corner is another's curve -- the join a pen swallows at the Black, the
+ * point a round terminal folds to. Where every master has it at no length,
+ * it is nothing at any weight, and written out it was eight points a piece at
+ * four quadratics a curve, and a delta for each of them in every master: a
+ * sixth of the points of a drawn Sans. Left out of every master alike, the
+ * masters still line up point for point.
+ *
+ * At no length as the file has it, on its grid: every point of the piece on
+ * the one whole unit, in every master. Only where the glyph has the same
+ * contours and points in every master, which is the only time its points can
+ * line up at all; and never the piece that closes a contour, whose end the
+ * writer compares with the start to decide whether to write it.
+ */
+function stillPieces(
+  masters: Array<Array<{ contours: Contour[] }>>,
+): Array<boolean[][] | undefined> {
+  return masters[0].map((entry, glyph) => {
+    const all = masters.map((master) => master[glyph]?.contours);
+    const shape = entry.contours;
+    if (
+      all.some(
+        (contours) =>
+          !contours ||
+          contours.length !== shape.length ||
+          contours.some((contour, index) => contour.nodes.length !== shape[index].nodes.length),
+      )
+    )
+      return undefined;
+    let any = false;
+    const still = shape.map((contour, index) => {
+      const count = contour.nodes.length;
+      // The piece into each node but the first, which closes the contour.
+      return contour.nodes.map((_, piece) => {
+        if (piece + 1 >= count) return false;
+        const one = all.every((contours) => {
+          const a = contours![index].nodes[piece];
+          const b = contours![index].nodes[piece + 1];
+          const x = Math.round(a.point.x);
+          const y = Math.round(a.point.y);
+          return [a.handleOut, b.handleIn, b.point].every(
+            (point) => !point || (Math.round(point.x) === x && Math.round(point.y) === y),
+          );
+        });
+        if (one) any = true;
+        return one;
+      });
+    });
+    return any ? still : undefined;
+  });
 }
 
 /**
@@ -428,7 +501,8 @@ async function exportTrueType(
 ): Promise<Uint8Array> {
   /*
    * Every outline the file needs, the masters' too, worked out across the
-   * cores the browser has before anything is written -- see `resolve-pool.ts`.
+   * cores there are -- a browser's workers, or Node's threads -- before
+   * anything is written: see `resolve-pool.ts`.
    * Null where there is nothing costly to work out, or nowhere to work it out
    * but here, and then each is resolved as it is reached, as it always was.
    */
@@ -483,6 +557,22 @@ async function exportTrueType(
   }
   const renumber = (was: number): number | undefined => identity?.currentOf.get(was);
 
+  /*
+   * The masters' outlines, each with its advances, before anything is written:
+   * which pieces a varying font can leave out is a question about all of them.
+   */
+  const varying = context.variable;
+  const masterOutlinesList: Array<Awaited<ReturnType<typeof masterOutlines>>> = [];
+  if (varying && varying.axes.length > 0) {
+    for (const [index, master] of varying.masters.entries()) {
+      masterOutlinesList.push(await masterOutlines(master.typeface, context, pool?.[index + 1]));
+    }
+  }
+  const still =
+    varying && varying.axes.length > 0
+      ? stillPieces([resolved, ...masterOutlinesList.map((one) => one.resolved)])
+      : [];
+
   const familyChanged = hasFamilyEdits(typeface);
   const inputs: GlyfBuildInput[] = resolved.map((entry, index) => {
     const was = identity?.originalOf[index];
@@ -493,10 +583,10 @@ async function exportTrueType(
       original,
       rebuild: !preserving || familyChanged || entry.glyph.dirty || !original,
       composite: compositeRefsFor(entry.glyph, typeface),
+      still: still[index],
     };
   });
 
-  const varying = context.variable;
   const invented: Array<{ id: number; value: string }> = [];
   const built = buildGlyfTables(
     inputs,
@@ -550,10 +640,9 @@ async function exportTrueType(
       })),
     };
 
-    const others: Master[] = [];
-    for (const [index, master] of varying.masters.entries()) {
-      others.push(await masterOf(master.at, master.typeface, context, inputs, pool?.[index + 1]));
-    }
+    const others: Master[] = varying.masters.map((master, index) =>
+      masterOf(master.at, masterOutlinesList[index], context, inputs),
+    );
 
     const { gvar, unvarying } = buildGvar(varying.axes, mine, others, varying.corners === true);
     // Two name ids for every axis and instance, taken from 256 upwards, which

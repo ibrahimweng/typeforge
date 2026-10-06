@@ -246,7 +246,23 @@ export function cutInk(
    * the whole bowl in -- counter, groove and all. Fused the way the letter
    * itself is fused first, the same knife cuts what it should.
    */
-  if (knife.length > 1) knife.splice(0, knife.length, ...unite(knife, "winding"));
+  /*
+   * Each set of knives fused once. The slots are the knife, and the straight
+   * knives, and the knives the notches are looked for along, all at once on a
+   * letter cut with slots alone, and fused three times over they cost as much
+   * again as cutting the letter did.
+   */
+  const fused: Array<{ of: Contour[]; union: Contour[] }> = [];
+  const fusedOnce = (list: Contour[]): Contour[] => {
+    const kept = fused.find(
+      (one) => one.of.length === list.length && one.of.every((piece, at) => piece === list[at]),
+    );
+    if (kept) return kept.union;
+    const union = unite(list, "winding");
+    fused.push({ of: [...list], union });
+    return union;
+  };
+  if (knife.length > 1) knife.splice(0, knife.length, ...fusedOnce(knife));
   shape = take(shape, knife);
   /*
    * The lips after, and only if they leave the letter in no more pieces: a
@@ -284,8 +300,8 @@ export function cutInk(
   // A quarter of a stem deep: the Sans's Black k, its leg leaving the arm
   // a little further out, left a notch of paper 50 units into the band's
   // edge at 260, past the fifth of a stem this once looked.
-  shape = withoutNotches(shape, slots, stem * 0.25);
-  shape = withoutWedges(shape, strokes, straight);
+  shape = withoutNotches(shape, slots, stem * 0.25, fusedOnce);
+  shape = withoutWedges(shape, strokes, straight, fusedOnce);
 
   const chamfered: Vec2[] = [];
   if (cuts.chamfer.on)
@@ -434,10 +450,15 @@ function hairlineOf(given: Stroke[], stem: number): number {
  * that stroke's pen. Measured stroke by stroke, so the hairlines of a contrast
  * face, which are as thick as their own pen, are never taken for one.
  */
-function withoutWedges(shape: Contour[], strokes: Stroke[], knife: Contour[]): Contour[] {
+function withoutWedges(
+  shape: Contour[],
+  strokes: Stroke[],
+  knife: Contour[],
+  fusedOnce: (knife: Contour[]) => Contour[] = (list) => unite(list, "winding"),
+): Contour[] {
   if (knife.length === 0 || strokes.length < 2) return shape;
   const boxes = knife.map((one) => contoursBounds([one]));
-  const cutters = unite(knife, "winding");
+  const cutters = fusedOnce(knife);
   const lines = cutters.map((one) => flattenContour(one, 8));
   // Swept only when needed, and boxed from the spine and the pen till then.
   const cache = new Map<number, Contour[]>();
@@ -591,9 +612,14 @@ function onKnife(piece: Contour, lines: Vec2[][]): number {
  * Only the slots: the breaks' gaps are cut by more than their own knives, and
  * the paper those leave is a gap, not a notch.
  */
-function withoutNotches(shape: Contour[], knife: Contour[], depth: number): Contour[] {
+function withoutNotches(
+  shape: Contour[],
+  knife: Contour[],
+  depth: number,
+  fusedOnce: (knife: Contour[]) => Contour[] = (list) => unite(list, "winding"),
+): Contour[] {
   if (knife.length === 0 || depth < 1) return shape;
-  const cutters = unite(knife, "winding");
+  const cutters = fusedOnce(knife);
   // The paper in the strip: the strip less the knife and the letter, at once.
   const paper = subtract(outlined(cutters, depth), [...cutters, ...shape], "winding").filter(
     (one) => contourArea(one) > 0 && contourArea(one) < depth * depth,

@@ -335,6 +335,81 @@ function apart(one: Vec2[], other: Vec2[], enough: number): number {
 }
 
 /**
+ * `apart`, asked of two pieces of a letter that have been asked about before.
+ *
+ * Each contour of a letter is weighed against all the others, and each time
+ * it asks how far apart it stands from each of them: the same question about
+ * the same two flattened outlines, which nothing changes once they are made.
+ * So the answer is kept against the two of them.
+ */
+const aparts = new WeakMap<Vec2[], WeakMap<Vec2[], Map<number, number>>>();
+
+function apartKept(one: Vec2[], other: Vec2[], enough: number): number {
+  const answers = (a: Vec2[], b: Vec2[]): Map<number, number> => {
+    let from = aparts.get(a);
+    if (!from) {
+      from = new WeakMap();
+      aparts.set(a, from);
+    }
+    let found = from.get(b);
+    if (!found) {
+      found = new Map();
+      from.set(b, found);
+    }
+    return found;
+  };
+  const ours = answers(one, other);
+  let answer = ours.get(enough);
+  if (answer === undefined) {
+    // Asked the other way round -- the other contour weighed against this
+    // one -- the answer is the same: every step of `apart` treats its two
+    // outlines alike.
+    answer = apart(one, other, enough);
+    ours.set(enough, answer);
+    answers(other, one).set(enough, answer);
+  }
+  return answer;
+}
+
+/** A piece of a contour's flattened outline, as `applyWeight` measures against it. */
+interface Wall {
+  a: Vec2;
+  b: Vec2;
+  /** Which way this wall moves for the same change of weight. */
+  normal: Vec2;
+  /** Round its own outline, for a wall of this contour; else -1. */
+  middle: number;
+  /** The segment of this contour it was flattened from; else -1. */
+  seg: number;
+  /** Which way it runs. */
+  edge: Vec2;
+  /** Whether it is another piece of ink with paper between them. */
+  foreign: boolean;
+  /** The box round it, for ruling it out before measuring to it. */
+  xMin: number;
+  xMax: number;
+  yMin: number;
+  yMax: number;
+}
+
+/** The walls of another contour, kept by its flattened outline and how they face. */
+const keptWalls = new WeakMap<Vec2[], Map<string, { walls?: Wall[] }>>();
+
+function wallsKept(polyline: Vec2[], facing: string): { walls?: Wall[] } {
+  let byFacing = keptWalls.get(polyline);
+  if (!byFacing) {
+    byFacing = new Map();
+    keptWalls.set(polyline, byFacing);
+  }
+  let shelf = byFacing.get(facing);
+  if (!shelf) {
+    shelf = {};
+    byFacing.set(facing, shelf);
+  }
+  return shelf;
+}
+
+/**
  * Offset one contour by `amount` -- positive adds weight -- keeping its points.
  */
 export function applyWeight(
@@ -411,25 +486,6 @@ export function applyWeight(
    * of a serif would read as a wall to the end of it.
    */
   const window = wanted * 4;
-  interface Wall {
-    a: Vec2;
-    b: Vec2;
-    /** Which way this wall moves for the same change of weight. */
-    normal: Vec2;
-    /** Round its own outline, for a wall of this contour; else -1. */
-    middle: number;
-    /** The segment of this contour it was flattened from; else -1. */
-    seg: number;
-    /** Which way it runs. */
-    edge: Vec2;
-    /** Whether it is another piece of ink with paper between them. */
-    foreign: boolean;
-    /** The box round it, for ruling it out before measuring to it. */
-    xMin: number;
-    xMax: number;
-    yMin: number;
-    yMax: number;
-  }
   const segmentAt = (position: number): number => {
     let found = 0;
     for (let index = 0; index < count; index++) if (starts[index] <= position) found = index;
@@ -448,9 +504,22 @@ export function applyWeight(
      */
     const foreign =
       bolder && !own && around.roles[which] === isOuter
-        ? isOuter && apart(around.obstacles[self] ?? [], polyline, em * 0.004) > em * 0.004
+        ? isOuter && apartKept(around.obstacles[self] ?? [], polyline, em * 0.004) > em * 0.004
         : false;
     if (bolder && !own && around.roles[which] === isOuter && !foreign) return;
+    /*
+     * The walls of another contour are the same walls every time this letter
+     * asks, whatever share of the weight it asks for, so they are made once
+     * for each way round they can face and handed out again. Only the
+     * contour's own walls know where they are round it.
+     */
+    const role = around.roles[which] ?? true;
+    const shelf = own ? null : wallsKept(polyline, `${role}|${bolder}|${foreign}`);
+    if (shelf?.walls) {
+      for (const wall of shelf.walls) walls.push(wall);
+      return;
+    }
+    const from = walls.length;
     let area = 0;
     polyline.forEach((point, k) => {
       const next = polyline[(k + 1) % polyline.length];
@@ -484,6 +553,7 @@ export function applyWeight(
       });
       run += length;
     });
+    if (shelf) shelf.walls = walls.slice(from);
   });
   /*
    * Past this, a wall is too far off to hold anything back -- the allowance
@@ -844,7 +914,7 @@ export function applyWeight(
     if (!(Math.min(wide, tall) > 0) || Math.max(wide, tall) > em * 0.2) return false;
     if (Math.max(wide, tall) > Math.min(wide, tall) * 1.6) return false;
     return around.obstacles.every(
-      (other, which) => which === self || !around.roles[which] || apart(own, other, 0) > 0,
+      (other, which) => which === self || !around.roles[which] || apartKept(own, other, 0) > 0,
     );
   })();
 
