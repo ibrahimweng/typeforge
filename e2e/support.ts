@@ -104,8 +104,21 @@ export async function openFont(page: Page): Promise<void> {
  * says nothing either way about whether it should.
  */
 export async function startBlank(page: Page): Promise<void> {
-  await page.keyboard.press("ControlOrMeta+k");
-  await page.getByRole("textbox", { name: "Search everything" }).fill("start a new font");
+  /*
+   * Pressed again until the palette is up. The shortcut is a listener the
+   * application attaches once it has rendered, and it stands aside while a
+   * dialog has the keyboard, so a press that lands while the page is still
+   * coming up -- or while a dialog is closing -- goes nowhere. WebKit on a
+   * loaded runner did exactly that, one press in a run, and the test then
+   * waited ninety seconds for a palette nobody had asked for. Somebody at the
+   * keyboard presses again; so does this.
+   */
+  const search = page.getByRole("textbox", { name: "Search everything" });
+  await expect(async () => {
+    if (!(await search.isVisible())) await page.keyboard.press("ControlOrMeta+k");
+    await expect(search).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await search.fill("start a new font");
   await page.getByRole("dialog", { name: "Quick actions" }).getByRole("option").first().click();
   const confirm = page.getByRole("alertdialog").getByRole("button", { name: "Go on" });
   if (await confirm.isVisible().catch(() => false)) await confirm.click();
