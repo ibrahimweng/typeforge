@@ -288,7 +288,10 @@ test("says which letters a setting has closed up", async ({ page }) => {
   const letter = await named.getAttribute("data-forge-warning-letter");
   expect(letter).toBeTruthy();
   await named.click();
-  await expect(page.locator("[data-forge-stage]")).toHaveAttribute("data-forge-stage", letter as string);
+  await expect(page.locator("[data-forge-stage]")).toHaveAttribute(
+    "data-forge-stage",
+    letter as string,
+  );
 });
 
 /**
