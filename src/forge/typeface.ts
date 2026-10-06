@@ -143,6 +143,9 @@ const CODEPOINTS: Record<string, number> = {
   Euro: 0x20ac,
   trademark: 0x2122,
   minus: 0x2212,
+  // The per mille and the florin: see `letters/typographic.ts`.
+  perthousand: 0x2030,
+  florin: 0x0192,
 };
 
 /**
@@ -154,6 +157,15 @@ const CODEPOINTS: Record<string, number> = {
  */
 const ALSO: Record<string, number[]> = {
   grave: [0x0060],
+  /*
+   * And the spacing circumflex and tilde, which the Adobe Glyph List names
+   * `circumflex` and `tilde` and every font that carries both draws as the
+   * combining ones are: Geist's and Lora's are the same drawing at the same
+   * height. Without them a word processor's ˆ and ˜ fell through to
+   * whatever font was behind this one.
+   */
+  circumflex: [0x02c6],
+  tilde: [0x02dc],
   // Romanian's comma-below T, which is the same drawing as the one Extended-A
   // names for a comma and draws with one. Two characters, one glyph.
   Tcommaaccent: [0x021a],

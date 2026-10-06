@@ -94,6 +94,10 @@ const NAMES_BEYOND = new Map<number, string>([
   [0x20ac, "Euro"],
   [0x2122, "trademark"],
   [0x2212, "minus"],
+  [0x2030, "perthousand"],
+  [0x0192, "florin"],
+  [0x02c6, "circumflex"],
+  [0x02dc, "tilde"],
 ]);
 
 /** What a character is called in a font file. */
