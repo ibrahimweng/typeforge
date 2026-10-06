@@ -255,6 +255,12 @@ export interface ForgeExportOptions {
    */
   weightClass?: number;
   /**
+   * How wide this member of the family is, as OS/2's `usWidthClass`: see
+   * `FontMeta.widthClass`. Left out for a Normal, which is what it was before
+   * there were widths and so writes the same file.
+   */
+  widthClass?: number;
+  /**
    * Fuse the overlapping strokes.
    *
    * On for anything leaving the application. Off is for looking at the pieces,
@@ -311,6 +317,7 @@ export async function toTypeface(forge: Forge, options: ForgeExportOptions): Pro
     familyName: options.familyName,
     styleName: options.styleName,
     weightClass: options.weightClass ?? 400,
+    ...(options.widthClass !== undefined ? { widthClass: options.widthClass } : {}),
     // Said plainly in the file itself, because it is the reason this half of
     // the application exists.
     copyright: `${options.familyName}. Drawn from a skeleton; not derived from any existing typeface.`,

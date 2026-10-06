@@ -10,17 +10,26 @@
 import { exportFont, type ExportFormat } from "@/font/export";
 import type { Axis, Instance } from "@/font/variable";
 import { zip } from "@/font/zip";
-import { familyOf, weighted, type Forge } from "./document";
-import { memberOf, nameOfWeight, weightsOf } from "./family";
+import { familyOf, weighted, widthsFor, type Forge } from "./document";
+import { memberOf, NORMAL_WIDTH, styleNameOf, weightsOf, widthClassOf } from "./family";
 import { toTypeface } from "./typeface";
 import { anyEffect } from "@/font/effects";
 import type { WaveBook } from "./shapes";
+
+/** One member of a family: a weight at a width. */
+export interface Member {
+  weight: number;
+  /** The `wdth` value, a hundred for the Normal. */
+  width: number;
+  styleName: string;
+  fileName: string;
+}
 
 export interface Delivery {
   fileName: string;
   bytes: Uint8Array;
   /** What is inside, for saying so: one font, or the members of a family. */
-  members: Array<{ weight: number; styleName: string; fileName: string }>;
+  members: Member[];
   /** Anything worth telling somebody about what was written. */
   notes: string[];
   /** Glyphs that follow a variable axis only part of the way, by name. */
@@ -40,6 +49,7 @@ export async function deliver(
 ): Promise<Delivery> {
   const family = familyOf(forge);
   const weights = weightsOf(family);
+  const widths = widthsFor(forge);
   const familyName = options.familyName || "Untitled";
   const extension = options.format === "otf" ? "otf" : "ttf";
 
@@ -58,12 +68,12 @@ export async function deliver(
    * than a variable font whose axis tears its letters apart halfway along.
    */
   const textured = anyEffect(forge.effects);
-  if (options.variable && !textured && weights.length > 1 && options.format !== "otf") {
-    return await varying(forge, familyName, weights, family.drawn);
+  const many = weights.length > 1 || widths.length > 1;
+  if (options.variable && !textured && many && options.format !== "otf") {
+    return await varying(forge, familyName, weights, widths, family.drawn);
   }
 
-  const written: Array<{ weight: number; styleName: string; fileName: string; bytes: Uint8Array }> =
-    [];
+  const written: Array<Member & { bytes: Uint8Array }> = [];
   /*
    * The same book the variable font keeps, kept for the separate files too.
    *
@@ -83,13 +93,21 @@ export async function deliver(
     corners: new Map(),
     recording: true,
   };
-  const order = [family.drawn, ...weights.filter((weight) => weight !== family.drawn)];
-  for (const weight of order) {
-    const member = memberOf(familyName, weight);
-    const typeface = await toTypeface(weighted(forge, weight), {
+  /*
+   * Every weight at every width, as separate files: one file holds one width
+   * as surely as it holds one weight, since the OS/2 table has a single class
+   * for each. The Normal comes first, and the drawn weight first within it, so
+   * that the book is written from the drawing on screen.
+   */
+  const order = orderOf(weights, widths, family.drawn);
+  for (const { weight, width } of order) {
+    const member = memberOf(familyName, weight, width);
+    const typeface = await toTypeface(weighted(forge, weight, width), {
       familyName,
       styleName: member.styleName,
       weightClass: weight,
+      // Said only where it is not a Normal, which then writes what it always did.
+      widthClass: width === NORMAL_WIDTH ? undefined : widthClassOf(width),
       waves,
       merge: true,
       kern: true,
@@ -106,6 +124,7 @@ export async function deliver(
     });
     written.push({
       weight,
+      width,
       styleName: member.styleName,
       fileName: `${member.fileName}.${extension}`,
       bytes: result.bytes,
@@ -113,11 +132,17 @@ export async function deliver(
   }
 
   // Back into the order somebody asked for, since the drawn weight was drawn
-  // first so that it could write the book rather than because it comes first.
-  written.sort((one, other) => weights.indexOf(one.weight) - weights.indexOf(other.weight));
+  // first so that it could write the book rather than because it comes first:
+  // narrowest first, and lightest first within a width.
+  written.sort(
+    (one, other) =>
+      widths.indexOf(one.width) - widths.indexOf(other.width) ||
+      weights.indexOf(one.weight) - weights.indexOf(other.weight),
+  );
 
-  const members = written.map(({ weight, styleName, fileName }) => ({
+  const members = written.map(({ weight, width, styleName, fileName }) => ({
     weight,
+    width,
     styleName,
     fileName,
   }));
@@ -156,21 +181,45 @@ async function varying(
   forge: Forge,
   familyName: string,
   weights: number[],
+  widths: number[],
   drawn: number,
 ): Promise<Delivery> {
-  const axes: Axis[] = [
-    {
+  /*
+   * A slider for each thing the family has more than one of.
+   *
+   * The weight first, as it always was, and the width beside it once there is
+   * more than one: the Normal is its default because the Normal is what is
+   * drawn. A family of one weight and several widths has a width slider only.
+   */
+  const axes: Axis[] = [];
+  if (weights.length > 1) {
+    axes.push({
       tag: "wght",
       label: "Weight",
       min: Math.min(...weights),
       default: drawn,
       max: Math.max(...weights),
-    },
-  ];
-  const instances: Instance[] = weights.map((weight) => ({
-    label: nameOfWeight(weight),
-    at: { wght: weight },
-  }));
+    });
+  }
+  if (widths.length > 1) {
+    axes.push({
+      tag: "wdth",
+      label: "Width",
+      min: Math.min(...widths),
+      default: NORMAL_WIDTH,
+      max: Math.max(...widths),
+    });
+  }
+  // Where a member sits, said on the axes the font has and no others.
+  const place = (weight: number, width: number): Record<string, number> => ({
+    ...(weights.length > 1 ? { wght: weight } : {}),
+    ...(widths.length > 1 ? { wdth: width } : {}),
+  });
+  // Narrowest first and lightest first within a width, the order a font
+  // menu lists them in: "Condensed Light", "Condensed", "Condensed Bold".
+  const instances: Instance[] = widths.flatMap((width) =>
+    weights.map((weight) => ({ label: styleNameOf(weight, width), at: place(weight, width) })),
+  );
 
   /*
    * The run lengths every master counts its waves off, taken from the weight
@@ -182,6 +231,9 @@ async function varying(
    * that crossed a boundary somewhere on the axis came out with a different
    * number of them at the two ends: 26 of the Wavy's letters, and no way to
    * count differently that does not move the boundary rather than remove it.
+   *
+   * The other widths count off the same book, which is what keeps a Condensed
+   * wave drawn with as many humps as the Normal one it varies from.
    */
   const waves: WaveBook = {
     lengths: new Map(),
@@ -191,10 +243,10 @@ async function varying(
     recording: true,
   };
 
-  const drawing = async (weight: number) =>
-    await toTypeface(weighted(forge, weight), {
+  const drawing = async (weight: number, width: number) =>
+    await toTypeface(weighted(forge, weight, width), {
       familyName,
-      styleName: memberOf(familyName, weight).styleName,
+      styleName: memberOf(familyName, weight, width).styleName,
       weightClass: weight,
       waves,
       // The whole point: see above.
@@ -207,16 +259,25 @@ async function varying(
        * from the weight the family was drawn at is the same choice every
        * variable font makes.
        */
-      kern: weight === drawn,
+      kern: weight === drawn && width === NORMAL_WIDTH,
     });
 
-  const master = await drawing(drawn);
+  const master = await drawing(drawn, NORMAL_WIDTH);
   waves.recording = false;
 
+  /*
+   * A master at every weight at every width: the ends of each axis and every
+   * corner between them, so a Condensed Bold is drawn rather than worked out.
+   * Worked out, it would be the Bold's difference added to the Condensed's,
+   * and a Bold is not a Regular plus some ink in the same place at every
+   * width -- its counters close on a Condensed's counters, which are already
+   * narrower. Drawn, it is the corner of a grid, and `buildGvar` writes only
+   * what the two differences either side of it do not already say.
+   */
   const masters = [];
-  for (const weight of weights) {
-    if (weight === drawn) continue;
-    masters.push({ at: { wght: weight }, typeface: await drawing(weight) });
+  for (const { weight, width } of orderOf(weights, widths, drawn)) {
+    if (weight === drawn && width === NORMAL_WIDTH) continue;
+    masters.push({ at: place(weight, width), typeface: await drawing(weight, width) });
   }
 
   const result = await exportFont(master, {
@@ -226,21 +287,46 @@ async function varying(
     mergeOverlaps: false,
     // Drawn here, so the winding says which contour is a counter outright.
     roles: "winding",
-    variable: { axes, instances, masters },
+    variable: { axes, instances, masters, corners: weights.length > 1 && widths.length > 1 },
   });
 
   const tidy = familyName.replace(/[^A-Za-z0-9]+/g, "") || "Untitled";
+  /*
+   * The name every foundry gives a variable font: the family, then the axes it
+   * carries, in the brackets a font manager knows to read -- in the order of
+   * the alphabet, which is the Google Fonts rule and the one everybody else
+   * has taken up: `Family[wdth,wght].ttf`.
+   */
+  const fileName = `${tidy}[${axes
+    .map((axis) => axis.tag)
+    .sort()
+    .join(",")}].ttf`;
   return {
-    // The name every foundry gives a variable font: the family, then the axes
-    // it carries, in the brackets a font manager knows to read.
-    fileName: `${tidy}[wght].ttf`,
+    fileName,
     bytes: result.bytes,
-    members: weights.map((weight) => ({
-      weight,
-      styleName: nameOfWeight(weight),
-      fileName: `${tidy}[wght].ttf`,
-    })),
+    members: widths.flatMap((width) =>
+      weights.map((weight) => ({
+        weight,
+        width,
+        styleName: styleNameOf(weight, width),
+        fileName,
+      })),
+    ),
     notes: result.notes,
     held: result.held,
   };
+}
+
+/**
+ * Every weight at every width, in the order they are drawn: the drawing on
+ * screen first, then the rest of the Normal, then each other width.
+ */
+function orderOf(
+  weights: number[],
+  widths: number[],
+  drawn: number,
+): Array<{ weight: number; width: number }> {
+  const heavy = [drawn, ...weights.filter((weight) => weight !== drawn)];
+  const wide = [NORMAL_WIDTH, ...widths.filter((width) => width !== NORMAL_WIDTH)];
+  return wide.flatMap((width) => heavy.map((weight) => ({ weight, width })));
 }

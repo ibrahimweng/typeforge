@@ -4320,7 +4320,15 @@ function wave(
   const point = (u: number, v: number) => at(X(u), up(f, v));
   const over = point(middle.x - across, middle.y + lift);
   const under = point(middle.x + across, middle.y - lift);
-  const r = radius * k;
+  /*
+   * At any width but the face's own the two centres move apart across and
+   * not up, so circles of the radius found above, stretched, no longer touch:
+   * the wave was drawn with a step where they met, and a Condensed tilde
+   * carried two more points than the Normal's and could not vary between
+   * them. Half the distance between the centres is the radius at which they
+   * touch, which at the face's own width is the same radius.
+   */
+  const r = k === 1 ? radius * k : Math.hypot(under.x - over.x, under.y - over.y) / 2;
   const degrees = (from: Vec2, to: Vec2) =>
     (Math.atan2(to.y - from.y, to.x - from.x) * 180) / Math.PI;
   const left = point(half, low);

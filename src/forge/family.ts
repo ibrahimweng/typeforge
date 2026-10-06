@@ -41,6 +41,16 @@ export interface Family {
   drawn: number;
   /** The others, which may or may not repeat `drawn`. */
   also: number[];
+  /**
+   * The widths beside the one on screen, as `wdth` numbers: 75 for a
+   * Condensed, 125 for an Expanded.
+   *
+   * The drawing is always the Normal, a hundred, the same way it is always one
+   * of the weights. Left out -- which every document saved before there were
+   * widths is -- the family has that one width and nothing else, and is
+   * written exactly as it always was.
+   */
+  widths?: number[];
 }
 
 export const WEIGHTS: Array<{ weight: number; name: string }> = [
@@ -190,6 +200,93 @@ function bowlWidth(style: Style, weight: number): number {
 
 const UP = { x: 0, y: 1 };
 
+/**
+ * The widths, as the world names and numbers them.
+ *
+ * The `wdth` value is the registered one -- a percentage of the Normal -- and
+ * the name and class are the OS/2 table's `usWidthClass`, one to nine. Five of
+ * the nine are offered: past three quarters, or a quarter again, the letters
+ * are no longer this face drawn narrower or wider but another face, and the
+ * bowls run out of room before the stems do.
+ */
+export const WIDTHS: Array<{ width: number; name: string; widthClass: number }> = [
+  { width: 75, name: "Condensed", widthClass: 3 },
+  { width: 87.5, name: "SemiCondensed", widthClass: 4 },
+  { width: 100, name: "Normal", widthClass: 5 },
+  { width: 112.5, name: "SemiExpanded", widthClass: 6 },
+  { width: 125, name: "Expanded", widthClass: 7 },
+];
+
+/** The width every drawing is: the one on screen. */
+export const NORMAL_WIDTH = 100;
+
+export function nameOfWidth(width: number): string {
+  return WIDTHS.find((one) => one.width === width)?.name ?? `${width}`;
+}
+
+/** The OS/2 `usWidthClass` for a `wdth` value: the nearest of the nine. */
+export function widthClassOf(width: number): number {
+  const classes = [50, 62.5, 75, 87.5, 100, 112.5, 125, 150, 200];
+  let best = 0;
+  for (let index = 1; index < classes.length; index++) {
+    if (Math.abs(classes[index] - width) < Math.abs(classes[best] - width)) best = index;
+  }
+  return best + 1;
+}
+
+/** The widths of a family, in order, always including the Normal. */
+export function widthsOf(family: Family): number[] {
+  // Read with care, since it comes out of a saved file: anything that is not
+  // a width a letter can be drawn at is not a width.
+  const asked = Array.isArray(family.widths) ? family.widths : [];
+  const usable = asked.filter((width) => typeof width === "number" && width >= 25 && width <= 200);
+  return [...new Set([NORMAL_WIDTH, ...usable])].sort((one, other) => one - other);
+}
+
+/**
+ * The style one width of the family is drawn with.
+ *
+ * Draw's own width -- `metrics.width`, the multiple every horizontal measure
+ * of a letter is built from -- taken as the share of the drawing's the `wdth`
+ * number asks for. So a Condensed is drawn condensed rather than squeezed: the
+ * bowls are narrower ovals and the counters closer, while the stems keep the
+ * pen they were drawn with, which is what separates a condensed face from a
+ * narrow picture of a normal one.
+ *
+ * The spacing closes too, by the square root of that share rather than by all
+ * of it. Narrow letters spaced as loosely as wide ones stand apart, and spaced
+ * as tightly as their counters they run together; the root keeps the white
+ * beside a letter in about the proportion to the white inside it that the
+ * Normal has.
+ *
+ * Over the Sans a Condensed drawn this way sets about four fifths the width of
+ * the Normal and an Expanded about six fifths, which is where the condensed
+ * and extended cuts of the grotesques sit against their normals. Nothing else
+ * moves: the heights, the pen, the serifs and the slant are the face's own,
+ * and the weights are worked out from the width afterwards exactly as they are
+ * from the Normal -- so a Condensed Bold is a Condensed made bold.
+ */
+export function widthedStyle(style: Style, width: number): Style {
+  if (width === NORMAL_WIDTH) return style;
+  const share = width / NORMAL_WIDTH;
+  return {
+    ...style,
+    metrics: {
+      ...style.metrics,
+      width: style.metrics.width * share,
+      sidebearing: style.metrics.sidebearing * Math.sqrt(share),
+    },
+  };
+}
+
+/** What a weight at a width is called: "Bold", "Condensed", "Condensed Bold". */
+export function styleNameOf(weight: number, width: number = NORMAL_WIDTH): string {
+  const heavy = nameOfWeight(weight);
+  if (width === NORMAL_WIDTH) return heavy;
+  const wide = nameOfWidth(width);
+  return heavy === "Regular" ? wide : `${wide} ${heavy}`;
+}
+
 /** The weights of a family, in order, always including the one being drawn. */
 export function weightsOf(family: Family): number[] {
   return [...new Set([family.drawn, ...family.also])].sort((one, other) => one - other);
@@ -201,12 +298,17 @@ export function weightsOf(family: Family): number[] {
  * The style name is the one the world uses for that number, and the file is
  * named the way every foundry names them: family and style run together, which
  * is what a font manager sorts by.
+ *
+ * A width other than the Normal comes first, as every family with widths
+ * names them -- "Condensed Bold" -- and a Regular at another width is just the
+ * width: "Condensed", not "Condensed Regular".
  */
 export function memberOf(
   familyName: string,
   weight: number,
+  width: number = NORMAL_WIDTH,
 ): { styleName: string; fileName: string } {
-  const styleName = nameOfWeight(weight);
+  const styleName = styleNameOf(weight, width);
   const tidy = (text: string): string => text.replace(/[^A-Za-z0-9]+/g, "");
   return { styleName, fileName: `${tidy(familyName) || "Untitled"}-${tidy(styleName)}` };
 }

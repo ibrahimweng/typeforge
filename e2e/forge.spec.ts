@@ -810,6 +810,72 @@ test("draws a family and downloads every weight of it", async ({ page }) => {
 });
 
 /**
+ * Widths beside the weights, in one file with two sliders.
+ *
+ * Ticked in the dialog and checked in the file by something that is not this
+ * application: fontTools reads the axes and the named instances, which is
+ * what a font menu shows somebody, and pins the font at the Condensed Bold to
+ * see that it is narrower than the Bold.
+ */
+test("draws a Condensed beside the Bold and downloads both sliders", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await openForge(page);
+
+  await page.getByRole("button", { name: "Export", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.locator('[data-width="100"]')).toBeDisabled();
+  await expect(dialog.locator('[data-width="100"]')).toHaveAttribute("data-width-on", "yes");
+  await expect(dialog.locator('[data-width="75"]')).toHaveAttribute("data-width-on", "no");
+  // One weight and one width: nothing to slide between yet.
+  await expect(dialog.locator('[data-format="variable"]')).toBeDisabled();
+
+  await dialog.locator('[data-width="75"]').click();
+  await dialog.locator('[data-weight="700"]').click();
+  await expect(dialog.locator('[data-width="75"]')).toHaveAttribute("data-width-on", "yes");
+  await expect(dialog.locator("[data-download-family]")).toHaveText("Download 4");
+
+  // OpenType says that it cannot keep two widths in one file.
+  await dialog.locator('[data-format="otf"]').click();
+  await expect(dialog.locator("[data-width-note]")).toContainText("holds one width");
+
+  await dialog.locator('[data-format="variable"]').click();
+  await expect(dialog.locator('[data-format="variable"]')).toContainText("width slider");
+  const [download] = await Promise.all([
+    page.waitForEvent("download", { timeout: 180_000 }),
+    dialog.locator("[data-download-family]").click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("Untitled[wdth,wght].ttf");
+  const saved = test.info().outputPath("widths.ttf");
+  await download.saveAs(saved);
+
+  const read = JSON.parse(
+    execFileSync("python3", [
+      "-c",
+      [
+        "import json, sys",
+        "from fontTools.ttLib import TTFont",
+        "from fontTools.varLib.instancer import instantiateVariableFont",
+        "f = TTFont(sys.argv[1])",
+        "names = f['name']",
+        "axes = [a.axisTag for a in f['fvar'].axes]",
+        "instances = [names.getDebugName(i.subfamilyNameID) for i in f['fvar'].instances]",
+        "wide = {}",
+        "for at in ({'wght': 700, 'wdth': 100}, {'wght': 700, 'wdth': 75}):",
+        "    v = instantiateVariableFont(TTFont(sys.argv[1]), at)",
+        "    wide[str(at['wdth'])] = v['hmtx']['n'][0]",
+        "print(json.dumps({'axes': axes, 'instances': instances, 'wide': wide}))",
+      ].join("\n"),
+      saved,
+    ]).toString(),
+  );
+  expect(read.axes).toEqual(["wght", "wdth"]);
+  expect(read.instances).toEqual(["Condensed", "Condensed Bold", "Regular", "Bold"]);
+  expect(read.wide["75"]).toBeLessThan(read.wide["100"] * 0.9);
+  expect(errors).toEqual([]);
+});
+
+/**
  * The weight a drawing already is.
  *
  * Half the faces offered here are not a Regular, and calling one a Regular and

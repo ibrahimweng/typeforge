@@ -24,8 +24,21 @@ import { importFont } from "@/font/parse";
 import { resolveGlyphContours } from "@/font/transform";
 import type { Typeface } from "@/font/types";
 import { drawLetter } from "./build";
-import { startFrom, weighted } from "./document";
-import { WEIGHTS, memberOf, nameOfWeight, weightClassOf, weightedStyle, weightsOf } from "./family";
+import { setFamily, startFrom, weighted } from "./document";
+import {
+  WEIGHTS,
+  WIDTHS,
+  memberOf,
+  nameOfWeight,
+  nameOfWidth,
+  styleNameOf,
+  weightClassOf,
+  weightedStyle,
+  weightsOf,
+  widthClassOf,
+  widthedStyle,
+  widthsOf,
+} from "./family";
 import { BASES, DISPLAY, SANS, SERIF, type Style } from "./style";
 
 /** The left stem, the counter beside it and the whole ink width of an n. */
@@ -215,6 +228,77 @@ describe("naming the members", () => {
     const heavy = weighted(forge, 900);
     expect(heavy.exceptions).toEqual(forge.exceptions);
     expect(heavy.style.pen.weight).toBeGreaterThan(forge.style.pen.weight);
+  });
+});
+
+/**
+ * Widths beside the weights.
+ *
+ * A Condensed is not a squeezed Normal: the same pen draws narrower bowls and
+ * closer counters, so the stems keep their weight and the letters lose their
+ * width. And a family that never asked for a width is exactly the family it
+ * was, document and drawing both.
+ */
+describe("the widths of a family", () => {
+  it("names them as the OS/2 table does, the width first", () => {
+    expect(WIDTHS.map((one) => one.width)).toEqual([75, 87.5, 100, 112.5, 125]);
+    expect(nameOfWidth(75)).toBe("Condensed");
+    expect(nameOfWidth(125)).toBe("Expanded");
+    expect(widthClassOf(75)).toBe(3);
+    expect(widthClassOf(100)).toBe(5);
+    expect(widthClassOf(125)).toBe(7);
+    for (const one of WIDTHS) expect(widthClassOf(one.width)).toBe(one.widthClass);
+    expect(styleNameOf(700, 75)).toBe("Condensed Bold");
+    expect(styleNameOf(400, 75)).toBe("Condensed");
+    expect(styleNameOf(700)).toBe("Bold");
+    expect(memberOf("My Slab", 700, 75)).toEqual({
+      styleName: "Condensed Bold",
+      fileName: "MySlab-CondensedBold",
+    });
+    expect(memberOf("My Slab", 300, 112.5).styleName).toBe("SemiExpanded Light");
+  });
+
+  it("always has the Normal, and reads an older family as having only that", () => {
+    expect(widthsOf({ drawn: 400, also: [] })).toEqual([100]);
+    expect(widthsOf({ drawn: 400, also: [], widths: [125, 75, 75] })).toEqual([75, 100, 125]);
+    // Out of a file somebody else wrote, so read with care.
+    const odd = JSON.parse('{"drawn":400,"also":[],"widths":[75,"wide",null,1000]}');
+    expect(widthsOf(odd)).toEqual([75, 100]);
+  });
+
+  it("leaves a family with no widths exactly the document it was", () => {
+    const forge = startFrom(SANS);
+    const same = setFamily(forge, { drawn: 400, also: [700] });
+    expect(same.family).toEqual({ drawn: 400, also: [700] });
+    expect("widths" in (same.family ?? {})).toBe(false);
+    const wide = setFamily(forge, { drawn: 400, also: [700], widths: [125, 75, 100] });
+    expect(wide.family).toEqual({ drawn: 400, also: [700], widths: [75, 125] });
+    // Turned off again, the key goes with it.
+    const back = setFamily(wide, { ...wide.family!, widths: [] });
+    expect(JSON.stringify(back.family)).toBe(JSON.stringify(same.family));
+    // And the Normal at the drawn weight is the drawing itself.
+    expect(weighted(forge, 400, 100)).toBe(forge);
+    expect(widthedStyle(forge.style, 100)).toBe(forge.style);
+  });
+
+  it("draws a Condensed narrower with the same pen", () => {
+    const forge = { ...startFrom(SANS), family: { drawn: 400, also: [], widths: [75] } };
+    const condensed = weighted(forge, 400, 75);
+    expect(condensed.style.pen).toEqual(forge.style.pen);
+    expect(condensed.style.metrics.width).toBeCloseTo(forge.style.metrics.width * 0.75);
+    const normal = anatomyOfN(forge.style);
+    const narrow = anatomyOfN(condensed.style);
+    // The counter closes and the stem does not: drawn, not squeezed.
+    expect(narrow.counter).toBeLessThan(normal.counter * 0.85);
+    expect(Math.abs(narrow.stem - normal.stem)).toBeLessThan(normal.stem * 0.02);
+    const o = (style: Style) => contoursBounds(drawLetter("o", style)!.contours);
+    const wide = o(forge.style);
+    const thin = o(condensed.style);
+    expect(thin.xMax - thin.xMin).toBeLessThan((wide.xMax - wide.xMin) * 0.9);
+    // And the bold of it is the Condensed made bold, heavier and still narrow.
+    const bold = weighted(forge, 700, 75);
+    expect(bold.style.pen.weight).toBeCloseTo(weighted(forge, 700).style.pen.weight);
+    expect(anatomyOfN(bold.style).ink).toBeLessThan(anatomyOfN(weighted(forge, 700).style).ink);
   });
 });
 

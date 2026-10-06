@@ -50,7 +50,7 @@ import {
   togglePort,
   useKit,
 } from "@/forge/document";
-import type { Family } from "@/forge/family";
+import { NORMAL_WIDTH, type Family } from "@/forge/family";
 import { letterSvg, readLetterSvg, type Arrival } from "@/forge/exchange";
 import { codepointsFor } from "@/forge/typeface";
 import type { Contour, Glyph, GlyphNode, VerticalMetrics } from "@/font/types";
@@ -409,6 +409,20 @@ class ForgeStore {
   }
 
   /**
+   * Add or remove one width, leaving the Normal -- the one on screen -- alone.
+   *
+   * Undoable for the same reason a weight is: it adds or throws away members
+   * of the family.
+   */
+  toggleWidth(width: number): void {
+    if (width === NORMAL_WIDTH) return;
+    const family = familyOf(this.state.forge);
+    const had = family.widths ?? [];
+    const widths = had.includes(width) ? had.filter((one) => one !== width) : [...had, width];
+    this.commit(setFamily(this.state.forge, { ...family, widths }));
+  }
+
+  /**
    * Say which weight the drawing on screen is.
    *
    * Not a change to the letters -- the same pen draws the same shapes -- but a
@@ -422,6 +436,8 @@ class ForgeStore {
       setFamily(this.state.forge, {
         drawn: weight,
         also: family.also.filter((one) => one !== weight),
+        // The widths are not the weights' business and stay as they were.
+        widths: family.widths,
       }),
     );
   }
