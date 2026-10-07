@@ -146,7 +146,13 @@ export function Dock({
   );
 
   return (
-    <div className="flex shrink-0" style={{ width }}>
+    // On a phone the dock is under the work rather than beside it (see the
+    // stacking in `App.tsx`), so it takes the full width whatever was chosen,
+    // and there is no edge to drag.
+    <div
+      className="flex shrink-0 max-md:w-full! max-md:border-t max-md:border-border"
+      style={{ width }}
+    >
       {/*
         The edge, which is a control and has to look like one.
 
@@ -192,7 +198,7 @@ export function Dock({
           event.preventDefault();
         }}
         className={cn(
-          "relative w-1.5 shrink-0 cursor-col-resize border-l border-border bg-transparent",
+          "relative w-1.5 shrink-0 cursor-col-resize border-l border-border bg-transparent max-md:hidden",
           "transition-colors hover:bg-accent/40 focus-visible:bg-accent/60 focus-visible:outline-none",
           // Four pixels either side that catch the pointer and draw nothing,
           // so it is easy to grab without being a visible bar down the window.

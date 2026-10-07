@@ -1245,9 +1245,6 @@ export function App(): React.JSX.Element {
     redo: history.redo,
   });
 
-  // Whether the work and its panel go one above the other on a phone.
-  const stacks = mode !== "edit";
-
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: the page is a drop target for a font file; the Open button is the keyboard path.
     <div
@@ -1352,16 +1349,22 @@ export function App(): React.JSX.Element {
       {drawingOn !== null && <OptionsBar glyphName={drawingOn} />}
 
       {/*
-        Side by side, except on a phone in the three modes whose whole document
-        is one panel: there the panel goes under the work at full width and
-        the two scroll as one page, with the work given the first screenful.
-        Beside it, the panel took two thirds of a 390-pixel screen and left the
-        letter eighty-six pixels to be drawn in. The editor keeps its columns,
-        which are a rail and an inspector rather than a document.
+        Side by side, except on a phone: there the panel goes under the work at
+        full width and the two scroll as one page, with the work given the
+        first screenful. Beside it, the panel took two thirds of a 390-pixel
+        screen and left the letter eighty-six pixels to be drawn in.
+
+        The editor stacks too. It used to keep its columns, on the grounds that
+        they are a rail and an inspector rather than a document, and on a phone
+        that left the glyph grid one cell wide, the canvas a hundred and seventy
+        pixels across and the inspector's tabs cut to a letter each. The rail
+        stays beside the stage -- it is thirty-odd pixels and the hand wants it
+        there -- so the two share one row, which on a wider window is no box at
+        all (`md:contents`) and lays out exactly as it did.
       */}
       <div
-        className={cn("flex min-h-0 flex-1", stacks && "max-md:flex-col max-md:overflow-y-auto")}
-        data-stacks={stacks ? "phone" : undefined}
+        className="flex min-h-0 flex-1 max-md:flex-col max-md:overflow-y-auto"
+        data-stacks="phone"
       >
         {/*
           The tools, down the left of the whole window rather than beside the
@@ -1382,53 +1385,52 @@ export function App(): React.JSX.Element {
           rail there would be offering something that is not merely unavailable
           but absent.
         */}
-        {mode === "edit" && <ToolPalette drawing={drawingOn !== null} />}
-        <div
-          ref={stageRef}
-          className={cn("flex min-w-0 flex-1 flex-col", stacks && "max-md:h-full max-md:flex-none")}
-        >
-          {mode === "forge" && (
-            <Wait>
-              <ForgeView />
-            </Wait>
-          )}
-          {mode === "quill" && (
-            <Wait>
-              <QuillView />
-            </Wait>
-          )}
-          {mode === "assemble" && (
-            <Wait>
-              <AssembleView />
-            </Wait>
-          )}
-          {mode === "edit" && (
-            <>
-              <OnLoan />
-              {state.view === "grid" && (
-                <Wait>
-                  <FontGridView />
-                </Wait>
-              )}
-              {state.view === "glyph" && <GlyphEditorView />}
-              {state.view === "kerning" && <KerningView />}
-              {state.view === "metrics" && (
-                <Wait>
-                  <MetricsView />
-                </Wait>
-              )}
-              {state.view === "proof" && (
-                <Wait>
-                  <ProofView />
-                </Wait>
-              )}
-              {state.view === "report" && (
-                <Wait>
-                  <ReportView />
-                </Wait>
-              )}
-            </>
-          )}
+        <div className="flex min-w-0 max-md:h-full max-md:flex-none md:contents" data-work-row>
+          {mode === "edit" && <ToolPalette drawing={drawingOn !== null} />}
+          <div ref={stageRef} className="flex min-w-0 flex-1 flex-col">
+            {mode === "forge" && (
+              <Wait>
+                <ForgeView />
+              </Wait>
+            )}
+            {mode === "quill" && (
+              <Wait>
+                <QuillView />
+              </Wait>
+            )}
+            {mode === "assemble" && (
+              <Wait>
+                <AssembleView />
+              </Wait>
+            )}
+            {mode === "edit" && (
+              <>
+                <OnLoan />
+                {state.view === "grid" && (
+                  <Wait>
+                    <FontGridView />
+                  </Wait>
+                )}
+                {state.view === "glyph" && <GlyphEditorView />}
+                {state.view === "kerning" && <KerningView />}
+                {state.view === "metrics" && (
+                  <Wait>
+                    <MetricsView />
+                  </Wait>
+                )}
+                {state.view === "proof" && (
+                  <Wait>
+                    <ProofView />
+                  </Wait>
+                )}
+                {state.view === "report" && (
+                  <Wait>
+                    <ReportView />
+                  </Wait>
+                )}
+              </>
+            )}
+          </div>
         </div>
         {mode === "forge" && (
           <WaitBeside width={WIDE_PANEL}>

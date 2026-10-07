@@ -168,12 +168,14 @@ export function FontGridView(): React.JSX.Element {
         can see is a feature nobody has.
       */}
       <Versions />
-      <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
+      {/* On a phone the search takes a line of its own and the count and New
+          letter go under it: in one row they ran on into the panel beside. */}
+      <div className="flex items-center gap-3 border-b border-border px-4 py-2.5 max-md:flex-wrap max-md:gap-y-2">
         <input
           value={state.search}
           onChange={(event) => store.setSearch(event.target.value)}
           placeholder="Search by letter, name or U+ code"
-          className="h-8 w-72 rounded-md border border-input bg-card px-2.5 text-xs-plus text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-accent"
+          className="h-8 w-72 max-md:w-full rounded-md border border-input bg-card px-2.5 text-xs-plus text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-accent"
           aria-label="Search glyphs"
         />
         <span className="text-2xs text-muted-foreground tabular-nums">

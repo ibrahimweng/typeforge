@@ -311,7 +311,7 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
                 "variable",
                 "Variable",
                 textured
-                  ? "Not with a tool on the font: see below."
+                  ? "Not with a tool on the font: see above."
                   : members > 1
                     ? widths.length === 1
                       ? "One file with a weight slider from end to end."
@@ -365,7 +365,15 @@ export function ForgeExportDialog({ onClose }: { onClose: () => void }): React.J
             data-download-family
             className={PRIMARY_ACTION}
           >
-            {working ? "Writing…" : members === 1 ? "Download" : `Download ${members}`}
+            {/* The files that come out, not the members: a variable font is
+                every member in one file, and said "Download 4" for it. The
+                same test `deliver` makes, where a tool on the font sends even
+                a variable font out as separate files. */}
+            {working
+              ? "Writing…"
+              : members === 1 || (kind === "variable" && !textured)
+                ? "Download"
+                : `Download ${members}`}
           </button>
         </div>
       </div>

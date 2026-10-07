@@ -24,8 +24,16 @@ import { type Frame, inkFrame, type Placed, viewBoxOf } from "@/components/ink-f
 import { letterNames, skeletonOf } from "@/forge/build";
 import { cellBox, cellKey, PORTS, portAt, rowsOf, unitOf } from "@/forge/kit";
 import { anyEffect } from "@/font/effects";
-import { effectsOf, familyOf, proof, unshaped, weighted, type Forge } from "@/forge/document";
-import { nameOfWeight, weightsOf } from "@/forge/family";
+import {
+  effectsOf,
+  familyOf,
+  proof,
+  unshaped,
+  weighted,
+  widthsFor,
+  type Forge,
+} from "@/forge/document";
+import { NORMAL_WIDTH, styleNameOf, weightsOf } from "@/forge/family";
 import { codepointsFor } from "@/forge/typeface";
 import {
   draw,
@@ -733,23 +741,44 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
   const state = useForge();
   const weights = weightsOf(familyOf(state.forge));
   /*
+   * And the widths, which the dialog offers on the same terms as the weights
+   * and which this used to leave out: a Condensed ticked in the dialog was a
+   * promise nothing on screen kept, while the Black ticked beside it got a
+   * line of its own.
+   *
+   * Each other width at the weight being drawn, rather than at every weight.
+   * A family of nine weights at five widths is forty-five fonts, and setting
+   * the line forty-five times on every frame of a drag is the cost the line
+   * below is careful about. One line a width shows what the width does; the
+   * weights are already shown one line each at the Normal.
+   */
+  const widths = widthsFor(state.forge);
+  /*
    * The same, and it matters more here: the specimen is set at every weight the
    * family has, so a line of twenty characters is eighty letters a frame.
    */
   const shown = state.resting ? state.forge : unshaped(state.forge);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: weights.join() compares the weights by content; the array itself is new every render.
-  const lines = React.useMemo(
-    () =>
-      weights.map((weight) => ({
-        weight,
-        name: nameOfWeight(weight),
-        drawn: weight === familyOf(shown).drawn,
-        ...setLine(weighted(shown, weight), state.specimen),
-      })),
+  // biome-ignore lint/correctness/useExhaustiveDependencies: weights.join() and widths.join() compare by content; the arrays themselves are new every render.
+  const lines = React.useMemo(() => {
+    const drawn = familyOf(shown).drawn;
+    const members = [
+      ...weights.map((weight) => ({ weight, width: NORMAL_WIDTH })),
+      ...widths
+        .filter((width) => width !== NORMAL_WIDTH)
+        .map((width) => ({ weight: drawn, width })),
+    ];
+    return members.map(({ weight, width }) => ({
+      weight,
+      // Named for the weight alone at the Normal, as it always was, so the
+      // attributes below still say which weight a line is.
+      key: width === NORMAL_WIDTH ? `${weight}` : `${weight}-${width}`,
+      name: styleNameOf(weight, width),
+      drawn: weight === drawn && width === NORMAL_WIDTH,
+      ...setLine(weighted(shown, weight, width), state.specimen),
+    }));
     // The forge and the text are what the lines are made of; the revision is
     // how everything else here knows a part moved underneath them.
-    [shown, state.specimen, revision, weights.join()],
-  );
+  }, [shown, state.specimen, revision, weights.join(), widths.join()]);
   const { metrics } = state.forge.style;
   // Every weight on the same height, taken from all of them, so the lines stay
   // at one size and whatever reaches past the ascender or descender -- an
@@ -788,16 +817,18 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
       <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 overflow-hidden">
         {lines.map((one) =>
           one.width > 0 ? (
-            <div key={one.weight} className="flex w-full min-w-0 items-center gap-2">
+            <div key={one.key} className="flex w-full min-w-0 items-center gap-2">
               {lines.length > 1 && (
                 <span
                   className={cn(
-                    "w-16 shrink-0 truncate text-right text-2xs tabular-nums",
+                    "shrink-0 truncate text-right text-2xs tabular-nums",
+                    // Room for "SemiCondensed Bold" once there are widths.
+                    widths.length > 1 ? "w-28" : "w-16",
                     state.reversed
                       ? "text-[color:var(--canvas)] opacity-60"
                       : "text-muted-foreground",
                   )}
-                  data-forge-weight-label={one.weight}
+                  data-forge-weight-label={one.key}
                 >
                   {one.name}
                 </span>
@@ -811,7 +842,7 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
                 className={cn("w-auto max-w-full", lines.length > 1 ? "h-7" : "h-16")}
                 role="img"
                 aria-label={lines.length > 1 ? `Specimen ${one.name}` : "Specimen"}
-                data-forge-specimen-line={one.weight}
+                data-forge-specimen-line={one.key}
               >
                 <g
                   transform="scale(1,-1)"
@@ -866,7 +897,8 @@ const PROOF_RUN = 7;
  * How many glyphs the font draws, for the proof's size estimate: read off the
  * letters themselves rather than written down, so adding a glyph moves it. It
  * was a hard-coded 452, and stayed there when the typographic punctuation
- * took it to 469.
+ * added seventeen more; there is no fixed number to write here, since it
+ * moves with every glyph the letters gain and differs between the bases.
  */
 const GLYPH_COUNT = letterNames().length;
 

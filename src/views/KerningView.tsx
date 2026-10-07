@@ -98,14 +98,17 @@ export function KerningView(): React.JSX.Element | null {
     // Room left around the type on every side, so a descender does not sit on
     // the edge of the canvas and the pair being dragged is never half off it.
     const margin = Math.max(48, size.height * 0.12);
+    // Less beside it on a phone, where the line is fitted to the width and
+    // every pixel of margin is taken off the size of the letters.
+    const side = size.width < 480 ? 16 : 40;
     const scale = Math.min(
-      (size.width - 80) / Math.max(1, totalWidth),
+      (size.width - side * 2) / Math.max(1, totalWidth),
       Math.max(0, size.height - margin * 2) / band,
     );
     // The band centred, and the baseline placed inside it where the metrics
     // say it goes rather than at a fraction picked by eye.
     const top = (size.height - band * scale) / 2;
-    return { scale, originX: 40, originY: top + typeface.metrics.ascender * scale };
+    return { scale, originX: side, originY: top + typeface.metrics.ascender * scale };
   }, [typeface, placed, size]);
 
   // Redrawn when the window moves to a screen of another density, which
@@ -180,15 +183,22 @@ export function KerningView(): React.JSX.Element | null {
     : { value: 0, source: "none" as const };
 
   return (
-    <div className="flex min-h-0 flex-1">
-      <div className="flex min-w-0 flex-1 flex-col">
+    /*
+      On a phone the pairs go under the line rather than beside it. Beside it
+      they left the line a column about a hundred and thirty pixels wide, which
+      fitted the proof at a size nobody could kern by. Under it the line gets
+      the width of the screen and a fixed height it is fitted into, and the
+      list takes what is left of the first screenful and scrolls on its own.
+    */
+    <div className="flex min-h-0 flex-1 max-md:flex-col">
+      <div className="flex min-w-0 flex-1 flex-col max-md:flex-none">
         <CoachMark id="kerning" />
-        <div className="flex items-center gap-3 border-b border-border px-4 py-2.5">
+        <div className="flex items-center gap-3 border-b border-border px-4 py-2.5 max-md:flex-wrap max-md:gap-y-1.5">
           <input
             value={state.previewText}
             onChange={(event) => store.setPreviewText(event.target.value)}
             placeholder="Type text to kern"
-            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2.5 text-xs-plus outline-none focus-visible:border-accent"
+            className="h-8 min-w-0 flex-1 rounded-md border border-input bg-card px-2.5 text-xs-plus outline-none focus-visible:border-accent max-md:basis-full"
             aria-label="Preview text"
           />
           <span className="shrink-0 text-2xs text-muted-foreground">
@@ -198,7 +208,7 @@ export function KerningView(): React.JSX.Element | null {
 
         <div
           ref={containerRef}
-          className="relative min-h-0 flex-1 bg-[var(--canvas)]"
+          className="relative min-h-0 flex-1 bg-[var(--canvas)] max-md:h-52 max-md:flex-none max-md:touch-pan-y"
           onPointerDown={(event) => {
             const rect = event.currentTarget.getBoundingClientRect();
             const pair = pairAtPosition(placed, view, event.clientX - rect.left);
@@ -262,7 +272,12 @@ export function KerningView(): React.JSX.Element | null {
         )}
       </div>
 
-      <aside className={cn(SIDE_PANEL, "flex shrink-0 flex-col border-l border-border")}>
+      <aside
+        className={cn(
+          SIDE_PANEL,
+          "flex shrink-0 flex-col border-l border-border max-md:min-h-0 max-md:flex-1",
+        )}
+      >
         <div className="flex gap-1 border-b border-border p-2">
           {(["pairs", "classes"] as const).map((option) => (
             <button
@@ -377,7 +392,7 @@ function PairEditor({
   const perMille = Math.round((value / unitsPerEm) * 1000);
 
   return (
-    <div className="flex items-center gap-4 border-t border-border px-4 py-2.5">
+    <div className="flex items-center gap-4 border-t border-border px-4 py-2.5 max-md:flex-wrap max-md:gap-y-2">
       <span className="font-mono text-xs-plus">
         {left} <span className="text-muted-foreground">/</span> {right}
       </span>

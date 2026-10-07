@@ -661,9 +661,10 @@ test("draws the symbols and writes them into the font", async ({ page }) => {
  * Every base drew 452 glyphs and none of these, so "don’t" -- or any text that
  * has been through a word processor -- set with holes in it. The grid has no
  * fixed count to update: it is every glyph the font draws, so it grew by
- * seventeen to 469, and what is checked is that the new ones are in it, in a
- * line of type, and in the file under the codepoints and names other fonts
- * use.
+ * seventeen, and what is checked is that the new ones are in it, in a line of
+ * type, and in the file under the codepoints and names other fonts use. (No
+ * total is checked or written here: it moves with every glyph added, and the
+ * bases do not all draw the same number.)
  */
 test("draws the typographic punctuation and writes it into the font", async ({ page }) => {
   const errors: string[] = [];
@@ -783,10 +784,11 @@ test("draws a family and downloads every weight of it", async ({ page }) => {
 /**
  * Widths beside the weights, in one file with two sliders.
  *
- * Ticked in the dialog and checked in the file by something that is not this
- * application: fontTools reads the axes and the named instances, which is
- * what a font menu shows somebody, and pins the font at the Condensed Bold to
- * see that it is narrower than the Bold.
+ * Ticked in the dialog and checked in the file: the axes are read straight out
+ * of its fvar table, and the browser -- a renderer that is not this
+ * application -- sets the Condensed Bold to see that it is narrower than the
+ * Bold. The named instances are checked against fontTools in
+ * `test/varying-widths.integration.test.ts`; the browser job has no Python.
  */
 test("draws a Condensed beside the Bold and downloads both sliders", async ({ page }) => {
   const errors: string[] = [];
@@ -810,8 +812,14 @@ test("draws a Condensed beside the Bold and downloads both sliders", async ({ pa
   await dialog.locator('[data-format="otf"]').click();
   await expect(dialog.locator("[data-width-note]")).toContainText("holds one width");
 
+  // The specimen shows the width as well as the weight.
+  await expect(page.locator('[data-forge-weight-label="400-75"]')).toHaveText("Condensed");
+  await expect(page.locator('[data-forge-specimen-line="400-75"]')).toBeVisible();
+
   await dialog.locator('[data-format="variable"]').click();
   await expect(dialog.locator('[data-format="variable"]')).toContainText("width slider");
+  // Four members, and one file: the button counts what is downloaded.
+  await expect(dialog.locator("[data-download-family]")).toHaveText("Download");
   const [download] = await Promise.all([
     page.waitForEvent("download", { timeout: 180_000 }),
     dialog.locator("[data-download-family]").click(),
