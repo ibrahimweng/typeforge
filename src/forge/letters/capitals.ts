@@ -13,6 +13,7 @@ import { sweep } from "../sweep";
 import type { Stroke } from "../types";
 import {
   apexRounded,
+  veeStroke,
   barWeight,
   enclosing,
   type Frame,
@@ -564,12 +565,8 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const top = at(left, f.cap);
     const other = at(middle + half, f.cap);
-    // Its point rounded as the A's apex is, upside down: see `apexRounded`.
-    const legs = apexRounded(f, half, f.cap, -1);
-    const point = corner(legs, top, at(middle, 0), other);
-    return finish(f, [
-      ink(legs, chain(straight(top, point), straight(point, other)), f.end, f.end),
-    ]);
+    // Its point drawn clean at a heavy weight: see `veeStroke`.
+    return finish(f, [veeStroke(f, top, at(middle, 0), other, f.end, f.end, -1)]);
   },
 
   W: (style) => {
