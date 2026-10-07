@@ -140,8 +140,20 @@ export function weightedStyle(style: Style, drawnAt: number, wanted: number): St
    * the letters drawn to the reference at the Regular's measures: a Thin
    * whose H was a hairline beside a D, an O and a Q still at the Regular's
    * weight, and a 1 with the Regular's flag.
+   *
+   * Except the capitals' extra weight towards the Thin (`metrics.capitalThin`):
+   * a member's capitals stand on its own pen, which is what everything that
+   * measures a letter in stems -- the cuts' grooves and slots -- takes them
+   * to stand on. On the pen and a fifteenth more, an inline groove took a
+   * tenth more of a Light H than of a Bold one.
    */
-  if (weight < was && style.metrics.lightHeld) return { ...style, pen: { ...style.pen, weight } };
+  if (weight < was && style.metrics.lightHeld) {
+    return {
+      ...style,
+      pen: { ...style.pen, weight },
+      metrics: { ...style.metrics, capitalThin: undefined },
+    };
+  }
   const gained = weight - was;
   /*
    * The counter is not allowed below what the pen can hold open.

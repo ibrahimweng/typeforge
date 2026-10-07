@@ -687,7 +687,17 @@ export function grotesqueCapitalQ(style: Style): Recipe {
   const f = frame(style);
   const [u, t] = spread(f);
   const lerp = (a: number, b: number) => a + (b - a) * Math.min(t, 1.5);
-  const X = (x: number) => f.edge - f.half + x * u;
+  /*
+   * Across by the ring's own width, which takes the face's width in its
+   * counter only (see `capitalRing`): taken across by the whole width, an
+   * Expanded Black's tail ran out past the ring as a wedge.
+   */
+  const [Xn, lerpNow] = squaredNow(f);
+  const k = Xn(1) - Xn(0);
+  const side = lerpNow(90, 201, 34);
+  const across = lerpNow(649, 720, 614);
+  const r = k > 0 ? ((across - 2 * side) * k + 2 * side) / across / k : 1;
+  const X = (x: number) => f.edge - f.half + x * u * r;
   /*
    * The Sans's a little narrower than its O, as Geist's is: 643 across at
    * the Regular to the O's 649, 608 at the Thin and 713 at the Black. On
