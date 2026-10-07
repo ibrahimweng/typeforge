@@ -1729,16 +1729,25 @@ export function veeStroke(
   };
   const share = apexSpike(f, half, tall, pointing)?.share ?? 0;
   const reckoned = corner(shaped, from, tip, to);
-  // And wherever the reckoning has come off a cliff, whatever the weight:
-  // the V of a pen of 200 stood its point 251 units off the line.
+  /*
+   * And wherever the reckoning stands off the line, on every face and at
+   * every weight: it counts a turn's reach as the pen's half, and a pen with
+   * contrast reaches less than that along the vee's bisector, more so the
+   * heavier it is -- the Ribbon's V stood 66 units over the line at 260, the
+   * Technical's 31 at 194, the Didone's and the scripts' 20 to 45 -- and where
+   * a narrow vee's turn rounds or not as its point moves, it came off a cliff
+   * altogether: the V of a pen of 200 stood its point 251 units off the line.
+   * A miss of a few units is left as it is, and the landing comes in over the
+   * next few, so no weight jumps from the one beside it.
+   */
   const first = reached(shaped, reckoned);
-  const lost = f.radius > 0 && !f.style.parts.script.on && Math.abs(first) > f.half * VEE_LOST;
-  if (!(share > 0) && !lost) return stroke(shaped, reckoned);
+  const drift = drawnAsIs(f) ? Math.min(1, Math.max(0, (Math.abs(first) - VEE_LET) / VEE_LET)) : 0;
+  const landing = Math.max(share, drift);
+  if (!(landing > 0)) return stroke(shaped, reckoned);
   /*
    * The point walked to the line, each step the miss and halved when it
-   * overshoots, and the nearest kept. Run in as the spike is: where the
-   * reckoning has not come off a cliff, the ink is walked to as far off the
-   * line as it stood, less the share of that the spike has come in by.
+   * overshoots, and the nearest kept: the ink walked to as far off the line
+   * as it stood, less the share of that the landing has come in by.
    */
   const walk = (legs: Frame): { point: Vec2; miss: number } => {
     const off = (point: Vec2) => reached(legs, point) - aim;
@@ -1756,7 +1765,7 @@ export function veeStroke(
     }
     return best;
   };
-  const aim = lost ? 0 : first * (1 - share);
+  const aim = first * (1 - landing);
   const landed = walk(shaped);
   if (Math.abs(landed.miss) <= 1) return stroke(shaped, landed.point);
   /*
@@ -1769,8 +1778,23 @@ export function veeStroke(
   return stroke(sharp, walk(sharp).point);
 }
 
-/** How far, in half-pens, a vee's point may miss its line before it is landed at any weight. */
-const VEE_LOST = 1;
+/**
+ * Whether a vee is inked as it is drawn here, so its own sweep says where its
+ * point lands: not on a written hand, whose letters are joined and shaped
+ * after, nor on a text serif that takes its vees apart to thin the rising arm
+ * (`splitVees` in `build.ts`).
+ */
+function drawnAsIs(f: Frame): boolean {
+  const { script, slab } = f.style.parts;
+  if (script.on) return false;
+  return !(f.style.metrics.risingHairline && slab.on && slab.shape === "wedge");
+}
+
+/**
+ * How far, in units, a vee's point may miss its line and be left as it is,
+ * and over how much more the landing comes in whole: see `veeStroke`.
+ */
+const VEE_LET = 3;
 
 /** The one-corner case, which is most of them. */
 export function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {
