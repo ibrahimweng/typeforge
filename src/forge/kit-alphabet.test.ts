@@ -7,6 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { longEnoughFor } from "../../test/fixtures";
 
 import { ready, unite } from "@/font/boolean";
 import { contourArea } from "@/font/geometry";
@@ -15,6 +16,15 @@ import { draw, layOut, startFrom, useKit as onGrid } from "./document";
 import { cellKey, GRID, type Tiles, unitOf } from "./kit";
 import { DRAWN_ON_GRID, drawnTiles } from "./kit-alphabet";
 import { BASES, SANS, type Style } from "./style";
+
+/**
+ * The budget for the slow tests below.
+ *
+ * They take under a second and about two seconds on a development machine. Asked of
+ * `longEnoughFor`, so a coverage run gets the room instrumenting costs, and
+ * kept to this rather than five minutes, so a hang still reads as one.
+ */
+const SLOW = longEnoughFor(30_000);
 
 /** A document started from a base, its letters laid on the grid. */
 const gridded = (base: Style) => onGrid(layOut(startFrom(base)), true);
@@ -93,7 +103,7 @@ describe("the alphabet drawn for the grid", () => {
     expect(drawnTiles("c", { ...GRID, below: 1 })).toBeNull();
   });
 
-  it("keeps the counters of the round letters through the fuse", async () => {
+  it("keeps the counters of the round letters through the fuse", { timeout: SLOW }, async () => {
     // A ring of four full-roundness turns came out of the fuse solid.
     await ready();
     const grid = onGrid(layOut(startFrom(SANS)), true);
@@ -106,9 +116,9 @@ describe("the alphabet drawn for the grid", () => {
       const holes = fused.filter((one) => contourArea(one) < 0).length;
       expect(holes, letter).toBe(letter === "Y" ? 0 : 1);
     }
-  }, 60_000);
+  });
 
-  it("stays legible on every base's own pen", async () => {
+  it("stays legible on every base's own pen", { timeout: SLOW }, async () => {
     /*
      * The a's bowl and the e's eye are one row high, and on the Ribbon and
      * the Fairground, whose level runs are a whole cell deep, they closed
@@ -135,7 +145,7 @@ describe("the alphabet drawn for the grid", () => {
       }
     }
     expect(shut).toEqual([]);
-  }, 300_000);
+  });
 
   it("is what a new grid starts from", () => {
     const kit = layOut(startFrom(SANS)).kit!;

@@ -8,6 +8,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { longEnoughFor } from "../../test/fixtures";
 
 import { builtFrom } from "./build";
 import { readyToShape } from "./layers";
@@ -15,6 +16,15 @@ import { noCuts, type Cuts } from "./cut";
 import { startFrom, type Forge } from "./document";
 import { troubles } from "./health";
 import { BRUSH, DISPLAY, HANDWRITING, MARKER, ROUNDHAND, SANS, SERIF } from "./style";
+
+/**
+ * The budget for the slow tests below.
+ *
+ * They take under a second each on a development machine. Asked of
+ * `longEnoughFor`, so a coverage run gets the room instrumenting costs, and
+ * kept to this rather than five minutes, so a hang still reads as one.
+ */
+const SLOW = longEnoughFor(30_000);
 
 const heavier = (forge: Forge, weight: number): Forge => ({
   ...forge,
@@ -171,7 +181,7 @@ describe("what has gone wrong", () => {
     expect(found).toBeDefined();
   });
 
-  it("says nothing about the join of a joined face", () => {
+  it("says nothing about the join of a joined face", { timeout: SLOW }, () => {
     /*
      * A joined letter reaches back into the one before on purpose -- that is
      * the join -- and a written capital enters by a swash that hangs there.
@@ -185,9 +195,9 @@ describe("what has gone wrong", () => {
       const joined = (found?.letters ?? []).filter((letter) => /^[a-z]$|^[BDFIPTY]$/.test(letter));
       expect(joined, base.name).toEqual([]);
     }
-  }, 120_000);
+  });
 
-  it("does not count an accent standing over a leaning I as touching", () => {
+  it("does not count an accent standing over a leaning I as touching", { timeout: SLOW }, () => {
     /*
      * Stood upright to be measured, a grave over a leaning I swung left of the
      * I's origin by its height times the lean -- but the letter before leans
@@ -202,7 +212,7 @@ describe("what has gone wrong", () => {
       );
       expect(accentedI, base.name).toEqual([]);
     }
-  }, 120_000);
+  });
 
   it("names the letters rather than only the fault", () => {
     // The whole point is being able to go and look at one.
