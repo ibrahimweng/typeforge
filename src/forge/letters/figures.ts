@@ -39,6 +39,16 @@ import {
   towards,
 } from "./common";
 
+/**
+ * How much wider than its Normal an Expanded draws, as a divisor for a
+ * measure already taken off the figure's width: one on the Normal and on a
+ * Condensed. The six's and the nine's bowls are as wide as half the figure,
+ * which the width axis has already widened, and bent round on the face's
+ * width (`bendWidth`) they were widened twice -- an Expanded's six stood half
+ * as wide again as its nought and ran out of its own column.
+ */
+const expanded = (f: { style: Style }): number => Math.max(widthShare(f.style), 1);
+
 export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- figures -----------------------------------------------------------
 
@@ -391,7 +401,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
             radius,
             90,
             -150,
-            bendWidth(f, radius) + grown,
+            bendWidth(f, radius / expanded(f)) + grown,
           ),
         ),
         BUTT,
@@ -435,7 +445,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       f.least,
     );
     // Wider rather than taller at a heavy weight: see `heavyFigure`.
-    const wide = bendWidth(f, round) + grown;
+    const wide = bendWidth(f, round / expanded(f)) + grown;
     const centre = at(left + round + grown, f.dip(0) + radius);
     const hood = Math.max(f.crest(f.cap) - radius, centre.y);
     return finish(
@@ -536,7 +546,7 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       ),
       f.least,
     );
-    const wide = bendWidth(f, round) + grown;
+    const wide = bendWidth(f, round / expanded(f)) + grown;
     const centre = at(left + round + grown, f.crest(f.cap) - radius);
     const foot = Math.min(f.dip(0) + radius, centre.y);
     return finish(

@@ -119,9 +119,13 @@ const DRAWN: Record<string, Run[]> = {
    * An S as narrow as the figures, and its bar half a cell out past it at
    * either end, carried in to the S's own runs. Traced from the skeleton, the
    * bar came off in a block a cell clear of the S with spurs round its ends,
-   * and stood a whole cell over the cap height, past the line.
+   * and stood a whole cell over the cap height, past the line. Carried on
+   * into the cells over the cap height and under the baseline as well, it
+   * still reached a whole cell past the S, and past the line on the faces
+   * whose ascender is their cap height: so half a cell, to the cap height
+   * and the baseline, and no further.
    */
-  dollar: ["2,4 0,4 0,2 2,2 2,0 0,0", "1,4:n", "1,5:s", "1,0:s", "1,-1:n"],
+  dollar: ["2,4 0,4 0,2 2,2 2,0 0,0", "1,4:n", "1,0:s"],
   /*
    * And three more whose skeletons put a run on the cap line itself, which
    * the half-cell lattice a skeleton is traced onto rounds onto the line and

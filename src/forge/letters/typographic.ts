@@ -36,6 +36,7 @@ import {
   type Frame,
   frame,
   inherit,
+  openedRing,
   ink,
   joined,
   type LetterName,
@@ -458,6 +459,9 @@ function florin(f: Frame, letter: Stroke[]): Stroke[] {
 /** How much lighter a per mille's two small rings are by a Black: see `perthousand`. */
 const PER_MILLE_LIGHTER = 0.4;
 
+/** The least a per mille's smaller rings keep open: a share of their stem, and of the em. */
+const PER_MILLE_OPEN: [number, number] = [0.4, 0.05];
+
 export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   /*
    * The per mille: the percent with a second ring beside its lower one, as
@@ -508,14 +512,29 @@ export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> =
       share < 1 && f.style.metrics.monospaced
         ? Math.min(1, Math.max(0, (blackness(f.style) - 0.45) / 0.55))
         : 0;
+    /*
+     * And never so heavy for their size that their counters shut: lighter
+     * again, where they are drawn smaller, until each keeps two fifths of
+     * the smaller ring's stem across and never under a twentieth of an em
+     * (`PER_MILLE_OPEN`), on a Condensed of the width axis, where the
+     * typewriter's were pinholes from 142.
+     */
+    const open = Math.max(
+      f.half * 2 * share * PER_MILLE_OPEN[0],
+      f.style.metrics.unitsPerEm * PER_MILLE_OPEN[1],
+    );
     const small = lower.map((stroke) => {
       const one = scaledStroke(stroke, share, about);
-      return heavy > 0
-        ? inherit(one, {
-            ...one,
-            pen: { ...one.pen, weight: one.pen.weight * (1 - PER_MILLE_LIGHTER * heavy) },
-          })
-        : one;
+      const lightened =
+        heavy > 0
+          ? inherit(one, {
+              ...one,
+              pen: { ...one.pen, weight: one.pen.weight * (1 - PER_MILLE_LIGHTER * heavy) },
+            })
+          : one;
+      return share < 1 && widthShare(f.style) < 1 && stroke.spine.closed
+        ? openedRing(lightened, open)
+        : lightened;
     });
     return {
       strokes: [
