@@ -11,7 +11,7 @@ import { bowlPoint, spineEnd, spineStart } from "../shapes";
 import type { Style } from "../style";
 import type { Spine, Stroke } from "../types";
 import {
-  apexRounded,
+  veeStroke,
   archSpine,
   arm,
   at,
@@ -267,11 +267,9 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const foot = at(left, 0);
     const other = at(middle + half, 0);
-    // Its apex rounded as the A's is: see `apexRounded`.
-    const legs = apexRounded(f, half, f.cap);
-    const peak = corner(legs, foot, at(middle, f.cap), other);
+    // Its apex drawn clean at a heavy weight: see `veeStroke`.
     return finish(f, [
-      ink(legs, chain(straight(foot, peak), straight(peak, other)), BUTT, BUTT),
+      veeStroke(f, foot, at(middle, f.cap), other, BUTT, BUTT, 1),
       ink(f, straight(at(left, f.sits(0)), at(middle + half, f.sits(0))), f.end, f.end),
     ]);
   },
@@ -303,10 +301,8 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const foot = at(left, 0);
     const other = at(middle + half, 0);
-    // Its apex rounded as the A's is: see `apexRounded`.
-    const legs = apexRounded(f, half, f.cap);
-    const peak = corner(legs, foot, at(middle, f.cap), other);
-    return finish(f, [ink(legs, chain(straight(foot, peak), straight(peak, other)), f.end, f.end)]);
+    // Its apex drawn clean at a heavy weight: see `veeStroke`.
+    return finish(f, [veeStroke(f, foot, at(middle, f.cap), other, f.end, f.end, 1)]);
   },
 
   /** Three bars and no stem, the middle one held in at both ends. */

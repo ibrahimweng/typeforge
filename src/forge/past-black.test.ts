@@ -1,9 +1,10 @@
 /**
- * Four letters held together past the Black, at the slider's heaviest, where
- * each came apart in its own way: the Sans's nine with notches for counter
- * corners, the Serif's s shrinking as the pen grew, the Technical's M with a
- * spike up out of its valley, and the Sans's Q with its tail out past its
- * ring on a narrow width.
+ * Letters held together past the Black, at the slider's heaviest, where each
+ * came apart in its own way: the Sans's nine and six with notches for counter
+ * corners, the Serif's s shrinking as the pen grew, the Technical's M and A
+ * with a spike of white into the turn, its V, v, delta and lambda with a
+ * needle in the point and standing off their lines, and the Sans's Q with
+ * its tail out past its ring on a narrow width.
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
@@ -83,6 +84,20 @@ describe("the Sans's nine past the Black", () => {
   });
 });
 
+describe("the Sans's six past the Black", () => {
+  it("keeps the corners of its counter round", () => {
+    // At 260 the counter came to a notch at its lower right, turning 51
+    // degrees in one step.
+    for (const weight of [220, 240, 260]) {
+      const holes = unite(draw("six", at("Sans", weight)).contours, "winding").filter(
+        (contour) => contourArea(contour) < 0,
+      );
+      expect(holes.length, `six at ${weight}`).toBe(1);
+      expect(sharpest(holes[0]), `six at ${weight}`).toBeLessThan(25);
+    }
+  });
+});
+
 describe("the Serif's s past the Black", () => {
   it("sits no higher off the o's line than at the Black, and is no narrower", () => {
     // At 260 it stood on -4 where the o dips to -16 (the Black's on -12),
@@ -102,24 +117,113 @@ describe("the Serif's s past the Black", () => {
   });
 });
 
+/** How many rows the white at the middle of a letter is a sliver under a tenth of the pen. */
+function sliver(contours: Contour[], pen: number): number {
+  const box = contoursBounds(contours);
+  const middle = (box.xMin + box.xMax) / 2;
+  let rows = 0;
+  for (let y = box.yMin; y <= box.yMax; y += 1) {
+    const ink = row(contours, y);
+    if (ink.some(([left, right]) => left <= middle && middle <= right)) continue;
+    const left = Math.max(...ink.filter(([, right]) => right < middle).map(([, r]) => r));
+    const right = Math.min(...ink.filter(([l]) => l > middle).map(([l]) => l));
+    if (right - left < pen * 0.1) rows++;
+  }
+  return rows;
+}
+
+/**
+ * How far the white inside a vee runs on past where its legs' inner edges,
+ * carried on straight, would meet: the legs fitted where the white between
+ * them is from half a pen to a pen and a half across. Nought where there is
+ * too little of that to fit.
+ */
+function needle(contours: Contour[], pen: number, pointing: number): number {
+  const box = contoursBounds(contours);
+  const middle = (box.xMin + box.xMax) / 2;
+  const left: Array<[number, number]> = [];
+  const right: Array<[number, number]> = [];
+  let tip = pointing < 0 ? Infinity : -Infinity;
+  for (let y = box.yMin; y <= box.yMax; y += 1) {
+    const ink = row(contours, y);
+    if (ink.some(([l, r]) => l <= middle && middle <= r)) continue;
+    const l = Math.max(...ink.filter(([, r]) => r < middle).map(([, r]) => r));
+    const r = Math.min(...ink.filter(([x]) => x > middle).map(([x]) => x));
+    if (!Number.isFinite(l) || !Number.isFinite(r)) continue;
+    tip = pointing < 0 ? Math.min(tip, y) : Math.max(tip, y);
+    if (r - l > pen * 0.5 && r - l < pen * 1.5) {
+      left.push([l, y]);
+      right.push([r, y]);
+    }
+  }
+  if (left.length < 3) return 0;
+  const line = (points: Array<[number, number]>) => {
+    const my = points.reduce((sum, p) => sum + p[1], 0) / points.length;
+    const mx = points.reduce((sum, p) => sum + p[0], 0) / points.length;
+    let num = 0;
+    let den = 0;
+    for (const [x, y] of points) {
+      num += (y - my) * (x - mx);
+      den += (y - my) ** 2;
+    }
+    const b = num / den;
+    return { a: mx - b * my, b };
+  };
+  const l = line(left);
+  const r = line(right);
+  const meet = (r.a - l.a) / (l.b - r.b);
+  return pointing < 0 ? meet - tip : tip - meet;
+}
+
 describe("the Technical's M at the slider's heaviest", () => {
   it("rounds its valley without a spike of white up into it", () => {
-    // How many rows the white between the diagonals is a sliver under a
-    // tenth of the pen: 41 at 260, a spike as the A's apex had.
+    // 41 rows of sliver at 260, a spike as the A's apex had.
     for (const width of [75, 100, 125]) {
       const style = at("Technical", 260, width);
-      const { contours } = draw("M", style);
-      const box = contoursBounds(contours);
-      const middle = (box.xMin + box.xMax) / 2;
-      let sliver = 0;
-      for (let y = box.yMin; y <= box.yMax; y += 1) {
-        const ink = row(contours, y);
-        if (ink.some(([left, right]) => left <= middle && middle <= right)) continue;
-        const left = Math.max(...ink.filter(([, right]) => right < middle).map(([, r]) => r));
-        const right = Math.min(...ink.filter(([l]) => l > middle).map(([l]) => l));
-        if (right - left < style.pen.weight * 0.1) sliver++;
+      expect(sliver(draw("M", style).contours, 260), `M at width ${width}`).toBeLessThan(10);
+    }
+  });
+});
+
+describe("the Technical's A and M between the Black and the heaviest", () => {
+  it("round their turns in step with the spike, leaving no sliver on the way", () => {
+    // The wider round came in whole at a quarter of the pen and not before:
+    // 47 and 36 rows of sliver at 230.
+    for (const weight of [210, 220, 230, 245]) {
+      for (const width of [75, 100, 125]) {
+        const style = at("Technical", weight, width);
+        for (const name of ["A", "M"]) {
+          const rows = sliver(draw(name, style).contours, weight);
+          expect(rows, `${name} at ${weight}, width ${width}`).toBeLessThan(10);
+        }
       }
-      expect(sliver, `M at width ${width}`).toBeLessThan(10);
+    }
+  });
+});
+
+describe("the Technical's vees at a heavy weight", () => {
+  it("meet clean in the point and stand on their lines", () => {
+    // A needle of white 20 to 30 units on past the legs' meeting on an
+    // Expanded at 230 and 260, and the V stood its point 67 units off the
+    // line at 260.
+    for (const weight of [230, 260]) {
+      for (const width of [75, 100, 125]) {
+        const style = at("Technical", weight, width);
+        const { capHeight } = style.metrics;
+        for (const [name, pointing, line] of [
+          ["V", -1, 0],
+          ["v", -1, 0],
+          ["\u0394", 1, capHeight],
+          ["\u039b", 1, capHeight],
+        ] as const) {
+          const { contours } = draw(name, style);
+          const where = `${name} at ${weight}, width ${width}`;
+          expect(needle(contours, weight, pointing), where).toBeLessThan(3);
+          const box = contoursBounds(contours);
+          const reached = pointing < 0 ? box.yMin : box.yMax;
+          expect(Math.abs(reached - line), where).toBeLessThan(3);
+        }
+      }
     }
   });
 });

@@ -2919,7 +2919,17 @@ export function grotesqueSixSided(style: Style): Recipe {
   const f = frame(lighterAcross(style));
   // Geist cuts the hood lower at the Black: 520 against 552.
   const [, now] = squaredNow(f);
-  return finish(f, sixStrokes(f, true, now(552, 520, 552)), true);
+  /*
+   * Past the Black its bowl's corners turn rounder than the pen's limit, as
+   * the nine's do (see `nineOf`): held at the limit the counter came to a
+   * notch at its lower right, 51 degrees in one step at a pen of 260.
+   */
+  const room = 1 + (FIGURE_ROOM - 1) * figuresBeyondBlack(f);
+  return finish(
+    f,
+    sixStrokes(f, true, now(552, 520, 552), sixFit(f), SIX_BOWL, 0, figureCrown(f), room),
+    true,
+  );
 }
 
 /** The six's and the nine's correction: see `figureFit`. */
@@ -3104,12 +3114,20 @@ export function grotesqueNineSided(style: Style): Recipe {
 }
 
 /**
- * How much rounder than the pen's limit the Sans's nine's corners turn at a
- * pen of 260 (held where the bowl has no room for it): see `nineOf`.
+ * How much rounder than the pen's limit the Sans's six's and nine's corners
+ * turn at a pen of 260 (held where the bowl has no room for it): see `nineOf`.
  */
-const NINE_ROOM = 1.35;
+const FIGURE_ROOM = 1.35;
 /** And how full its lower and upper left are there, against the Black's 0.45 and 0.2. */
 const NINE_ROUNDED = 0.03;
+
+/**
+ * How far past the Black the Sans's figures are drawn: nought to a pen of 194
+ * on a 530 x-height, one at 260 and held there.
+ */
+function figuresBeyondBlack(f: Frame): number {
+  return Math.min(Math.max(((f.style.pen.weight / f.xOwn) * 530 - 194) / (260 - 194), 0), 1);
+}
 
 function nineOf(style: Style, sans: boolean): Recipe {
   const f = frame(lighterAcross(style));
@@ -3140,9 +3158,7 @@ function nineOf(style: Style, sans: boolean): Recipe {
    * both run in from nothing at the Black and whole at a pen of 260 on a
    * 530 x-height. The Black itself is drawn as it was.
    */
-  const beyond = sans
-    ? Math.min(Math.max(((f.style.pen.weight / f.xOwn) * 530 - 194) / (260 - 194), 0), 1)
-    : 0;
+  const beyond = sans ? figuresBeyondBlack(f) : 0;
   const lowerLeft = knot([0.1, 0.25, 0.3, 0.45, 0.45]) + (NINE_ROUNDED - 0.45) * beyond;
   const upperLeft = SIX_BOWL[3] + (NINE_ROUNDED - SIX_BOWL[3]) * beyond;
   return finish(
@@ -3160,7 +3176,7 @@ function nineOf(style: Style, sans: boolean): Recipe {
       sans ? [lowerLeft, SIX_BOWL[1], SIX_BOWL[2], upperLeft] : SIX_BOWL,
       sans ? knot([12, 0, 0, 0, 0]) : 0,
       figureCrown(f) * (sans ? knot([1, 1, 1, 0.9, 0.85]) : 1),
-      1 + (NINE_ROOM - 1) * beyond,
+      1 + (FIGURE_ROOM - 1) * beyond,
     ).map((stroke) => turnedStroke(stroke, about)),
     true,
   );

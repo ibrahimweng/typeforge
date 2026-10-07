@@ -1586,29 +1586,191 @@ export function corners(f: Frame, tips: Vec2[]): Vec2[] {
  * stands down into the counter there.
  */
 export function apexRounded(f: Frame, half: number, tall: number, pointing = 1): Frame {
-  if (!(f.radius > 0) || f.style.parts.script.on) return f;
+  const asked = apexSpike(f, half, tall, pointing);
+  if (!asked) return f;
+  const { share, across, up, sin, wanted } = asked;
+  const clears = ((across / sin - up) / (1 / sin - 1)) * APEX_CLEAR;
+  return { ...f, radius: wanted + (clears - wanted) * share };
+}
+
+/**
+ * How far an apex's inside would stand past where its legs' insides meet, as
+ * a share of the way from where that is let be (`APEX_FROM`) to where it is
+ * cleared whole (`APEX_SPIKE`), with what it was worked out from. Nothing on
+ * a face that does not round its corners, or where there is no spike.
+ */
+function apexSpike(
+  f: Frame,
+  half: number,
+  tall: number,
+  pointing: number,
+): { share: number; across: number; up: number; sin: number; wanted: number } | null {
+  if (!(f.radius > 0) || f.style.parts.script.on) return null;
   const long = Math.hypot(half, tall);
   const sin = half / long;
-  if (sin >= 0.999) return f;
+  if (sin >= 0.999) return null;
   // How far the pen reaches square across a leg, and straight up.
   const across = f.reach(at(tall / long, (-pointing * half) / long));
   const up = f.reach(at(0, pointing));
   const wanted = Math.max(f.radius, f.half * 1.05);
   // How far the inside of the arc would stand over where the legs' insides meet.
   const spike = across / sin - up - wanted * (1 / sin - 1);
-  if (!(spike > f.half * APEX_SPIKE)) return f;
-  return { ...f, radius: ((across / sin - up) / (1 / sin - 1)) * APEX_CLEAR };
+  const share = Math.min(1, (spike / f.half - APEX_FROM) / (APEX_SPIKE - APEX_FROM));
+  return share > 0 ? { share, across, up, sin, wanted } : null;
+}
+
+/**
+ * The frame a narrow vee's point is drawn in where it would leave a spike:
+ * the pen's contrast eased out, by as much as the spike is let in, and its
+ * weight set so the legs stand exactly as heavy across as they did.
+ *
+ * Past the Black a face's pen takes on contrast (`heavierPen`), which leaves
+ * the turn at a vee's point a third lighter than its legs, and the inside of
+ * the turn ran on past where the legs' insides meet as a needle of white: on
+ * the Technical's V at 260, 40 to 65 units of it. `apexRounded` clears an A's
+ * apex by rounding it wider, but a narrow vee has no leg to spare for that --
+ * let it take the legs, a Condensed V became a U. An even pen turns the point
+ * as heavy as the legs, and a turn no rounder than the face's own then meets
+ * them cleanly. Only the diagonals and the turn are drawn with it; the legs
+ * are as heavy as before, and every point is where it was.
+ */
+export function apexEvened(f: Frame, half: number, tall: number, pointing = 1): Frame {
+  const asked = apexSpike(f, half, tall, pointing);
+  if (!asked) return f;
+  const { pen } = f.style;
+  const long = Math.hypot(half, tall);
+  const sin = half / long;
+  const square = at(tall / long, (-pointing * half) / long);
+  const reach = (one: typeof pen, direction: Vec2) => {
+    const r = reachAlong(direction, penReach(one));
+    return Math.hypot(r.x, r.y);
+  };
+  // The pen at a contrast, weighted so the legs stand as heavy across as they did.
+  const at_ = (contrast: number) => {
+    const eased = { ...pen, contrast };
+    return {
+      ...eased,
+      weight: (eased.weight * asked.across) / Math.max(reach(eased, square), 1e-6),
+    };
+  };
+  // Whether a turn at the face's own radius on it leaves a spike.
+  const spiked = (one: typeof pen) => {
+    const wanted = Math.max(f.radius, (one.weight / 2) * 1.05);
+    return asked.across / sin - reach(one, at(0, pointing)) - wanted * (1 / sin - 1) > 0;
+  };
+  // As little of the contrast taken out as clears it: the point keeps as
+  // much of the face's squareness as it can.
+  let low = 0;
+  let high = pen.contrast;
+  if (spiked(at_(high))) {
+    for (let step = 0; step < 24; step++) {
+      const mid = (low + high) / 2;
+      if (spiked(at_(mid))) high = mid;
+      else low = mid;
+    }
+  } else low = high;
+  // Run in with the spike, from the face's own contrast.
+  const even = at_(Math.max(low, pen.contrast * (1 - asked.share)));
+  return {
+    ...f,
+    half: even.weight / 2,
+    style: { ...f.style, pen: even },
+    reach: (direction) => reach(even, direction),
+  };
 }
 
 /** How far past the radius that just clears it an apex is rounded: see `apexRounded`. */
 const APEX_CLEAR = 1.1;
 
 /**
- * How tall a spike an apex is left with before it is rounded wider, in
- * half-pens: a sliver of a few units at a text weight is under the pen's own
- * round and nobody sees it, and those letters are left as they were drawn.
+ * How tall a spike, in half-pens, an apex is rounded wide enough to clear
+ * whole at, and from how tall it starts to be (`APEX_FROM`), run in between.
+ * A sliver of a few units at a text weight is under the pen's own round and
+ * nobody sees it, and those letters are left as they were drawn: no apex at
+ * a Black reaches `APEX_FROM` (the Technical's stand at 0.15 at 194).
+ * Switched on whole at a quarter of the pen, as it was, the spike short of it
+ * was left whole: the Technical's A and M stood 47 and 36 rows of sliver at
+ * a pen of 230.
  */
-const APEX_SPIKE = 0.25;
+const APEX_SPIKE = 0.18;
+const APEX_FROM = 0.15;
+
+/**
+ * A vee's two legs meeting in one point, `pointing` down (a V) or up (a
+ * lambda), drawn so the point is clean at a heavy weight: on a pen evened at
+ * the point (`apexEvened`), and landed on its line by its ink.
+ *
+ * Landed by measuring, past where the spike comes in: `corner` reckons where
+ * a turn's ink reaches from the pen's half, and a pen with contrast reaches
+ * less than that straight down -- the Technical's V stood 67 units off the
+ * line at 260 -- while a narrow vee's turn near the length its legs can spare
+ * flips between rounded and not, and the reckoning with it: its v hung 112
+ * under the line at one weight and stood 51 over it at the next.
+ */
+export function veeStroke(
+  f: Frame,
+  from: Vec2,
+  tip: Vec2,
+  to: Vec2,
+  start: Terminal,
+  end: Terminal,
+  pointing: number,
+): Stroke {
+  const half = Math.abs(to.x - from.x) / 2;
+  const tall = Math.abs(tip.y - from.y);
+  const shaped = apexEvened(f, half, tall, pointing);
+  const stroke = (legs: Frame, point: Vec2) =>
+    ink(legs, chain(straight(from, point), straight(point, to)), start, end);
+  const reached = (legs: Frame, point: Vec2) => {
+    const ys = sweep(stroke(legs, point)).flatMap((contour) =>
+      contour.nodes.map((node) => node.point.y),
+    );
+    return (pointing < 0 ? Math.min(...ys) : Math.max(...ys)) - tip.y;
+  };
+  const share = apexSpike(f, half, tall, pointing)?.share ?? 0;
+  const reckoned = corner(shaped, from, tip, to);
+  // And wherever the reckoning has come off a cliff, whatever the weight:
+  // the V of a pen of 200 stood its point 251 units off the line.
+  const first = reached(shaped, reckoned);
+  const lost = f.radius > 0 && !f.style.parts.script.on && Math.abs(first) > f.half * VEE_LOST;
+  if (!(share > 0) && !lost) return stroke(shaped, reckoned);
+  /*
+   * The point walked to the line, each step the miss and halved when it
+   * overshoots, and the nearest kept. Run in as the spike is: where the
+   * reckoning has not come off a cliff, the ink is walked to as far off the
+   * line as it stood, less the share of that the spike has come in by.
+   */
+  const walk = (legs: Frame): { point: Vec2; miss: number } => {
+    const off = (point: Vec2) => reached(legs, point) - aim;
+    let point = corner(legs, from, tip, to);
+    let miss = off(point);
+    let best = { point, miss };
+    let step = 1;
+    for (let pass = 0; pass < 16 && Number.isFinite(miss) && Math.abs(miss) >= 0.5; pass++) {
+      const next = at(point.x, point.y - miss * step);
+      const after = off(next);
+      if (Math.sign(after) !== Math.sign(miss)) step /= 2;
+      point = next;
+      miss = after;
+      if (Math.abs(miss) < Math.abs(best.miss)) best = { point, miss };
+    }
+    return best;
+  };
+  const aim = lost ? 0 : first * (1 - share);
+  const landed = walk(shaped);
+  if (Math.abs(landed.miss) <= 1) return stroke(shaped, landed.point);
+  /*
+   * And where even that has no point that lands -- the legs too short to
+   * turn at the pen's round anywhere near the line, so it rounds above it
+   * and not below -- the point is left sharp, which the pen's own round
+   * finishes on the face's own pen, and that lands wherever it is asked to.
+   */
+  const sharp = { ...f, radius: 0 };
+  return stroke(sharp, walk(sharp).point);
+}
+
+/** How far, in half-pens, a vee's point may miss its line before it is landed at any weight. */
+const VEE_LOST = 1;
 
 /** The one-corner case, which is most of them. */
 export function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {
