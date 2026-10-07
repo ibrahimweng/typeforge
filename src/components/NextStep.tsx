@@ -100,7 +100,7 @@ export function NextStep({
       if (quill.document.letters.length === 0)
         return {
           id: "quill-read",
-          said: "Choose a font on the right to read it back into strokes you can reshape.",
+          said: "Choose a font to read it back into strokes you can reshape.",
         };
       return {
         id: "quill-hand",

@@ -115,6 +115,13 @@ const DRAWN: Record<string, Run[]> = {
   seven: ["0,4 2,4 2,3 1,2 1,0"],
   eight: ["1,2 0,3 0,4 2,4 2,3 1,2", "1,2 0,1 0,0 2,0 2,1 1,2"],
   nine: ["0,0 2,0 2,4 0,4 0,2 2,2"],
+  /*
+   * An S as narrow as the figures, and its bar half a cell out past it at
+   * either end, carried in to the S's own runs. Traced from the skeleton, the
+   * bar came off in a block a cell clear of the S with spurs round its ends,
+   * and stood a whole cell over the cap height, past the line.
+   */
+  dollar: ["2,4 0,4 0,2 2,2 2,0 0,0", "1,4:n", "1,5:s", "1,0:s", "1,-1:n"],
 };
 
 /** The port a step from one cell to its neighbour leaves by. */

@@ -24,8 +24,17 @@ import { type Frame, inkFrame, type Placed, viewBoxOf } from "@/components/ink-f
 import { letterNames, skeletonOf } from "@/forge/build";
 import { cellBox, cellKey, PORTS, portAt, rowsOf, unitOf } from "@/forge/kit";
 import { anyEffect } from "@/font/effects";
-import { effectsOf, familyOf, proof, unshaped, weighted, type Forge } from "@/forge/document";
-import { nameOfWeight, weightsOf } from "@/forge/family";
+import { anyShaping } from "@/forge/layers";
+import {
+  effectsOf,
+  familyOf,
+  proof,
+  unshaped,
+  weighted,
+  widthsFor,
+  type Forge,
+} from "@/forge/document";
+import { NORMAL_WIDTH, styleNameOf, weightsOf } from "@/forge/family";
 import { codepointsFor } from "@/forge/typeface";
 import {
   draw,
@@ -733,23 +742,44 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
   const state = useForge();
   const weights = weightsOf(familyOf(state.forge));
   /*
+   * And the widths, which the dialog offers on the same terms as the weights
+   * and which this used to leave out: a Condensed ticked in the dialog was a
+   * promise nothing on screen kept, while the Black ticked beside it got a
+   * line of its own.
+   *
+   * Each other width at the weight being drawn, rather than at every weight.
+   * A family of nine weights at five widths is forty-five fonts, and setting
+   * the line forty-five times on every frame of a drag is the cost the line
+   * below is careful about. One line a width shows what the width does; the
+   * weights are already shown one line each at the Normal.
+   */
+  const widths = widthsFor(state.forge);
+  /*
    * The same, and it matters more here: the specimen is set at every weight the
    * family has, so a line of twenty characters is eighty letters a frame.
    */
   const shown = state.resting ? state.forge : unshaped(state.forge);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: weights.join() compares the weights by content; the array itself is new every render.
-  const lines = React.useMemo(
-    () =>
-      weights.map((weight) => ({
-        weight,
-        name: nameOfWeight(weight),
-        drawn: weight === familyOf(shown).drawn,
-        ...setLine(weighted(shown, weight), state.specimen),
-      })),
+  // biome-ignore lint/correctness/useExhaustiveDependencies: weights.join() and widths.join() compare by content; the arrays themselves are new every render.
+  const lines = React.useMemo(() => {
+    const drawn = familyOf(shown).drawn;
+    const members = [
+      ...weights.map((weight) => ({ weight, width: NORMAL_WIDTH })),
+      ...widths
+        .filter((width) => width !== NORMAL_WIDTH)
+        .map((width) => ({ weight: drawn, width })),
+    ];
+    return members.map(({ weight, width }) => ({
+      weight,
+      // Named for the weight alone at the Normal, as it always was, so the
+      // attributes below still say which weight a line is.
+      key: width === NORMAL_WIDTH ? `${weight}` : `${weight}-${width}`,
+      name: styleNameOf(weight, width),
+      drawn: weight === drawn && width === NORMAL_WIDTH,
+      ...setLine(weighted(shown, weight, width), state.specimen),
+    }));
     // The forge and the text are what the lines are made of; the revision is
     // how everything else here knows a part moved underneath them.
-    [shown, state.specimen, revision, weights.join()],
-  );
+  }, [shown, state.specimen, revision, weights.join(), widths.join()]);
   const { metrics } = state.forge.style;
   // Every weight on the same height, taken from all of them, so the lines stay
   // at one size and whatever reaches past the ascender or descender -- an
@@ -788,16 +818,18 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
       <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-0.5 overflow-hidden">
         {lines.map((one) =>
           one.width > 0 ? (
-            <div key={one.weight} className="flex w-full min-w-0 items-center gap-2">
+            <div key={one.key} className="flex w-full min-w-0 items-center gap-2">
               {lines.length > 1 && (
                 <span
                   className={cn(
-                    "w-16 shrink-0 truncate text-right text-2xs tabular-nums",
+                    "shrink-0 truncate text-right text-2xs tabular-nums",
+                    // Room for "SemiCondensed Bold" once there are widths.
+                    widths.length > 1 ? "w-28" : "w-16",
                     state.reversed
                       ? "text-[color:var(--canvas)] opacity-60"
                       : "text-muted-foreground",
                   )}
-                  data-forge-weight-label={one.weight}
+                  data-forge-weight-label={one.key}
                 >
                   {one.name}
                 </span>
@@ -811,7 +843,7 @@ function Specimen({ revision }: { revision: number }): React.JSX.Element {
                 className={cn("w-auto max-w-full", lines.length > 1 ? "h-7" : "h-16")}
                 role="img"
                 aria-label={lines.length > 1 ? `Specimen ${one.name}` : "Specimen"}
-                data-forge-specimen-line={one.weight}
+                data-forge-specimen-line={one.key}
               >
                 <g
                   transform="scale(1,-1)"
@@ -866,7 +898,8 @@ const PROOF_RUN = 7;
  * How many glyphs the font draws, for the proof's size estimate: read off the
  * letters themselves rather than written down, so adding a glyph moves it. It
  * was a hard-coded 452, and stayed there when the typographic punctuation
- * took it to 469.
+ * added seventeen more; there is no fixed number to write here, since it
+ * moves with every glyph the letters gain and differs between the bases.
  */
 const GLYPH_COUNT = letterNames().length;
 
@@ -1500,6 +1533,25 @@ function framedIn(forge: Forge, pieces: Placed[], width: number): string {
   return viewBoxOf({ ...own, ...within(reachOf(forge), own) });
 }
 
+/**
+ * Whether a font has nothing cast or cut on it anywhere, so the letters the
+ * strip draws for it are already the finished ones.
+ *
+ * Asked of the settings rather than as `unshaped(forge) === forge`, which
+ * also wants the per-letter exceptions to be absent rather than empty -- and a
+ * font that has ever had one has an empty table for good.
+ */
+function nothingShaped(forge: Forge): boolean {
+  const none = (table: object | undefined) =>
+    table === undefined || Object.keys(table).length === 0;
+  return (
+    !anyShaping(forge.cuts, forge.cast) && none(forge.cutExceptions) && none(forge.castExceptions)
+  );
+}
+
+/** Near nothing: a cell made with this is an empty box the right size. */
+const NOWHERE: ReadonlySet<string> = new Set();
+
 function cellsOf(names: string[], near: ReadonlySet<string>, forge: Forge): Cell[] {
   return names.map((name) => cellOf(name, near, forge));
 }
@@ -1527,12 +1579,94 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
   const settled = held.current;
   const { near, watch } = useWhatIsNear(names);
 
+  /*
+   * A font with nothing cast or cut on it is drawn straight from the newest
+   * settled font, a few letters at a time, rather than held for the hand.
+   *
+   * The hold above is there for the layers: putting a cast back on the
+   * alphabet in a pause is what made a drag stall. Without any there is
+   * nothing to put back, only the letters -- and holding those too is what
+   * left the strip about two seconds behind the stage on a step of the weight
+   * slider from the keyboard, which never says it has finished: a sixth of a
+   * second of quiet, then the second and a fifth before a run nobody closed
+   * is given up for over, then the whole first screen drawn in one go.
+   *
+   * So the letters follow `settled`, which moves in any pause, and are made
+   * in the same short slices as the shapes below, so the work never holds the
+   * page and stops the moment the font moves on. Letters the font already
+   * drew for the stage or the specimen come out of the drawing cache. A font
+   * with layers on it keeps the hold and everything below, unchanged.
+   */
+  const latest = state.settled;
+  const draftable = nothingShaped(latest);
+  const [draft, setDraft] = React.useState<{
+    of: Forge;
+    cells: ReadonlyMap<string, Cell>;
+  } | null>(() =>
+    draftable
+      ? {
+          of: latest,
+          cells: new Map(cellsOf(names, near, latest).map((cell) => [cell.name, cell])),
+        }
+      : null,
+  );
+  const draftNow = React.useRef(draft);
+  draftNow.current = draft;
+  /*
+   * And set down again the moment the hand moves on. A pause in a drag
+   * settles the font as well, and drafting a font the hand has already left
+   * only takes the frames the next step of the drag wanted.
+   */
+  const moving = !state.resting && state.forge !== latest;
+  React.useEffect(() => {
+    if (!draftable || moving) return;
+    // What was made for this font already is kept, as the shapes below keep
+    // theirs, except a letter that was far then and is near now.
+    const made = new Map<string, Cell>();
+    const was = draftNow.current;
+    if (was?.of === latest)
+      for (const [name, cell] of was.cells) if (cell.d || !near.has(name)) made.set(name, cell);
+    const order = [
+      ...names.filter((name) => near.has(name) && !made.has(name)),
+      ...names.filter((name) => !near.has(name) && !made.has(name)),
+    ];
+    if (order.length === 0) {
+      if (was?.of !== latest) setDraft({ of: latest, cells: made });
+      return;
+    }
+    let at = 0;
+    let live = true;
+    let shown = performance.now();
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => {
+      if (!live) return;
+      const until = performance.now() + SLICE;
+      while (at < order.length && performance.now() < until) {
+        const name = order[at++];
+        made.set(name, cellOf(name, near, latest));
+      }
+      const done = at >= order.length;
+      if (done || performance.now() - shown >= BATCH) {
+        shown = performance.now();
+        setDraft({ of: latest, cells: new Map(made) });
+      }
+      if (!done) channel.port2.postMessage(null);
+    };
+    channel.port2.postMessage(null);
+    return () => {
+      live = false;
+      channel.port1.onmessage = null;
+      channel.port1.close();
+    };
+  }, [draftable, moving, latest, near, names]);
+
   // Without the layers, which is what the strip shows the instant a change
   // lands. Cheap enough to work out in a render: a letter with nothing cast on
-  // it is a handful of contours and a short path.
+  // it is a handful of contours and a short path. Not wanted at all while the
+  // letters come from the draft above.
   const plain = React.useMemo(
-    () => cellsOf(names, near, unshaped(settled)),
-    [names, near, settled],
+    () => (draftable ? [] : cellsOf(names, near, unshaped(settled))),
+    [draftable, names, near, settled],
   );
   /*
    * The shapes arrive a few frames after the letters do.
@@ -1572,6 +1706,8 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
   const ripeNow = React.useRef(ripe);
   ripeNow.current = ripe;
   React.useEffect(() => {
+    // The draft above is drawing this font, and it has no shapes to wait for.
+    if (draftable) return;
     // Nothing to put back on, so what is drawn already is the finished thing.
     // Asked for rather than assigned, because this runs again whenever the
     // visible set grows, and an answer that has not changed should not cost a
@@ -1628,7 +1764,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
       channel.port1.onmessage = null;
       channel.port1.close();
     };
-  }, [settled, near, names, plain]);
+  }, [draftable, settled, near, names, plain]);
   /*
    * The best each letter has, and whether it is the letter as it now stands.
    *
@@ -1647,6 +1783,20 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
    */
   const shown = React.useRef<ReadonlyMap<string, Cell>>(new Map());
   const cells = React.useMemo(() => {
+    /*
+     * Drawn from the draft: a letter it has made for the newest font is that
+     * letter, and one it has not got to yet keeps what it showed, dimmed. A
+     * letter never shown at all is an empty box the right size, which is what
+     * it was off screen.
+     */
+    if (draftable) {
+      const fresh = draft?.of === latest ? draft.cells : null;
+      return names.map((name) => {
+        const cell = fresh?.get(name);
+        if (cell) return { cell, waiting: false };
+        return { cell: shown.current.get(name) ?? cellOf(name, NOWHERE, latest), waiting: true };
+      });
+    }
     // Nothing cast or cut, and the plain letters are the letters.
     if (unshaped(settled) === settled) return plain.map((cell) => ({ cell, waiting: false }));
     const current = ripe?.of === settled ? ripe.cells : null;
@@ -1656,7 +1806,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
       const was = shown.current.get(cell.name);
       return { cell: was?.d ? was : cell, waiting: true };
     });
-  }, [ripe, settled, plain]);
+  }, [draftable, draft, latest, names, ripe, settled, plain]);
   React.useEffect(() => {
     shown.current = new Map(cells.map(({ cell }) => [cell.name, cell]));
   }, [cells]);

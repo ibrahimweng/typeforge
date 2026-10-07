@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sweep } from "./sweep";
+import { reachAcross, sweep } from "./sweep";
 import type { QuillJoinKind, QuillSpine, QuillStroke } from "./types";
 import type { Contour, Vec2 } from "@/font/types";
 
@@ -126,4 +126,107 @@ describe("the corners of a swept stroke", () => {
       }
     },
   );
+});
+
+/** The winding number of a contour around a point, its cubics flattened finely. */
+function windingAt(contour: Contour, point: Vec2): number {
+  const flat: Vec2[] = [];
+  const { nodes } = contour;
+  nodes.forEach((a, index) => {
+    const b = nodes[(index + 1) % nodes.length];
+    const c1 = a.handleOut ?? a.point;
+    const c2 = b.handleIn ?? b.point;
+    for (let step = 0; step < 32; step++) {
+      const t = step / 32;
+      const u = 1 - t;
+      const mix = (p: number, q: number, r: number, s: number) =>
+        u * u * u * p + 3 * u * u * t * q + 3 * u * t * t * r + t * t * t * s;
+      flat.push(P(mix(a.point.x, c1.x, c2.x, b.point.x), mix(a.point.y, c1.y, c2.y, b.point.y)));
+    }
+  });
+  let winding = 0;
+  flat.forEach((a, index) => {
+    const b = flat[(index + 1) % flat.length];
+    const side = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+    if (a.y <= point.y && b.y > point.y && side > 0) winding++;
+    else if (a.y > point.y && b.y <= point.y && side < 0) winding--;
+  });
+  return winding;
+}
+
+describe("a corner written with a contrasting nib", () => {
+  /*
+   * Two lines, the second turning away at about forty degrees, written with a
+   * broad nib held at an angle -- what the writing tool gives for three
+   * clicks. The pen reaches further across the steep line than across the
+   * shallow one, and the outline used to fold back on itself at the turn: the
+   * mitre ran behind the offsets on the outside and the chord ran back across
+   * the turn on the inside, and both loops wound the other way, which under
+   * the non-zero rule is a dark wedge in the ink.
+   *
+   * The writing tool's clicks are straight cubics with their handles on their
+   * ends rather than lines, and those had a second fault of their own: no
+   * heading at the far end of a segment, so the corner had no offsets at all.
+   * Both shapes of spine are checked.
+   *
+   * Checked against the ink the pen lays along each line on its own: every
+   * point inside either band is inside the outline.
+   */
+  const corners = [P(0, 0), P(60, 250), P(300, 420)];
+  const spines: Record<"lines" | "clicks", QuillSpine> = {
+    lines: {
+      segments: [
+        { kind: "line", from: corners[0], to: corners[1] },
+        { kind: "line", from: corners[1], to: corners[2] },
+      ],
+      closed: false,
+    },
+    clicks: {
+      segments: [
+        { kind: "cubic", from: corners[0], c1: corners[0], c2: corners[1], to: corners[1] },
+        { kind: "cubic", from: corners[1], c1: corners[1], c2: corners[2], to: corners[2] },
+      ],
+      closed: false,
+    },
+  };
+  const lines = [
+    { from: corners[0], to: corners[1] },
+    { from: corners[1], to: corners[2] },
+  ];
+  const nibs = [
+    { contrast: 0.55, angle: 30 },
+    { contrast: 0.8, angle: 80 },
+    { contrast: 0.7, angle: 100 },
+  ];
+
+  it.each(
+    (["lines", "clicks"] as const).flatMap((shape) =>
+      (["miter", "round", "bevel"] as const).flatMap((join) =>
+        nibs.map((nib) => [shape, join, nib] as const),
+      ),
+    ),
+  )("leaves no hole where %s turn at a %s corner (%o)", (shape, join, nib) => {
+    const stroke: QuillStroke = {
+      ...stroked(spines[shape], join),
+      width: [{ at: 0, width: 90 }],
+      nib: [{ at: 0, ...nib }],
+    };
+    const [contour] = sweep(stroke).contours;
+    const inInk = (point: Vec2): boolean =>
+      lines.some(({ from, to }) => {
+        const length = Math.hypot(to.x - from.x, to.y - from.y);
+        const heading = P((to.x - from.x) / length, (to.y - from.y) / length);
+        const along = (point.x - from.x) * heading.x + (point.y - from.y) * heading.y;
+        const across = Math.abs((point.x - from.x) * heading.y - (point.y - from.y) * heading.x);
+        // A unit inside the edge, so a fitted curve a hair off it is not a hole.
+        return along >= 0 && along <= length && across <= reachAcross(heading, 45, nib) - 1;
+      });
+    const holes: string[] = [];
+    for (let x = -60; x <= 140; x += 2) {
+      for (let y = 190; y <= 320; y += 2) {
+        if (inInk(P(x, y)) && windingAt(contour, P(x, y)) === 0) holes.push(`${x},${y}`);
+      }
+    }
+    expect(holes).toEqual([]);
+  });
 });

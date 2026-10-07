@@ -25,7 +25,7 @@ import type { Contour, Vec2 } from "@/font/types";
 import { contoursBounds } from "@/font/geometry";
 import { recipeOf } from "../letters";
 import { spineEnd, spineStart } from "../shapes";
-import { spacingOf, type Style } from "../style";
+import { blackness, spacingOf, type Style } from "../style";
 import { sweep } from "../sweep";
 import type { Spine, Stroke, Terminal } from "../types";
 import {
@@ -50,6 +50,7 @@ import {
   straight,
   thin,
   turnedStroke,
+  widthShare,
 } from "./common";
 
 /**
@@ -454,6 +455,9 @@ function florin(f: Frame, letter: Stroke[]): Stroke[] {
   return short > 0.5 ? make(short / 2) : first;
 }
 
+/** How much lighter a per mille's two small rings are by a Black: see `perthousand`. */
+const PER_MILLE_LIGHTER = 0.4;
+
 export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   /*
    * The per mille: the percent with a second ring beside its lower one, as
@@ -482,17 +486,37 @@ export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * the font with it. There its two lower rings are drawn smaller, side by
      * side in the room the percent's one had, as a typewriter's are. And on
      * any face never past an em and a half: at a heavy weight of a wide face
-     * the three rings ran two ems across.
+     * the three rings ran two ems across. An em and a half of the Normal,
+     * that is: held to it on an Expanded, a Black's two lower rings were
+     * drawn small enough to come out lighter than the Regular's.
      */
     const whole = inkBox(strokes);
     const limit = f.style.metrics.monospaced
       ? whole.xMax
-      : Math.max(whole.xMax, f.style.metrics.unitsPerEm * 1.5);
+      : Math.max(whole.xMax, f.style.metrics.unitsPerEm * 1.5 * Math.max(1, widthShare(f.style)));
     const share = Math.min(1, (limit - ring.xMin) / (2 * width + gap));
     // Drawn the same way whether it is taken down or not, so the glyph has
     // the same points on both sides of the weight where it starts to be.
     const about = at(ring.xMin, ring.yMin);
-    const small = lower.map((stroke) => scaledStroke(stroke, share, about));
+    /*
+     * And on a monospaced face, past the Bold, their pens lighter again than
+     * their size alone takes off: a ring drawn smaller on a pen as much
+     * smaller keeps its counter's share and not its size, and at 194 and 260
+     * the typewriter's two small counters were pinholes.
+     */
+    const heavy =
+      share < 1 && f.style.metrics.monospaced
+        ? Math.min(1, Math.max(0, (blackness(f.style) - 0.45) / 0.55))
+        : 0;
+    const small = lower.map((stroke) => {
+      const one = scaledStroke(stroke, share, about);
+      return heavy > 0
+        ? inherit(one, {
+            ...one,
+            pen: { ...one.pen, weight: one.pen.weight * (1 - PER_MILLE_LIGHTER * heavy) },
+          })
+        : one;
+    });
     return {
       strokes: [
         ...strokes.map((stroke) =>
@@ -563,7 +587,11 @@ export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> =
   // Spaced as the full stop is, being a bigger one: Geist's stands 44 off
   // either side to its full stop's 44.
   bullet: outOf("period", (f) => {
-    const radius = Math.min(stopRadius(f) * (bookish(f) ? 2.4 : 1.9), f.xOwn * 0.3);
+    // And a fifth past that again a quarter of what it would have grown, so
+    // a much heavier weight's is not the same dot as a lighter one's.
+    const wanted = stopRadius(f) * (bookish(f) ? 2.4 : 1.9);
+    const most = f.xOwn * 0.3;
+    const radius = Math.min(wanted, most) + Math.max(0, wanted - most * 1.2) * 0.25;
     return finish(f, [disc(f, radius, f.xOwn / 2)]);
   }),
 
@@ -595,12 +623,18 @@ export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * heavy: Geist's bars are 74 deep at the Regular and under a hundred at
      * the Black, and Lora's are as deep as its hyphen. At the stem's own
      * weight a Black's two bars filled the counter between them, and on a
-     * pen with contrast they were hairlines. And out past the bowl by more
-     * as the bowl's back thickens, or at a Black they hid inside it.
+     * pen with contrast they were hairlines.
+     *
+     * Heavier with the stem but a long way behind it: Geist Black's are 85
+     * deep on a stem of 194 (0.44 of it). At 0.55 of the stem a heavy
+     * weight's bars stood as deep as slabs and filled the counter between
+     * them. And out past the bowl by a tenth of the cap height at every
+     * weight, as Geist's Black's are by 60: reached out by half a stem, a
+     * heavy weight's ran out like two planks nailed across the C.
      */
     const stem = f.style.pen.weight;
-    const deep = Math.min(stem, Math.max(stem * 0.55, f.xOwn * 0.14));
-    const out = Math.max(f.cap * 0.1, stem * 0.55);
+    const deep = Math.min(stem, Math.max(stem * 0.44, f.xOwn * 0.14));
+    const out = f.cap * 0.1;
     const middle = f.cap * 0.485;
     const apart = Math.max(f.cap * 0.125, deep * 0.9);
     const reach = box.xMin + (box.xMax - box.xMin) * 0.5;

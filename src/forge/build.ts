@@ -478,9 +478,34 @@ function drawnFresh(
       ? wobbled(inked.flat())
       : null;
   const measured = upright ?? solid;
+  /*
+   * And a letter of a face drawn leaning, placed by its leaning ink, never
+   * stood back upright past its own origin: where the next letter's ink is
+   * at that height, which is how the health check measures a collision (see
+   * `leftEdge` in `health.ts`). A bar or a mark standing high on a leaning
+   * letter -- the ł's bar, the Ħ's, the Đ's, a free-standing tilde or double
+   * acute -- swung back left of the origin by its height times the lean,
+   * into the letter before. Only those move: every other letter already
+   * stands clear of its origin by more than this.
+   */
+  const standing =
+    lean !== 0 &&
+    !upright &&
+    !style.metrics.monospaced &&
+    !laid &&
+    !joinsUp &&
+    !joinEnds(name).entry &&
+    form !== "written" &&
+    solid.length > 0
+      ? uprightLeft(inked.flat(), style)
+      : null;
   const shortfall =
     measured.length > 0 && !joinsUp
-      ? Math.max(0, spacingOf(style) - contoursBounds(measured).xMin)
+      ? Math.max(
+          0,
+          spacingOf(style) - contoursBounds(measured).xMin,
+          standing === null ? 0 : style.metrics.unitsPerEm * UPRIGHT_CLEAR - standing,
+        )
       : 0;
   const placed = slid(cut, shortfall);
   const placedSolid = upright
@@ -545,6 +570,30 @@ function drawnFresh(
    * measured off another font, say) hung the tail further back the wider it
    * was, and into the letter before.
    */
+  /*
+   * And a dash stands off its neighbours by at least two fifths of its own
+   * depth (`DASH_SIDE`). Geist and Lora close their dashes with the n, as the
+   * fitting does, which at a text weight leaves them a little over half a
+   * dash deep either side; at a Black the bar is twice as deep and the white
+   * beside it a third less, and "1–9" and "H—H" read as one long bar.
+   */
+  if (
+    DASHES.has(name) &&
+    !style.metrics.monospaced &&
+    !laid &&
+    !joinsUp &&
+    placedSolid.length > 0
+  ) {
+    const ink = contoursBounds(placedSolid);
+    const least = (ink.yMax - ink.yMin) * DASH_SIDE;
+    const left = least - (ink.xMin + centring);
+    if (left > 0) {
+      centring += left;
+      advanceWidth += left;
+    }
+    const right = least - (advanceWidth - ink.xMax - centring);
+    if (right > 0) advanceWidth += right;
+  }
   const hang = fittedSides && placedSolid.length > 0 ? overhangOf(name, style) : 0;
   if (hang > 0) {
     const short = -hang - (contoursBounds(placedSolid).xMin + centring);
@@ -758,6 +807,20 @@ function shoved(contours: Contour[], by: Vec2): Contour[] {
   return moved(contours, (point) => ({ x: point.x + by.x, y: point.y + by.y }));
 }
 
+/**
+ * Where a letter's ink starts stood upright, leaving out anything wholly over
+ * the ascender, as `leftEdge` in `health.ts` measures it. `inked` is the
+ * letter before the lean.
+ */
+function uprightLeft(inked: Contour[], style: Style): number {
+  const { ascender } = style.metrics;
+  const among = inked.filter((contour) => contoursBounds([contour]).yMin < ascender);
+  return contoursBounds(among.length > 0 ? among : inked).xMin;
+}
+
+/** How far a leaning letter stands clear of its origin upright, at the least, in ems. */
+const UPRIGHT_CLEAR = 0.01;
+
 /** How far a letter leans, as a shear rather than as an angle. */
 /**
  * Whether a face is slanted from an upright one -- an oblique, spaced as its
@@ -887,6 +950,11 @@ function insideTheEdge(contours: Contour[], style: Style): Contour[] {
  * own width, and anything too small in its zone to have sides -- a full stop,
  * a quote -- which keeps the plain sidebearing.
  */
+/** The dashes, which stand off their neighbours by their own depth: see `drawnFresh`. */
+const DASHES = new Set(["endash", "emdash"]);
+/** The least white either side of a dash, against its depth. */
+const DASH_SIDE = 0.4;
+
 const FIT_LIMIT = 40 / 530;
 const FIT_SAMPLES = 32;
 /**
@@ -1276,7 +1344,7 @@ function dressedSmall(given: Stroke[], style: Style, name: string): Stroke[] {
     const key = as ? `${as.name} ${as.dx} ${as.dy}` : "";
     groups.set(key, [...(groups.get(key) ?? []), index]);
   });
-  const dressed: Stroke[] = [];
+  const dressed: Stroke[][] = given.map(() => []);
   for (const indices of groups.values()) {
     const group = indices.map((index) => given[index]);
     const as = group[0].setAs;
@@ -1287,11 +1355,22 @@ function dressedSmall(given: Stroke[], style: Style, name: string): Stroke[] {
           as.name,
         ).map((stroke) => shiftedStroke(stroke, as.dx, as.dy))
       : dressedAll(group, style, name);
-    indices.forEach((index, at) => {
-      dressed[index] = done[at];
-    });
+    /*
+     * Dressing can hand back more strokes than it was given: a text serif's
+     * vee is taken apart into its two arms first (see `splitVees`). Matched
+     * one for one, the second arm fell off the end, and the trade mark's M
+     * lost its right diagonal and read as an N. So a group that grew is
+     * kept whole, in the place of its first stroke.
+     */
+    if (done.length === indices.length) {
+      indices.forEach((index, at) => {
+        dressed[index] = [done[at]];
+      });
+    } else {
+      dressed[indices[0]] = done;
+    }
   }
-  return dressed;
+  return dressed.flat();
 }
 
 function shiftedContour(contour: Contour, dx: number, dy: number): Contour {

@@ -8,7 +8,7 @@
 
 import { spineEnd } from "../shapes";
 import { penReach, reachAlong, sweep } from "../sweep";
-import { blackness, pastBlack, stemBlack, type Style } from "../style";
+import { blackness, pastBlack, SCRIPT_HELD_FROM, stemBlack, type Style } from "../style";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
@@ -63,6 +63,7 @@ import {
   turnedDown,
   hookFrom,
   stemSide,
+  unCondensed,
 } from "./common";
 
 /** The hairline of a text face's marks: the thin of its own pen, with a floor. */
@@ -902,7 +903,16 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * face draws a wide hash, which is what a heavy face does.
      */
     const down = Math.max(f.style.pen.weight * f.bar * 1.85, signWidth(f) * 0.36);
-    const across = Math.max(f.style.pen.weight * f.bar * 1.7, f.x * 0.3);
+    /*
+     * And never so far apart that the bars sit on the ends of the uprights:
+     * held to their own spacing at a heavy weight, the Wavy's at 260 were
+     * 440 apart on uprights 700 tall, the lower one level with their feet,
+     * and the corners of the uprights stood out raggedly round it.
+     */
+    const across = Math.min(
+      Math.max(f.style.pen.weight * f.bar * 1.7, f.x * 0.3),
+      (head - foot) * HASH_BARS_WITHIN,
+    );
     const w = down + Math.max(down * 0.62, lean + f.style.pen.weight * f.bar);
     const middle = axis(f) + f.x * 0.04;
     return finish(f, [
@@ -1261,8 +1271,15 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * blobs with a hairline spine each and the mark could not be read.
      */
     const room = style.metrics.capHeight * 0.62 * 0.3;
+    /*
+     * And at its Normal's width, where the pen is held (see `unCondensed`):
+     * on a Condensed, the held pen's two esses closed round the eye between
+     * them, and a Black's section mark came out lighter than its Regular's.
+     */
     const held =
-      style.pen.weight > room ? { ...style, pen: { ...style.pen, weight: room } } : style;
+      style.pen.weight > room
+        ? { ...unCondensed(style), pen: { ...style.pen, weight: room } }
+        : style;
     const f = frame(held);
     const height = f.cap * 0.62;
     const step = height * 0.53;
@@ -1602,8 +1619,17 @@ function heldAt(f: Frame): Frame {
    */
   const asks = (g: Frame): number =>
     Math.max(g.capBowlH * 0.38, g.half * 2.35) + g.style.pen.weight * AT_ROOM;
-  if (asks(f) <= most || f.style.parts.script.on) return f;
   const lighter = (weight: number): Frame => frame({ ...f.style, pen: { ...f.style.pen, weight } });
+  /*
+   * A joined face's past the Bold only, and from there taking a share of the
+   * weight: grown round a small a on the whole pen, its ring at 260 ran from
+   * 400 under the line to 300 over the ascender, and the health check said so.
+   */
+  if (f.style.parts.script.on) {
+    if (!(f.style.pen.weight > SCRIPT_HELD_FROM)) return f;
+    return lighter(SCRIPT_HELD_FROM + (f.style.pen.weight - SCRIPT_HELD_FROM) * AT_SCRIPT_PAST);
+  }
+  if (asks(f) <= most) return f;
   let low = 1;
   let high = f.style.pen.weight;
   for (let pass = 0; pass < 30; pass++) {
@@ -1615,6 +1641,12 @@ function heldAt(f: Frame): Frame {
   // the mark never comes out lighter at a Black than at the Bold before it.
   return lighter(low + (f.style.pen.weight - low) * AT_PAST);
 }
+
+/** The most of its uprights' height a hash's two bars stand apart: see `numbersign`. */
+const HASH_BARS_WITHIN = 0.5;
+
+/** How much of the weight past the Bold a joined face's at sign still takes: see `heldAt`. */
+const AT_SCRIPT_PAST = 0.25;
 
 /** How much of the weight past where an at sign's ring stops growing it still takes. */
 const AT_PAST = 0.22;

@@ -168,11 +168,9 @@ test("a family parameter reshapes the glyphs on screen", async ({ page }) => {
   const weight = page.getByRole("slider").nth(1);
   await weight.focus();
   for (let i = 0; i < 40; i++) await page.keyboard.press("ArrowRight");
-  await page.waitForTimeout(800);
 
-  const inkAfter = await measureInk(page);
   // Adding weight thickens the strokes, so more pixels are covered.
-  expect(inkAfter).toBeGreaterThan(inkBefore);
+  await expect.poll(() => measureInk(page)).toBeGreaterThan(inkBefore);
 });
 
 test("checks the font and reports what it finds", async ({ page }) => {

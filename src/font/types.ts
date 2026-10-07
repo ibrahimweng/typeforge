@@ -54,13 +54,6 @@ export interface Anchor {
   y: number;
 }
 
-/** True for the entry anchor on a mark, as opposed to an exit anchor on a base. */
-export const isMarkAnchor = (name: string): boolean => name.startsWith("_");
-
-/** The base-side name a mark anchor attaches to, or null if it is not a mark anchor. */
-export const baseAnchorName = (name: string): string | null =>
-  name.startsWith("_") ? name.slice(1) : null;
-
 /**
  * A component is a reference to another glyph, the mechanism that lets `á`
  * reuse the outlines of `a` and `acute`. TrueType calls these composite glyphs.

@@ -23,7 +23,7 @@
  * counts from as an argument rather than assuming one.
  */
 
-import type { KernClass, KernPair } from "./types";
+import type { KernClass } from "./types";
 
 // ---------------------------------------------------------------------------
 // What comes out
@@ -388,21 +388,6 @@ export function writtenPairs(
     }
   }
   return out;
-}
-
-/** Every non-zero pair among a limited set of glyphs. */
-export function kernPairsAmong(
-  kerning: GposKerning,
-  glyphs: Array<{ id: number; name: string }>,
-): KernPair[] {
-  const pairs: KernPair[] = [];
-  for (const left of glyphs) {
-    for (const right of glyphs) {
-      const value = kernBetween(kerning, left.id, right.id);
-      if (value !== 0) pairs.push({ left: left.name, right: right.name, value });
-    }
-  }
-  return pairs;
 }
 
 /**

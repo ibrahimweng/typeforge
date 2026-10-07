@@ -17,7 +17,9 @@ import * as React from "react";
 import { contoursToSvgPath } from "@/font/geometry";
 import { alongSpine, walkOf } from "@/quill/curve";
 import { restyle } from "@/quill/controls";
-import { drawTraced, useQuill, type Traced } from "@/state/useQuill";
+import { drawTraced, quillStore, useQuill, type Traced } from "@/state/useQuill";
+import { PRIMARY_ACTION } from "@/components/controls";
+import { cn } from "@/cn";
 import { useShowing } from "@/state/surface";
 
 const SPECIMEN = "handwriting";
@@ -27,6 +29,7 @@ export function QuillView(): React.JSX.Element {
   const state = useQuill();
   const { document: doc } = state;
   const traced = doc.letters.find((one) => one.glyph.name === state.letter) ?? doc.letters[0];
+  const file = React.useRef<HTMLInputElement>(null);
 
   if (!traced) {
     return (
@@ -34,11 +37,43 @@ export function QuillView(): React.JSX.Element {
         <div className="max-w-md text-center">
           <h2 className="text-sm font-medium">Nothing traced yet</h2>
           <p className="pt-2 text-2xs leading-relaxed text-muted-foreground">
-            Read a font from the panel and every letter in it is taken apart into the strokes that
-            drew it: where each one runs, and how wide the pen was at each point along it. From
-            there the whole alphabet answers to one hand — heavier, more pressure, more taper,
-            further slanted — rather than to a thousand separate points.
+            Read a font and every letter in it is taken apart into the strokes that drew it: where
+            each one runs, and how wide the pen was at each point along it. From there the whole
+            alphabet answers to one hand — heavier, more pressure, more taper, further slanted —
+            rather than to a thousand separate points.
           </p>
+          {/*
+            The way in, under the sentence that asks for it.
+
+            It used to be only in the panel, and this said so: "from the
+            panel", with the line above the work saying "on the right". On a
+            phone the panel is under the work rather than beside it, so the one
+            button the screen was about sat below the fold while both sentences
+            pointed at a side of the screen that had nothing on it. The panel
+            keeps its own, for reading another font once there are letters.
+          */}
+          <input
+            ref={file}
+            type="file"
+            accept=".ttf,.otf,.woff,.woff2"
+            className="hidden"
+            data-quill-read-input
+            onChange={async (event) => {
+              const chosen = event.target.files?.[0];
+              event.target.value = "";
+              if (!chosen) return;
+              await quillStore.trace(new Uint8Array(await chosen.arrayBuffer()), chosen.name);
+            }}
+          />
+          <button
+            type="button"
+            className={cn(PRIMARY_ACTION, "mt-4 px-4 py-1.5 text-xs-plus")}
+            disabled={state.progress !== null}
+            onClick={() => file.current?.click()}
+            data-quill-read
+          >
+            Choose a font to read
+          </button>
         </div>
       </div>
     );

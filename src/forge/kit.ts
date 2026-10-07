@@ -22,7 +22,7 @@
  */
 
 import { wrapAngle } from "./angles";
-import { contourArea, contoursBounds, type Bounds } from "@/font/geometry";
+import { contourArea, type Bounds } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { alongSpine, spineLength } from "./shapes";
 import type { Style } from "./style";
@@ -676,15 +676,6 @@ function poly(points: Vec2[]): Contour {
   return contourArea(contour) >= 0 ? contour : { ...contour, nodes: [...contour.nodes].reverse() };
 }
 
-function square(box: Bounds): Contour {
-  return poly([
-    { x: box.xMin, y: box.yMin },
-    { x: box.xMax, y: box.yMin },
-    { x: box.xMax, y: box.yMax },
-    { x: box.xMin, y: box.yMax },
-  ]);
-}
-
 /** Whether a letter has been laid out at all. */
 export function hasTiles(kit: Kit | undefined, letter: string): boolean {
   const tiles = kit?.glyphs[letter];
@@ -699,17 +690,6 @@ export function spanOf(tiles: Tiles): { columns: number; rows: number[] } {
     if (Number.isFinite(row)) rows.add(row);
   }
   return { columns: tiles.columns, rows: [...rows].sort((one, other) => one - other) };
-}
-
-/** The box a letter's cells occupy, for placing the editor over the drawing. */
-export function tilesBounds(tiles: Tiles, style: Style, kit: Kit): Bounds {
-  const unit = unitOf(style, kit.grid);
-  const left = style.metrics.sidebearing;
-  const rows = rowsOf(kit.grid);
-  return contoursBounds([
-    square(cellBox(0, rows[0], unit, left)),
-    square(cellBox(Math.max(0, tiles.columns - 1), rows[rows.length - 1], unit, left)),
-  ]);
 }
 
 // ---------------------------------------------------------------------------

@@ -125,7 +125,10 @@ test("pulls the weight out of one letter and every letter follows", async ({ pag
   await expect
     .poll(() => page.locator('[data-forge-cell="o"] path').getAttribute("d"))
     .not.toBe(before);
-  expect(await page.locator('[data-forge-cell="Z"] path').getAttribute("d")).not.toBe(alsoBefore);
+  // The strip catches up a few letters at a time, so the Z may come after the o.
+  await expect
+    .poll(() => page.locator('[data-forge-cell="Z"] path').getAttribute("d"))
+    .not.toBe(alsoBefore);
 });
 
 test("moves the shoulder on every arched letter at once", async ({ page }) => {

@@ -222,6 +222,9 @@ interface Corner {
   outgoing: Vec2;
   /** Positive when the spine turns anticlockwise. */
   turn: number;
+  /** How long the segments either side of it are, along the spine. */
+  before: number;
+  after: number;
 }
 
 /**
@@ -293,6 +296,8 @@ function cornersOf(spine: QuillSpine, walk: SpineWalk): Corner[] {
       incoming,
       outgoing,
       turn,
+      before: walk.lengths[index],
+      after: walk.lengths[(index + 1) % count],
     });
   }
   return found;
@@ -344,6 +349,18 @@ function joinAt(
   if (join === "miter") {
     const met = meeting(from, corner.incoming, to, corner.outgoing);
     if (!met) return [from, to];
+    /*
+     * And only forwards. With a pen that reaches further across one segment
+     * than the other -- any nib with contrast, turned between two headings --
+     * the narrower side can lie inside the wider one at the corner, and the
+     * two edges then meet *behind* the offsets rather than out past them. The
+     * mitre ran back to that point and out again, a fold whose loop wound the
+     * other way and left a dark wedge in the ink at the turn. There is no
+     * apex to draw there, and the chord is the edge of the ink.
+     */
+    const ahead = (met.x - from.x) * corner.incoming.x + (met.y - from.y) * corner.incoming.y;
+    const short = (to.x - met.x) * corner.outgoing.x + (to.y - met.y) * corner.outgoing.y;
+    if (ahead < 0 || short < 0) return [from, to];
     const out = Math.hypot(met.x - corner.point.x, met.y - corner.point.y);
     // Past the limit the point is a spike rather than an apex, and the chord is
     // the better answer -- which is what every stroking library does here.
@@ -389,6 +406,74 @@ function joinAt(
   return points;
 }
 
+/**
+ * The inside of a corner where the pen reaches further across one segment
+ * than across the other.
+ *
+ * The chord `joinAt` draws on the inside is right while each offset point
+ * lies inside the other segment's ink, which it does whenever the two reaches
+ * are equal: the sides overshoot each other, the chord closes a small loop
+ * that winds the same way as the stroke, and the fill takes it in. With a
+ * contrasting nib turned between two headings they are not equal, and when
+ * the wider segment's offset lies further out than the narrower one's whole
+ * reach, the chord runs *back* across the turn. The loop it closes winds the
+ * other way, and under the non-zero rule that is a hole in the ink at the
+ * corner -- a dark wedge in a two-segment stroke, which is how it was found.
+ *
+ * So in that case the edge follows the ink instead: up the wider segment's
+ * side to its end, across that end to where it meets the narrower segment's
+ * side, and on along it. The samples on the narrower side that fall short of
+ * that meeting are inside the wider segment's ink, and are left out.
+ *
+ * Null wherever the chord is right, which is every corner of a round pen.
+ */
+function insideTurn(
+  corner: Corner,
+  profile: WidthProfile,
+  pen: NibProfile,
+  side: 1 | -1,
+): { points: Vec2[]; skipTo?: number; trimBack?: { from: Vec2; past: number } } | null {
+  // Only the inside, and only a corner with a segment either side of it: the
+  // seam of a ring is where the samples begin as well as end.
+  if (side * corner.turn <= 0 || corner.at >= 1) return null;
+  const half = widthAt(profile, corner.at) / 2;
+  const nib = nibAt(pen, corner.at);
+  const before = leftOf(corner.incoming);
+  const after = leftOf(corner.outgoing);
+  const reachIn = reachAcross(corner.incoming, half, nib);
+  const reachOut = reachAcross(corner.outgoing, half, nib);
+  const cosine = Math.abs(before.x * after.x + before.y * after.y);
+  const from = at(
+    corner.point.x + before.x * reachIn * side,
+    corner.point.y + before.y * reachIn * side,
+  );
+  const to = at(
+    corner.point.x + after.x * reachOut * side,
+    corner.point.y + after.y * reachOut * side,
+  );
+  if (reachIn * cosine > reachOut + 1e-6) {
+    // The incoming offset is outside the outgoing ink: across the incoming
+    // segment's end to the outgoing side, and the outgoing samples short of
+    // that point dropped.
+    const met = meeting(corner.point, before, to, corner.outgoing);
+    if (!met) return null;
+    const ahead = (met.x - to.x) * corner.outgoing.x + (met.y - to.y) * corner.outgoing.y;
+    if (!(ahead > 0) || ahead >= corner.after) return null;
+    return { points: [from, met], skipTo: ahead };
+  }
+  if (reachOut * cosine > reachIn + 1e-6) {
+    // The same the other way round: the incoming samples past the point
+    // where its side meets the outgoing segment's start are taken back, and
+    // the edge runs across that start to the outgoing offset.
+    const met = meeting(corner.point, after, from, corner.incoming);
+    if (!met) return null;
+    const behind = (from.x - met.x) * corner.incoming.x + (from.y - met.y) * corner.incoming.y;
+    if (!(behind > 0) || behind >= corner.before) return null;
+    return { points: [met, to], trimBack: { from, past: -behind } };
+  }
+  return null;
+}
+
 /** One side of the stroke, sampled: the offset points in order. */
 function sideOf(
   spine: QuillSpine,
@@ -411,11 +496,32 @@ function sideOf(
    * Emits every corner up to the fraction, and says whether one of them sat on
    * the fraction itself.
    */
+  /** Samples short of this fraction fall inside ink already drawn. */
+  let skipping = -1;
   const joinsUpTo = (fraction: number): boolean => {
     let landed = false;
     while (next < corners.length && corners[next].at <= fraction + onCorner) {
-      if (Math.abs(corners[next].at - fraction) <= onCorner) landed = true;
-      points.push(...joinAt(corners[next], profile, pen, side, join));
+      const corner = corners[next];
+      if (Math.abs(corner.at - fraction) <= onCorner) landed = true;
+      const inside = insideTurn(corner, profile, pen, side);
+      if (!inside) {
+        points.push(...joinAt(corner, profile, pen, side, join));
+      } else {
+        if (inside.trimBack) {
+          const { from, past } = inside.trimBack;
+          // The incoming samples beyond the meeting point, and no further back.
+          while (points.length > 0) {
+            const last = points[points.length - 1];
+            const along =
+              (last.x - from.x) * corner.incoming.x + (last.y - from.y) * corner.incoming.y;
+            if (along <= past + 1e-9) break;
+            points.pop();
+          }
+        }
+        points.push(...inside.points);
+        if (inside.skipTo !== undefined)
+          skipping = corner.at + inside.skipTo / Math.max(walk.total, 1e-9);
+      }
       next += 1;
     }
     return landed;
@@ -443,6 +549,7 @@ function sideOf(
      * outgoing sample at that place, so nothing is lost by leaving it out.
      */
     if (joinsUpTo(fraction)) continue;
+    if (fraction < skipping) continue;
     const { point, heading } = alongSpine(spine, walk, fraction);
     const half = widthAt(profile, fraction) / 2;
     const reach = reachAcross(heading, half, nibAt(pen, fraction));

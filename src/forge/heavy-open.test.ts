@@ -12,12 +12,22 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { longEnoughFor } from "../../test/fixtures";
 import { ready, unite } from "@/font/boolean";
 import { contourArea, contourContainsPoint, contoursBounds, flattenContour } from "@/font/geometry";
 import type { Contour, Vec2 } from "@/font/types";
 import { proof, startFrom } from "./document";
 import { readyToShape } from "./layers";
 import { BASES, pastBlack, type Style } from "./style";
+
+/**
+ * The budget for the slow tests below.
+ *
+ * They take under a second each on a development machine. Asked of
+ * `longEnoughFor`, so a coverage run gets the room instrumenting costs, and
+ * kept to this rather than five minutes, so a hang still reads as one.
+ */
+const SLOW = longEnoughFor(30_000);
 
 beforeAll(async () => {
   await ready();
@@ -73,7 +83,9 @@ function counters(name: string, base: string, weight: number): number[] {
 }
 
 describe("past the Black", () => {
-  it("keeps every counter of the stacked letters well open at the end of the control", () => {
+  it("keeps every counter of the stacked letters well open at the end of the control", {
+    timeout: SLOW,
+  }, () => {
     /*
      * Two fifths of a stem across at the least, at a pen of 260: on the code
      * before, the Sans's 6 was 0.48 of a stem, its four and number sign 0.21
@@ -103,9 +115,11 @@ describe("past the Black", () => {
         for (const one of found) expect(one, `${base} ${letter}: ${shown}`).toBeGreaterThan(0.38);
       }
     }
-  }, 300_000);
+  });
 
-  it("opens the Geometric's rounds from the inside, keeping their outsides", () => {
+  it("opens the Geometric's rounds from the inside, keeping their outsides", {
+    timeout: SLOW,
+  }, () => {
     /*
      * The Geometric keeps its o round, so past the Black it cannot widen its
      * bowls; its round strokes thin at their sides instead (`rounds.ts`). At
@@ -128,7 +142,7 @@ describe("past the Black", () => {
       contoursBounds(drawn("o", "Geometric", weight)).yMin;
     expect(width(260) / rounds(260)).toBeLessThan(1.28);
     expect(style.metrics.heavyThin).toBeGreaterThan(0);
-  }, 300_000);
+  });
 
   it("changes nothing up to the Sans's Black", () => {
     // Geist Black's stem, where the Sans is fitted to Geist Black.

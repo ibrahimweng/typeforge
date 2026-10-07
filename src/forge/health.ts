@@ -55,20 +55,13 @@ const CLOSING = "Counters closing up";
 const MANY = 12;
 
 /**
- * The whole typeface, weight by weight.
+ * The whole typeface, weight by weight, handed back a letter at a time.
  *
  * A family's Regular can be perfect and its Black unusable, and the Black is
  * the one nobody is looking at while they draw. Every weight is measured, and
  * the ones that have closed up are named by their own names rather than by
  * their letters -- "the Black and the ExtraBold" is what somebody can act on;
  * a list of forty letters from a weight they have not seen is not.
- */
-export function familyTroubles(forge: Forge): Trouble[] {
-  return allOf(familyWalk(forge));
-}
-
-/**
- * The same walk, handed back a letter at a time.
  *
  * This is the most expensive thing on the draw page and it runs after every
  * change: the whole alphabet, at every weight the family has, drawn in full --
@@ -82,8 +75,9 @@ export function familyTroubles(forge: Forge): Trouble[] {
  * if the font moves again first, so the same answer arrives at the same moment
  * without the page going deaf to get there.
  *
- * Both entry points stay as they were -- everything that wants the answer and
- * does not care about frames, the tests included, calls the plain function.
+ * The draw page is the only caller. There was a plain function beside this
+ * that ran the walk in one go, and its comment said the tests called it; nothing
+ * did, and it has gone. The tests ask `troubles`, which is one weight.
  */
 export function* familyWalk(forge: Forge): Generator<void, Trouble[], void> {
   const family = familyOf(forge);

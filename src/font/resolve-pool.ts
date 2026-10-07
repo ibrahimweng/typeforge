@@ -12,8 +12,8 @@
  * the page does -- the same code on the same numbers, so the same outlines --
  * and put back in order. In Node, which has no `Worker`, they are threads of
  * its own (`resolve-node.ts`). Where there are neither, or too little to be
- * worth starting them for, or any of them fails, the answer is null and the
- * caller resolves them itself, as it always did.
+ * worth starting them for, or any of them fails or hangs, the answer is null
+ * and the caller resolves them itself, as it always did.
  */
 
 import type { Contour, GlyphParams, Typeface } from "./types";
@@ -60,6 +60,8 @@ function browserThread(): Thread {
     post: (message) => worker.postMessage(message),
     listen: (reply, failed) => {
       worker.onmessage = (event: MessageEvent<PoolReply>) => reply(event.data);
+      // A reply that cannot be read is as good as none: see `resolveAll`.
+      worker.onmessageerror = () => failed();
       worker.onerror = () => failed();
     },
     stop: () => worker.terminate(),
@@ -72,26 +74,67 @@ function browserThread(): Thread {
  */
 const NODE_THREADS = "./resolve-node";
 
+/** How to resolve, for a caller that wants a say. */
+export interface PoolOptions {
+  /**
+   * How many threads to resolve on, at most `MOST`; `0` resolves in place.
+   * Unsaid, it is what `TYPEFORGE_THREADS` says in Node, and otherwise the
+   * cores there are less one.
+   */
+  threads?: number;
+  /**
+   * Start the threads whatever the amount of work, rather than only where
+   * there is enough of it to be worth starting them for. For the tests, which
+   * must be able to say which way the letters were resolved.
+   */
+  always?: boolean;
+  /**
+   * How long a thread may go without answering, in milliseconds, before the
+   * pool gives up on all of them and the letters are resolved in place.
+   */
+  patience?: number;
+  /** Where threads come from, in place of a browser's workers or Node's. */
+  start?: () => Thread;
+}
+
+/** The most threads ever started, whatever is asked for. */
+const MOST = 6;
+
 /**
  * How to start a thread here, how many to start, and how much work makes
  * starting them worth it -- or null where there are none to start.
+ *
+ * Decided by what is asked and what the machine has, and by nothing that
+ * changes from one moment to the next: see `threadCount` in `resolve-node.ts`.
  */
-async function threads(): Promise<{
+async function threads(options: PoolOptions): Promise<{
   start: () => Thread;
   count: number;
   worthIt: number;
 } | null> {
+  const capped = (count: number) => Math.max(0, Math.min(MOST, Math.floor(count)));
+  if (options.start) {
+    const count = capped(options.threads ?? 2);
+    return count >= 1 ? { start: options.start, count, worthIt: WORTH_IT } : null;
+  }
   if (typeof Worker !== "undefined") {
     const cores = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
-    return { start: browserThread, count: Math.max(1, Math.min(6, cores - 1)), worthIt: WORTH_IT };
+    const count = capped(options.threads ?? Math.max(1, cores - 1));
+    return count >= 1 ? { start: browserThread, count, worthIt: WORTH_IT } : null;
   }
   if (typeof process === "undefined" || !process.versions?.node) return null;
+  if (options.threads === 0) return null;
   try {
     const node = (await import(/* @vite-ignore */ NODE_THREADS)) as typeof import("./resolve-node");
     if (!node.canThread()) return null;
-    // Only onto cores nothing else is using: see `idleCores`.
-    const count = Math.min(6, node.idleCores());
-    return count >= 2 ? { start: node.thread, count, worthIt: NODE_WORTH_IT } : null;
+    const count = capped(options.threads ?? node.threadCount());
+    /*
+     * Two at the least unless one was asked for: a thread here starts by
+     * reading the source afresh, and a single one of them is the work done in
+     * place with seconds of that added on.
+     */
+    const least = options.threads === undefined ? 2 : 1;
+    return count >= least ? { start: node.thread, count, worthIt: NODE_WORTH_IT } : null;
   } catch {
     return null;
   }
@@ -108,21 +151,41 @@ const WORTH_IT = 400;
 const NODE_WORTH_IT = 5000;
 /** Glyphs to a batch: enough to be worth a message, few enough to share out evenly. */
 const BATCH = 48;
+/**
+ * How long a thread may go without a word before it is taken to have hung.
+ *
+ * A batch is a few dozen letters, a second or so of work even at the heaviest
+ * weight with every cut on; the first also waits for a Node thread to read the
+ * source, which is seconds on a busy machine. A minute is far past both, and
+ * short of anybody giving up on the export.
+ */
+const PATIENCE = 60_000;
 
 /**
  * Resolve every glyph of each typeface, or null where that should be done in
  * place. The typefaces must be one font at different family parameters, which
  * is what the masters of a varying font are.
+ *
+ * Null as well where anything goes wrong on the way: a thread that throws,
+ * says it failed, sends back what cannot be read, stops, or goes quiet for
+ * longer than `patience`. Every thread is stopped then, and the caller
+ * resolves the letters itself. Without the last of those, one thread that
+ * never answered left the export waiting for ever.
  */
-export async function resolveAll(typefaces: Typeface[]): Promise<Resolved[] | null> {
+export async function resolveAll(
+  typefaces: Typeface[],
+  options: PoolOptions = {},
+): Promise<Resolved[] | null> {
   if (typefaces.length === 0) return null;
   const first = typefaces[0];
   if (typefaces.some((one) => one.glyphs !== first.glyphs)) return null;
   const glyphs = first.glyphs.length;
-  if (glyphs * typefaces.length < WORTH_IT) return null;
-  const kind = await threads();
-  if (!kind || glyphs * typefaces.length < kind.worthIt) return null;
+  if (glyphs === 0) return null;
+  if (!options.always && glyphs * typefaces.length < WORTH_IT) return null;
+  const kind = await threads(options);
+  if (!kind || (!options.always && glyphs * typefaces.length < kind.worthIt)) return null;
   const { count } = kind;
+  const patience = options.patience ?? PATIENCE;
 
   // The source tables are what a preserving writer copies from, a megabyte or
   // more, and nothing a letter's outline depends on.
@@ -143,41 +206,68 @@ export async function resolveAll(typefaces: Typeface[]): Promise<Resolved[] | nu
     advances: new Array(glyphs),
   }));
   const workers: Thread[] = [];
+  const watches: Array<ReturnType<typeof setTimeout> | undefined> = [];
+  let settled = false;
   try {
     await new Promise<void>((resolve, reject) => {
+      const fail = (why: string) => {
+        if (settled) return;
+        settled = true;
+        reject(new Error(why));
+      };
       let next = 0;
       let left = batches.length;
       const give = (worker: Thread) => {
         if (next < batches.length) worker.post(batches[next++]);
       };
-      for (let k = 0; k < count; k++) {
+      for (let k = 0; k < Math.min(count, batches.length); k++) {
         const worker = kind.start();
         workers.push(worker);
+        // Each thread watched on its own, from whatever was last sent it.
+        const watch = () => {
+          clearTimeout(watches[k]);
+          watches[k] = setTimeout(
+            () => fail("A worker resolving the letters stopped answering."),
+            patience,
+          );
+        };
         worker.listen(
           (reply) => {
+            if (settled) return;
             if (reply.kind === "failed") {
-              reject(new Error(reply.why));
+              fail(reply.why);
               return;
             }
             const into = results[reply.which];
-            reply.contours.forEach((contours, k) => {
-              into.contours[reply.from + k] = contours;
-              into.advances[reply.from + k] = reply.advances[k];
+            reply.contours.forEach((contours, at) => {
+              into.contours[reply.from + at] = contours;
+              into.advances[reply.from + at] = reply.advances[at];
             });
             left--;
-            if (left === 0) resolve();
-            else give(worker);
+            if (left === 0) {
+              settled = true;
+              resolve();
+            } else if (next < batches.length) {
+              give(worker);
+              watch();
+            } else {
+              // Nothing more for this one; the others are still watched.
+              clearTimeout(watches[k]);
+            }
           },
-          () => reject(new Error("A worker resolving the letters stopped.")),
+          () => fail("A worker resolving the letters stopped."),
         );
         worker.post(start);
         give(worker);
+        watch();
       }
     });
   } catch {
     // Whatever went wrong, the letters can still be resolved in place.
     return null;
   } finally {
+    settled = true;
+    for (const watch of watches) clearTimeout(watch);
     for (const worker of workers) worker.stop();
   }
   return results;

@@ -53,9 +53,6 @@ export interface Written {
   expanded?: boolean;
 }
 
-/** The default pen: a broad nib at thirty degrees, which is a usable hand. */
-export const STARTING_PEN: NibProfile = [{ at: 0, contrast: 0.55, angle: 30 }];
-
 /**
  * A pen with a name, kept by the font rather than by the letter.
  *

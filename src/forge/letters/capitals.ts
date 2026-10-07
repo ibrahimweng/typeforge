@@ -6,10 +6,15 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
+import type { Contour, Vec2 } from "@/font/types";
 import { alongSpine, bowlPoint, spineEnd } from "../shapes";
 import { blackness, type Style } from "../style";
+import { sweep } from "../sweep";
+import type { Stroke } from "../types";
 import {
   barWeight,
+  enclosing,
+  type Frame,
   joinsLevel,
   leaving,
   arm,
@@ -48,6 +53,53 @@ import {
   kReach,
 } from "./common";
 
+/**
+ * The frame an apex of two legs `half` out either side and `tall` high is
+ * rounded in: the face's own, or one rounding wider where the face's radius
+ * leaves the inside of the turn standing above where the legs' inner edges
+ * meet. Only on a face that rounds its corners at all.
+ */
+function apexRounded(f: Frame, half: number, tall: number): Frame {
+  if (!(f.radius > 0) || f.style.parts.script.on) return f;
+  const long = Math.hypot(half, tall);
+  const sin = half / long;
+  if (sin >= 0.999) return f;
+  // How far the pen reaches square across a leg, and straight up.
+  const across = f.reach(at(tall / long, -half / long));
+  const up = f.reach(at(0, 1));
+  const wanted = Math.max(f.radius, f.half * 1.05);
+  // How far the inside of the arc would stand over where the legs' insides meet.
+  const spike = across / sin - up - wanted * (1 / sin - 1);
+  if (!(spike > f.half * APEX_SPIKE)) return f;
+  return { ...f, radius: ((across / sin - up) / (1 / sin - 1)) * APEX_CLEAR };
+}
+
+/** How far past the radius that just clears it an apex is rounded: see `apexRounded`. */
+const APEX_CLEAR = 1.1;
+
+/**
+ * How tall a spike an apex is left with before it is rounded wider, in
+ * half-pens: a sliver of a few units at a text weight is under the pen's own
+ * round and nobody sees it, and those letters are left as they were drawn.
+ */
+const APEX_SPIKE = 0.25;
+
+/** How open the notch between an R's stem and its leg is kept at the line, in half-pens. */
+const R_NOTCH = 0.4;
+
+/**
+ * How far right of the stem's ink the R's leg's ink starts on the line: less
+ * than nought where the two overlap there.
+ */
+function legGap(f: Frame, upright: Stroke, springs: Vec2, foot: Vec2): number {
+  const near = (contours: Contour[]) =>
+    contours.flatMap((contour) => contour.nodes.map((node) => node.point)).filter((p) => p.y < 1);
+  const stemRight = Math.max(...near(sweep(upright)).map((p) => p.x));
+  const leg = near(sweep(ink(f, straight(springs, foot), BUTT, f.end))).map((p) => p.x);
+  if (leg.length === 0 || !Number.isFinite(stemRight)) return -1;
+  return Math.min(...leg) - stemRight;
+}
+
 export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- capitals ----------------------------------------------------------
 
@@ -70,9 +122,17 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const foot = at(left, 0);
     const other = at(middle + half, 0);
+    /*
+     * And on a face that rounds its corners, the apex rounded wide enough that
+     * the inside of the turn does not stand up out of the counter: the legs'
+     * inner edges meet below the arc's own inside on a heavy pen, and what was
+     * left between was a spike up into the counter -- 45 units of it on the
+     * Technical at 260.
+     */
+    const legs = apexRounded(f, half, f.cap);
     // The apex is where the ink should reach; the skeleton's own vertex sits
     // below it by however far the point of that angle carries.
-    const peak = corner(f, foot, at(middle, f.cap), other);
+    const peak = corner(legs, foot, at(middle, f.cap), other);
     /*
      * The waist sits lower than a crossbar does on an H, but it is the same
      * decision and has to move with it. Written as a fixed fraction it did not:
@@ -122,7 +182,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     const inset = (half * bar) / Math.max(peak.y, f.least);
     return finish(f, [
-      ink(f, chain(straight(foot, peak), straight(peak, other)), f.end, f.end),
+      ink(legs, chain(straight(foot, peak), straight(peak, other)), f.end, f.end),
       thin(f, straight(at(left + inset, bar), at(middle + half - inset, bar))),
     ]);
   },
@@ -461,10 +521,22 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     const springs = at(stem + bowl * 0.4, junction);
     const foot = at(stem + bowl * 1.06, 0);
+    const upright = ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end);
+    /*
+     * And never parted from the stem at the line by a crack: on a heavy pen
+     * and a narrow bowl the leg's inside came down to within a few units of
+     * the stem's (four, on the Technical at 260), and the letter read as a P
+     * with a leg stood beside it. Where it would, the foot goes out until the
+     * notch between them is open, as it is a weight lighter.
+     */
+    // Only the R itself: one set small inside another sign is that sign's.
+    const gap = enclosing ? -1 : legGap(f, upright, springs, foot);
+    const open = f.half * R_NOTCH;
+    const out = gap > 0 && gap < open ? open - gap : 0;
     return finish(f, [
-      ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
+      upright,
       lobe(f, stem, junction, f.hangs(f.cap), bowl),
-      ink(f, straight(springs, foot), BUTT, f.end),
+      ink(f, straight(springs, at(foot.x + out, foot.y)), BUTT, f.end),
     ]);
   },
 

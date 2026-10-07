@@ -329,23 +329,3 @@ export function dialledTo(likeness: Likeness, from: Style = ROUNDHAND): Style {
     },
   };
 }
-
-/**
- * How far a drawn face is from a reference, measure by measure.
- *
- * Signed, and in the reference's own units: positive means the drawn face is
- * over. Ratios are reported as ratios because that is how the targets are
- * written, and the harness turns them into units where units read better.
- */
-export function differenceBetween(drawn: Measurements, target: Measurements): Measurements {
-  return {
-    xHeight: drawn.xHeight - target.xHeight,
-    capHeight: drawn.capHeight - target.capHeight,
-    ascender: drawn.ascender - target.ascender,
-    descender: drawn.descender - target.descender,
-    slant: drawn.slant - target.slant,
-    stroke: drawn.stroke - target.stroke,
-    bounce: drawn.bounce - target.bounce,
-    overlap: drawn.overlap - target.overlap,
-  };
-}

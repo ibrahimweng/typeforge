@@ -83,7 +83,7 @@ export function LibraryDialog({
     */
     // biome-ignore lint/a11y/noStaticElementInteractions: the backdrop is presentation; Escape is the keyboard path.
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6 max-md:p-2"
       role="presentation"
       onClick={(event) => {
         if (event.target === event.currentTarget) libraryStore.hide();
@@ -91,13 +91,13 @@ export function LibraryDialog({
     >
       <div
         ref={panelRef}
-        className="floating-popup-surface flex h-[34rem] w-[48rem] flex-col rounded-xl border border-border bg-popover shadow-2xl"
+        className="floating-popup-surface flex h-[34rem] max-h-full w-[48rem] max-w-full flex-col rounded-xl border border-border bg-popover shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-label="Font library"
         data-library
       >
-        <header className="flex shrink-0 items-center gap-2 border-b border-border p-3">
+        <header className="flex shrink-0 items-center gap-2 border-b border-border p-3 max-md:flex-wrap">
           <h2 className="text-sm font-medium">Font library</h2>
           <input
             value={state.query}
@@ -105,9 +105,13 @@ export function LibraryDialog({
             placeholder="Search families"
             aria-label="Search families"
             data-library-search
-            className="ml-2 h-7 w-48 rounded-md border border-input bg-card px-2 text-2xs outline-none focus-visible:border-accent"
+            className="ml-2 h-7 w-48 rounded-md border border-input bg-card px-2 text-2xs outline-none focus-visible:border-accent max-md:order-2 max-md:ml-0 max-md:w-full"
           />
-          <div className="flex gap-0.5" role="group" aria-label="Kind">
+          <div
+            className="flex gap-0.5 max-md:order-3 max-md:w-full max-md:overflow-x-auto"
+            role="group"
+            aria-label="Kind"
+          >
             {CATEGORIES.filter(
               /*
                * Other is offered only when there is something in it. The five
@@ -139,13 +143,13 @@ export function LibraryDialog({
             type="button"
             onClick={() => libraryStore.hide()}
             aria-label="Close the library"
-            className="ml-auto rounded px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+            className="ml-auto rounded px-2 py-1 text-2xs text-muted-foreground transition-colors hover:bg-card hover:text-foreground max-md:order-1"
           >
             Close
           </button>
         </header>
 
-        <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 max-md:flex-col">
           <Families fonts={fonts} />
           <Chosen mode={mode} onMode={onMode} />
         </div>
@@ -162,7 +166,7 @@ function Families({ fonts }: { fonts: LibraryFont[] }): React.JSX.Element {
 
   if (!state.catalogue) {
     return (
-      <div className="flex w-64 shrink-0 items-center justify-center border-r border-border text-2xs text-muted-foreground">
+      <div className="flex w-64 shrink-0 items-center justify-center border-r border-border text-2xs text-muted-foreground max-md:h-40 max-md:w-full max-md:border-r-0 max-md:border-b">
         {state.fetching ? "Fetching the catalogue…" : "No catalogue."}
       </div>
     );
@@ -170,7 +174,7 @@ function Families({ fonts }: { fonts: LibraryFont[] }): React.JSX.Element {
 
   return (
     <div
-      className="toolcraft-scrollbar w-64 shrink-0 overflow-y-auto border-r border-border"
+      className="toolcraft-scrollbar w-64 shrink-0 overflow-y-auto border-r border-border max-md:h-40 max-md:w-full max-md:border-r-0 max-md:border-b"
       data-library-list
     >
       {fonts.length === 0 && (

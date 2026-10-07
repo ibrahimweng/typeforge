@@ -177,9 +177,6 @@ export interface NibStop extends Nib {
  */
 export type NibProfile = NibStop[];
 
-/** A round pen, held nowhere in particular, all the way along. */
-export const ROUND_PEN: NibProfile = [{ at: 0, contrast: 0, angle: 0 }];
-
 // ---------------------------------------------------------------------------
 // Strokes
 // ---------------------------------------------------------------------------
@@ -231,8 +228,6 @@ export interface QuillCap {
    */
   extend?: number;
 }
-
-export const BUTT_CAP: QuillCap = { kind: "butt" };
 
 export interface QuillStroke {
   spine: QuillSpine;

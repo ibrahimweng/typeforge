@@ -18,7 +18,7 @@
 import { blackness, type Style } from "../style";
 import { LETTERS } from "../letters";
 import { bowl, bowlBetween, bowlPoint, spineEnd, spineStart } from "../shapes";
-import { penReach, reachAlong, sweep } from "../sweep";
+import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
@@ -1336,6 +1336,23 @@ export function splitVees(given: Stroke[]): Stroke[] {
         at(points[k].x + b.x, points[k].y + b.y),
         dirs[k],
       );
+      /*
+       * Or, past the miter limit, where the one run's ink stopped: the sweep
+       * gives up carrying a corner that sharp to its point and fills it with
+       * the pen, and the recipe stood the corner where that filled ink lands.
+       * Carried to where the outer edges meet, a Condensed's v and the middle
+       * of its W ran out a hundred and forty units past the line in a needle.
+       */
+      // As far out as `overhang` told the recipe it would: the arms' own
+      // reach off their spines, between the two.
+      const off = at(tips[k].x - points[k].x, tips[k].y - points[k].y);
+      const far = Math.hypot(off.x, off.y);
+      if (far > penReach(stroke.pen).across * MITER_LIMIT) {
+        const out = at(off.x / far, off.y / far);
+        const across = (e: Vec2, d: Vec2) => Math.abs(e.x * -d.y + e.y * d.x);
+        const lands = (across(a, dirs[k - 1]) + across(b, dirs[k])) / 2;
+        tips[k] = at(points[k].x + out.x * lands, points[k].y + out.y * lands);
+      }
     }
     // Each spine laid again so its outer edge runs through its corners' tips
     // at its own weight; the run's two ends stay where they were.
@@ -1728,6 +1745,25 @@ const S_SPINE = 1.25;
 /** How much wider the s runs per unit of blackness past a Black. */
 const S_WIDEN = 0.5;
 
+/*
+ * A text serif's s and S past the Bold, as Lora's Bold would be drawn on.
+ *
+ * The s's skeleton is held by its bowls, which must stay rounder than the
+ * pen: on a heavier pen the search took narrower bowls, and by an Ultra the
+ * s was a small, narrow letter with slits for counters beside an o half
+ * again as wide, wobbling where the turns folded on the pen. So it is asked
+ * wider past the Bold (`S_HEAVY_WIDE`), and its uprights lightened a little
+ * further (`S_HEAVY_UPRIGHT`), which lets its bowls take the width.
+ *
+ * The S was never lightened, and at an Ultra its counters were notches with a
+ * lump where each end turned in: it is drawn a little wider and lightened as
+ * the s is, by `S_HEAVY_CAPITAL` of as much.
+ */
+const S_HEAVY_WIDE = 0.3;
+const S_HEAVY_UPRIGHT = 0.1;
+const S_HEAVY_CAPITAL_WIDE = 0.3;
+const S_HEAVY_CAPITAL = 0.6;
+
 /** The s or the S on `bookSpine`, as wide as the construction's text s. */
 function bookS(style: Style, capital: boolean): Recipe {
   // Not on a face whose runs undulate: a wave ridden along these short arcs
@@ -1739,19 +1775,32 @@ function bookS(style: Style, capital: boolean): Recipe {
   const f = frame(style);
   const height = capital ? f.cap : f.x;
   const inked = height + f.over * 2 - f.upright * 2;
+  /*
+   * How far past the Bold a text serif's s and S are drawn: nought to the
+   * Bold, so the Regular and the Bold are Lora's as they were, and one by
+   * an Ultra. See `S_HEAVY_WIDE` and `S_HEAVY_CAPITAL`.
+   */
+  // And eased out as the contrast rises into a didone's, as the rest of the
+  // s is: held on there, the s at 260 jumped wider step by step.
+  const toDidone = Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
+  const past = textSerif(f) ? Math.min(1, Math.max(0, heaviness(f) - 0.5)) * (1 - toDidone) : 0;
   // The capital a little narrower on its height, as Lora's S is.
-  const width = inked * (capital ? 0.59 : 0.62) * f.wide + (f.gain * f.x) / height;
+  const width =
+    (inked * (capital ? 0.59 : 0.62) * f.wide + (f.gain * f.x) / height) *
+    (1 + (capital ? S_HEAVY_CAPITAL_WIDE : S_HEAVY_WIDE) * past);
   /*
    * Drawn lighter at a heavy weight, as a Black's small counters are (the a's
    * bowl, the g's loops): three strokes' worth of the stem's pen stacked in
    * an x-height left the counters slits with a fold at each end.
    */
   // Past the Bold only: Lora's Bold s is as heavy as its n.
-  // The capital has the cap height to turn in, and is not lightened.
-  const heavy = capital ? 0 : Math.min(1, Math.max(0, heaviness(f) - 0.5));
+  // The capital has the cap height to turn in, and is lightened less, and
+  // only on a text serif: see `S_HEAVY_CAPITAL`.
+  const heavy = capital ? past * S_HEAVY_CAPITAL : Math.min(1, Math.max(0, heaviness(f) - 0.5));
   // A didone's s as it was: see `S_UPRIGHT`.
   const upright =
     S_UPRIGHT +
+    (capital ? 0 : past * S_HEAVY_UPRIGHT) +
     (S_DIDONE_UPRIGHT - S_UPRIGHT) * Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
   return finish(
     f,
