@@ -1642,6 +1642,7 @@ function apexSpike(
   half: number,
   tall: number,
   pointing: number,
+  held = false,
 ): { share: number; across: number; up: number; sin: number; wanted: number } | null {
   if (!(f.radius > 0) || f.style.parts.script.on) return null;
   const long = Math.hypot(half, tall);
@@ -1650,11 +1651,31 @@ function apexSpike(
   // How far the pen reaches square across a leg, and straight up.
   const across = f.reach(at(tall / long, (-pointing * half) / long));
   const up = f.reach(at(0, pointing));
-  const wanted = Math.max(f.radius, f.half * 1.05);
+  const wanted = heldRound(f, f.half, half, tall, held);
+  if (!(wanted > 0)) return null;
   // How far the inside of the arc would stand over where the legs' insides meet.
   const spike = across / sin - up - wanted * (1 / sin - 1);
-  const share = Math.min(1, (spike / f.half - APEX_FROM) / (APEX_SPIKE - APEX_FROM));
+  // A vee's point is drawn clean of even a small needle (see `veeStroke`).
+  const [from, whole] = held ? [VEE_FROM, VEE_SPIKE] : [APEX_FROM, APEX_SPIKE];
+  const share = Math.min(1, (spike / f.half - from) / (whole - from));
   return share > 0 ? { share, across, up, sin, wanted } : null;
+}
+
+/**
+ * The radius a vee's point is rounded at: the face's, or the pen's least --
+ * and, `held` to what its legs can spare (half of each, as `roundCorners`
+ * holds it), no more than that, and nought where that is too little to round
+ * at all, which leaves the point sharp. A Ribbon's narrow V asks a radius of
+ * 220 and its legs at 260 spared it a good deal less: reckoned at 220, its
+ * point was taken for clean and kept a needle of white.
+ */
+function heldRound(f: Frame, penHalf: number, half: number, tall: number, held: boolean): number {
+  const wanted = Math.max(f.radius, penHalf * 1.05);
+  // Only a face rounding wider than its pen asks more than the legs can give.
+  if (!held || !(f.radius > penHalf * 1.06)) return wanted;
+  const spared = (Math.hypot(half, tall) / 2) * (half / tall);
+  const round = Math.min(wanted, spared);
+  return round >= penHalf * 1.06 * 0.999 ? round : 0;
 }
 
 /**
@@ -1673,7 +1694,7 @@ function apexSpike(
  * are as heavy as before, and every point is where it was.
  */
 export function apexEvened(f: Frame, half: number, tall: number, pointing = 1): Frame {
-  const asked = apexSpike(f, half, tall, pointing);
+  const asked = apexSpike(f, half, tall, pointing, true);
   if (!asked) return f;
   const { pen } = f.style;
   const long = Math.hypot(half, tall);
@@ -1693,7 +1714,8 @@ export function apexEvened(f: Frame, half: number, tall: number, pointing = 1): 
   };
   // Whether a turn at the face's own radius on it leaves a spike.
   const spiked = (one: typeof pen) => {
-    const wanted = Math.max(f.radius, (one.weight / 2) * 1.05);
+    const wanted = heldRound(f, one.weight / 2, half, tall, true);
+    if (!(wanted > 0)) return false;
     return asked.across / sin - reach(one, at(0, pointing)) - wanted * (1 / sin - 1) > 0;
   };
   // As little of the contrast taken out as clears it: the point keeps as
@@ -1734,6 +1756,14 @@ const APEX_SPIKE = 0.18;
 const APEX_FROM = 0.15;
 
 /**
+ * The same for a vee's point, which is cleared from a much smaller spike:
+ * its needle runs down the narrow white between the legs, where even a few
+ * units of it read -- the Ribbon's V kept 8 at 260, under the A's mark.
+ */
+const VEE_SPIKE = 0.08;
+const VEE_FROM = 0.03;
+
+/**
  * A vee's two legs meeting in one point, `pointing` down (a V) or up (a
  * lambda), drawn so the point is clean at a heavy weight: on a pen evened at
  * the point (`apexEvened`), and landed on its line by its ink.
@@ -1765,7 +1795,7 @@ export function veeStroke(
     );
     return (pointing < 0 ? Math.min(...ys) : Math.max(...ys)) - tip.y;
   };
-  const share = apexSpike(f, half, tall, pointing)?.share ?? 0;
+  const share = apexSpike(f, half, tall, pointing, true)?.share ?? 0;
   const reckoned = corner(shaped, from, tip, to);
   /*
    * And wherever the reckoning stands off the line, on every face and at
@@ -1781,7 +1811,7 @@ export function veeStroke(
   const first = reached(shaped, reckoned);
   const drift = drawnAsIs(f) ? Math.min(1, Math.max(0, (Math.abs(first) - VEE_LET) / VEE_LET)) : 0;
   const landing = Math.max(share, drift);
-  if (!(landing > 0)) return stroke(shaped, reckoned);
+  if (!(landing > 0) && veeShift === 0) return stroke(shaped, reckoned);
   /*
    * The point walked to the line, each step the miss and halved when it
    * overshoots, and the nearest kept: the ink walked to as far off the line
@@ -1803,7 +1833,7 @@ export function veeStroke(
     }
     return best;
   };
-  const aim = first * (1 - landing);
+  const aim = first * (1 - landing) + veeShift;
   const landed = walk(shaped);
   if (Math.abs(landed.miss) <= 1) return stroke(shaped, landed.point);
   /*
@@ -1817,14 +1847,13 @@ export function veeStroke(
 }
 
 /**
- * Whether a vee is inked as it is drawn here, so its own sweep says where its
- * point lands: not on a written hand, whose letters are joined and shaped
- * after, nor on a text serif that takes its vees apart to thin the rising arm
- * (`splitVees` in `build.ts`).
+ * Whether a vee's own sweep says where its point lands: not on a text serif
+ * that takes its vees apart to thin the rising arm (`splitVees` in
+ * `build.ts`), which is landed on its finished ink there. A written hand's is
+ * landed here and again on its finished letter, which its joins move after.
  */
 function drawnAsIs(f: Frame): boolean {
-  const { script, slab } = f.style.parts;
-  if (script.on) return false;
+  const { slab } = f.style.parts;
   return !(f.style.metrics.risingHairline && slab.on && slab.shape === "wedge");
 }
 
@@ -1833,6 +1862,23 @@ function drawnAsIs(f: Frame): boolean {
  * and over how much more the landing comes in whole: see `veeStroke`.
  */
 const VEE_LET = 3;
+
+/**
+ * How far a vee's ink is asked to move from where `veeStroke` would land it,
+ * by whoever can see the finished letter: see `landingVees` in `build.ts`.
+ */
+let veeShift = 0;
+
+/** A recipe drawn with its vees' points moved by `by` units along their own pointing. */
+export function shiftingVees<T>(by: number, run: () => T): T {
+  const was = veeShift;
+  veeShift = by;
+  try {
+    return run();
+  } finally {
+    veeShift = was;
+  }
+}
 
 /** The one-corner case, which is most of them. */
 export function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {

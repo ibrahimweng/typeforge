@@ -13,6 +13,7 @@ import { contourArea, contoursBounds, flattenContour } from "@/font/geometry";
 import type { Contour } from "@/font/types";
 import { drawLetter } from "./build";
 import { widthedStyle } from "./family";
+import { wobbleOf } from "./script";
 import { BASES, type Style } from "./style";
 
 beforeAll(async () => {
@@ -295,4 +296,83 @@ describe("every face's vees", () => {
       }
     }
   }, 300_000);
+});
+
+describe("the written hands' vees", () => {
+  /*
+   * A written letter is moved and joined after its recipe draws it, so its
+   * vee is landed on the finished letter: the Formal Script's V stood 40 units
+   * over the baseline from a pen of 120, the Handwriting's 62 at its Black,
+   * and the Formal Script's v at 260 had its point 115 units up. A letter in
+   * the middle of a word is lifted by the hand's own unsteadiness (`wobbleOf`),
+   * and stands on its line moved by that.
+   */
+  const hands = BASES.filter((one) => one.parts.script.on);
+  const vees = [
+    ["V", -1],
+    ["v", -1],
+    ["Δ", 1],
+    ["Λ", 1],
+  ] as const;
+
+  it("stand on their lines, and never hang past them", () => {
+    for (const hand of hands) {
+      for (const weight of [30, 87, 142, 194, 230, 260]) {
+        for (const width of [75, 100, 125]) {
+          const style = at(hand.name, weight, width);
+          for (const [name, pointing] of vees) {
+            const lift =
+              name === "v" ? wobbleOf(name, style.parts.script, style.metrics.xHeight).lift : 0;
+            const box = contoursBounds(draw(name, style).contours);
+            const off = pointing < 0 ? box.yMin - lift : box.yMax - style.metrics.capHeight - lift;
+            const where = `${hand.name} ${name} at ${weight}, width ${width}`;
+            expect(Math.abs(off), where).toBeLessThan(3.5);
+            // Short of the line by a unit or two at most, and never past it.
+            expect(pointing < 0 ? off : -off, where).toBeGreaterThan(-1.5);
+          }
+        }
+      }
+    }
+  }, 300_000);
+});
+
+describe("the Serif's vees past the Bold", () => {
+  it("land on their lines by the heaviest, from where Lora leaves them at the Black", () => {
+    // They stood 8 to 9 units over the line at 260; at 194 they are Lora's.
+    for (const width of [75, 100, 125]) {
+      for (const [name, pointing] of [
+        ["V", -1],
+        ["v", -1],
+        ["Δ", 1],
+        ["Λ", 1],
+      ] as const) {
+        const off = (weight: number) => {
+          const style = at("Serif", weight, width);
+          const box = contoursBounds(draw(name, style).contours);
+          return pointing < 0 ? box.yMin : style.metrics.capHeight - box.yMax;
+        };
+        const black = off(194);
+        expect(off(230), `${name} at 230, width ${width}`).toBeLessThanOrEqual(black + 0.5);
+        expect(Math.abs(off(260)), `${name} at 260, width ${width}`).toBeLessThan(1.5);
+      }
+    }
+  });
+});
+
+describe("the Ribbon's vees at the heaviest", () => {
+  it("meet clean in the point", () => {
+    // A needle of white 6 to 8 units on past the legs' meeting at 260: the
+    // face's own radius is wider than its legs can spare, and reckoned at
+    // that the point was taken for clean.
+    for (const weight of [245, 260]) {
+      for (const [name, pointing] of [
+        ["V", -1],
+        ["v", -1],
+        ["Λ", 1],
+      ] as const) {
+        const { contours } = draw(name, at("Ribbon", weight));
+        expect(needle(contours, weight, pointing), `${name} at ${weight}`).toBeLessThan(2);
+      }
+    }
+  });
 });
