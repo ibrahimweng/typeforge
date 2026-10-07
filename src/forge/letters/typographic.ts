@@ -25,7 +25,7 @@ import type { Contour, Vec2 } from "@/font/types";
 import { contoursBounds } from "@/font/geometry";
 import { recipeOf } from "../letters";
 import { spineEnd, spineStart } from "../shapes";
-import { spacingOf, type Style } from "../style";
+import { blackness, spacingOf, type Style } from "../style";
 import { sweep } from "../sweep";
 import type { Spine, Stroke, Terminal } from "../types";
 import {
@@ -454,6 +454,9 @@ function florin(f: Frame, letter: Stroke[]): Stroke[] {
   return short > 0.5 ? make(short / 2) : first;
 }
 
+/** How much lighter a per mille's two small rings are by a Black: see `perthousand`. */
+const PER_MILLE_LIGHTER = 0.4;
+
 export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   /*
    * The per mille: the percent with a second ring beside its lower one, as
@@ -492,7 +495,25 @@ export const TYPOGRAPHIC_RECIPES: Record<LetterName, (style: Style) => Recipe> =
     // Drawn the same way whether it is taken down or not, so the glyph has
     // the same points on both sides of the weight where it starts to be.
     const about = at(ring.xMin, ring.yMin);
-    const small = lower.map((stroke) => scaledStroke(stroke, share, about));
+    /*
+     * And on a monospaced face, past the Bold, their pens lighter again than
+     * their size alone takes off: a ring drawn smaller on a pen as much
+     * smaller keeps its counter's share and not its size, and at 194 and 260
+     * the typewriter's two small counters were pinholes.
+     */
+    const heavy =
+      share < 1 && f.style.metrics.monospaced
+        ? Math.min(1, Math.max(0, (blackness(f.style) - 0.45) / 0.55))
+        : 0;
+    const small = lower.map((stroke) => {
+      const one = scaledStroke(stroke, share, about);
+      return heavy > 0
+        ? inherit(one, {
+            ...one,
+            pen: { ...one.pen, weight: one.pen.weight * (1 - PER_MILLE_LIGHTER * heavy) },
+          })
+        : one;
+    });
     return {
       strokes: [
         ...strokes.map((stroke) =>

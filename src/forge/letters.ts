@@ -56,7 +56,7 @@ import {
   wobbleOf,
 } from "./script";
 import { bowRuns, spineEnd, spineStart, waveBookAt } from "./shapes";
-import { blackness, scriptUnit } from "./style";
+import { blackness, SCRIPT_GAIN, SCRIPT_HELD_FROM, scriptUnit } from "./style";
 import { penReach } from "./sweep";
 import type { Spine, Stroke, Terminal } from "./types";
 import type { Style } from "./style";
@@ -355,8 +355,22 @@ export function joiningHigh<T>(which: { entry?: boolean; exit?: boolean }, run: 
  * drawn at the same weight, or the two halves of one stroke would not match.
  */
 export function joinWeight(style: Style): number {
-  return 1 - 0.45 * Math.min(1, blackness(style));
+  /*
+   * And lighter again past the Bold, on a joined face, as its pen is held
+   * there (see `scriptHeld` in `style.ts`): at 260 the joins still came to a
+   * bar, and the x-height of a word was one black band.
+   */
+  const past = style.parts.script.on
+    ? Math.min(1, Math.max(0, (style.pen.weight - SCRIPT_HELD_FROM) / JOIN_HELD_SPAN))
+    : 0;
+  return (1 - 0.45 * Math.min(1, blackness(style))) * (1 - JOIN_HEAVY * past);
 }
+
+/** How much lighter a joined face's joins are by the end of the weight control. */
+const JOIN_HEAVY = 0.4;
+
+/** The pen past `SCRIPT_HELD_FROM` over which that comes in: 260 held, as `scriptHeld` holds it. */
+const JOIN_HELD_SPAN = (260 - SCRIPT_HELD_FROM) * SCRIPT_GAIN;
 
 /**
  * A join, inked: a hairline of one width the whole way, square at both ends.

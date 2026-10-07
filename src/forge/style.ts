@@ -4026,6 +4026,35 @@ export function proportioned(style: Style, name: string): Style {
 const HEAVIER = new WeakMap<Style, Style>();
 
 /**
+ * The pen a joined face draws with past `SCRIPT_HELD_FROM`: only `SCRIPT_GAIN`
+ * of the weight asked for beyond it.
+ *
+ * A joined face's x-height is a third of the em, a little over half a
+ * neo-grotesque's, and a pen that is a Black's on the Sans is half of it: at
+ * 194 and 260 its lowercase was a black band with the counters gone and every
+ * join a bar as heavy as the stems. A heavy script is heavier in its
+ * down-strokes and keeps its counters and its hairlines, so past the Bold the
+ * pen goes on growing, more slowly. Nothing at or under the Bold moves.
+ */
+function scriptHeld(style: Style, pen: Pen): Pen {
+  if (!style.parts.script.on || !(style.pen.weight > SCRIPT_HELD_FROM)) return pen;
+  return {
+    ...pen,
+    weight: SCRIPT_HELD_FROM + (style.pen.weight - SCRIPT_HELD_FROM) * SCRIPT_GAIN,
+  };
+}
+
+/** The pen past which a joined face is held: see `scriptHeld`. */
+export const SCRIPT_HELD_FROM = 142;
+
+/**
+ * How much of the weight past `SCRIPT_HELD_FROM` a joined face's pen still
+ * takes. Not 0.4: held to 163 at 194, the Formal Script's x came out with two
+ * more pieces than at every other weight, as it does from 162.5 to 166.5.
+ */
+export const SCRIPT_GAIN = 0.36;
+
+/**
  * The style a letter is actually drawn with at its weight: see `blackness`.
  *
  * The same object back when nothing changes, which is every weight up to the
@@ -4035,7 +4064,7 @@ const HEAVIER = new WeakMap<Style, Style>();
 export function heavier(style: Style): Style {
   const known = HEAVIER.get(style);
   if (known) return known;
-  const pen = heavierPen(style);
+  const pen = scriptHeld(style, heavierPen(style));
   const counter = narrowed(style);
   const metrics =
     counter === style.metrics.counterWidth

@@ -35,6 +35,7 @@ import {
   blackness,
   heavier,
   pastBlack,
+  SCRIPT_HELD_FROM,
   proportioned,
   spacingOf,
   type Style,
@@ -3663,7 +3664,15 @@ export function cyrE(f: Frame, top: number): Stroke[] {
 /** A stem, a bar, and a ring beside it. */
 export function cyrYu(f: Frame, top: number): Stroke[] {
   const radius = Math.max(top / 2, f.least);
-  const wide = bendWidth(f, radius);
+  /*
+   * And on a joined face past the Bold never narrower than a stem round a
+   * stem of counter: bent to its narrow oval, the ring of a heavy yu closed
+   * up into a disc.
+   */
+  const wide =
+    f.style.parts.script.on && f.style.pen.weight > SCRIPT_HELD_FROM
+      ? Math.max(bendWidth(f, radius), f.half * 2)
+      : bendWidth(f, radius);
   const stem = f.edge;
   const centre = at(stem + f.half * 2.4 + wide, top / 2);
   return [

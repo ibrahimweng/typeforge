@@ -132,6 +132,9 @@ function borrowedAs(name: string, style: Style, form: string | undefined): Strok
   return recipeOf(name, form)!(style).strokes;
 }
 
+/** The least half-width of the œ's first bowl, in half-pens: see `oe`. */
+const OE_LEAST = 1.25;
+
 export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // -------------------------------------------------------------------------
   // The letters that are not a letter with a mark on it
@@ -390,7 +393,13 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
    */
   oe: (style) => {
     const f = frame(style);
-    const bowl = Math.max(f.bowl * 0.68, f.least);
+    /*
+     * And never so narrow that the first bowl's counter is under a quarter of
+     * a stem across: narrowed by the share on a narrow face at a heavy weight
+     * (the Technical's at 260), it came down to the pen's own round and the o
+     * closed to a slit.
+     */
+    const bowl = Math.max(f.bowl * 0.68, f.least, f.half * OE_LEAST);
     const first = at(f.edge + bowl, f.x / 2);
     const second = at(first.x + bowl * 2, f.x / 2);
 
