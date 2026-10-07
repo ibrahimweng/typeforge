@@ -64,7 +64,7 @@ import {
   writeAgain,
   writing,
 } from "./shapes";
-import { enclosing, recording as partsRecording } from "./letters/common";
+import { enclosing, recording as partsRecording, shiftingVees } from "./letters/common";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import {
@@ -308,6 +308,66 @@ export function makeLetter(
   return made;
 }
 
+/** The vees whose point `landedVees` lands, and which way each points. */
+const VEES: Record<string, -1 | 1> = { V: -1, v: -1, "\u0394": 1, "\u039b": 1 };
+
+/**
+ * A vee landed on its line by its finished ink, where only the finished letter
+ * can say where that is: a written hand's, whose letter is moved and joined
+ * after its recipe draws it (the Formal Script's V stood 40 units over the
+ * baseline from a pen of 120, and its v at 260 had its point 120 units up,
+ * the turn come off a cliff in `corner`), and a text serif's, which takes its
+ * vees apart to thin the rising arm (`splitVees`) -- past the Bold only there,
+ * run in from nothing at a pen of 194, so the Serif's Lora is as it was.
+ * Every other face's vee lands itself: see `veeStroke`.
+ *
+ * A written letter in the middle of a word is lifted by the hand's own
+ * unsteadiness (`wobbleOf`), and lands on its line moved by that.
+ */
+function landedVees(name: string, style: Style, drawn: (shift: number) => Recipe): Recipe {
+  const first = drawn(0);
+  const pointing = VEES[name];
+  if (!pointing) return first;
+  const { script, slab } = style.parts;
+  const split = !script.on && style.metrics.risingHairline && slab.on && slab.shape === "wedge";
+  if (!script.on && !split) return first;
+  const lift =
+    script.on && joinEnds(name).entry ? wobbleOf(name, script, style.metrics.xHeight).lift : 0;
+  const line = (pointing < 0 ? 0 : style.metrics.capHeight) + lift;
+  const miss = (recipe: Recipe) => {
+    const box = contoursBounds(inkAll(recipe.strokes, style, name).flat());
+    return (pointing < 0 ? box.yMin : box.yMax) - line;
+  };
+  const was = miss(first);
+  if (!Number.isFinite(was)) return first;
+  // A written vee hanging past its line is landed whole, however little it
+  // hangs; one short of it, from a few units on. Both are nought on the line.
+  const past = pointing < 0 ? was < 0 : was > 0;
+  const share = script.on
+    ? past
+      ? 1
+      : Math.min(1, Math.max(0, (Math.abs(was) - VEE_LET) / VEE_LET))
+    : Math.min(1, Math.max(0, (style.pen.weight - SERIF_BLACK) / (260 - SERIF_BLACK)));
+  if (!(share > 0)) return first;
+  const wanted = was * (1 - share);
+  let shift = 0;
+  let best = { recipe: first, off: was - wanted };
+  for (let pass = 0; pass < 6 && Math.abs(best.off) >= 0.5; pass++) {
+    shift -= best.off;
+    const recipe = drawn(shift);
+    const off = miss(recipe) - wanted;
+    if (!Number.isFinite(off)) break;
+    if (Math.abs(off) < Math.abs(best.off)) best = { recipe, off };
+    else break;
+  }
+  return best.recipe;
+}
+
+/** How far a vee may miss its line and be left, and over how much more it is landed whole. */
+const VEE_LET = 3;
+/** The Serif's Black, past which its vees are landed: see `landedVees`. */
+const SERIF_BLACK = 194;
+
 /**
  * Letters drawn already, for the letter asked for again with everything that
  * decides it the same.
@@ -385,7 +445,9 @@ function drawnFresh(
   const recipe = laid ? null : recipeOf(name, form);
   if (!laid && !recipe) return null;
   // Past the Black, a geometric face's rounds thinned at their sides: see `rounds.ts`.
-  const built: Recipe | null = recipe ? thinnedRounds(recipe(widthOf(style, name)), style) : null;
+  const drawn = (shift: number): Recipe =>
+    shiftingVees(shift, () => thinnedRounds(recipe!(widthOf(style, name)), style));
+  const built: Recipe | null = recipe ? landedVees(name, style, drawn) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
   const inked = inkAll(strokes, onGrid ?? style, name);
