@@ -217,3 +217,96 @@ describe("a font written in the middle of a gesture on the weight", () => {
     expect(Buffer.from(one.bytes).equals(Buffer.from(other.bytes))).toBe(true);
   });
 });
+
+/**
+ * The font's stem follows an edit to the letters it is measured from.
+ *
+ * The stem -- which sets how thick a slab is and how much of a stroke a change
+ * of width gives back -- is read off the I (or whichever of the stem letters
+ * the font has) and kept against the typeface object. The store edits a
+ * letter in place, in the same typeface, so a thicker I left every slab and
+ * every narrowed letter at the old stem until the font was opened again: the
+ * canvas and the file both disagreed with the same font read from nothing.
+ *
+ * Checked on letters other than the one edited, since those are the ones
+ * nothing else would have told to look again.
+ */
+describe("an edit to the letter the font's stem is measured from", () => {
+  const OTHERS = ["H", "n", "o", "E"];
+
+  /** The I with its right side moved out, so its stem is thicker. */
+  const thicken = (glyph: Glyph) => {
+    const xs = glyph.contours.flatMap((contour) => contour.nodes.map((node) => node.point.x));
+    const middle = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const by = Math.round(face().unitsPerEm * 0.06);
+    for (const contour of glyph.contours)
+      for (const node of contour.nodes) {
+        if (node.point.x <= middle) continue;
+        node.point = { x: node.point.x + by, y: node.point.y };
+        if (node.handleIn) node.handleIn = { x: node.handleIn.x + by, y: node.handleIn.y };
+        if (node.handleOut) node.handleOut = { x: node.handleOut.x + by, y: node.handleOut.y };
+      }
+  };
+
+  /** Every letter named, as the store's font draws it and as a fresh copy of it does. */
+  function drawnBothWays(names: string[]) {
+    const typeface = face();
+    const copy = fresh(typeface);
+    const of = (one: Typeface, name: string) => {
+      const glyph = one.glyphs[one.glyphIndex.get(name)!];
+      return {
+        contours: resolveGlyphContours(glyph, one),
+        advance: resolveAdvanceWidth(glyph, one),
+      };
+    };
+    return {
+      canvas: names.map((name) => of(typeface, name)),
+      truth: names.map((name) => of(copy, name)),
+    };
+  }
+
+  async function expectStemFollowed(before: string): Promise<void> {
+    const { canvas, truth } = drawnBothWays(OTHERS);
+    expect(canvas).toEqual(truth);
+    // And the edit did change the letters it was not made to, through the stem.
+    expect(JSON.stringify(canvas)).not.toBe(before);
+    const written = await write(face());
+    const fromNothing = await write(fresh(face()));
+    expect(Buffer.from(written).equals(Buffer.from(fromNothing))).toBe(true);
+  }
+
+  beforeEach(async () => {
+    await store.loadFont(SAMPLE, "sample.ttf");
+    expect(face().glyphIndex.has("I")).toBe(true);
+  });
+
+  it("thickens the slabs on every other letter", async () => {
+    store.setFamilyParam("slab", Math.round(face().unitsPerEm * 0.1));
+    const before = JSON.stringify(drawnBothWays(OTHERS).canvas);
+    store.editGlyph("I", "Move points", thicken);
+    await expectStemFollowed(before);
+  });
+
+  it("gives back the thicker stroke on every narrowed letter", async () => {
+    store.setFamilyParam("width", 0.8);
+    const before = JSON.stringify(drawnBothWays(OTHERS).canvas);
+    store.editGlyph("I", "Move points", thicken);
+    await expectStemFollowed(before);
+  });
+
+  it("follows a drag, and goes back with an undo", async () => {
+    store.setFamilyParam("slab", Math.round(face().unitsPerEm * 0.1));
+    const original = JSON.stringify(drawnBothWays(OTHERS).canvas);
+    const was = cloneGlyph(letter("I"));
+    store.editGlyphLive("I", thicken);
+    await expectStemFollowed(original);
+    store.commitGlyphEdit("I", "Move points", was);
+    const edited = JSON.stringify(drawnBothWays(OTHERS).canvas);
+
+    store.undo();
+    expect(JSON.stringify(drawnBothWays(OTHERS).canvas)).toBe(original);
+    await expectStemFollowed(edited);
+    store.redo();
+    expect(JSON.stringify(drawnBothWays(OTHERS).canvas)).toBe(edited);
+  });
+});
