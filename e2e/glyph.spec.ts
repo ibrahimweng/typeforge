@@ -485,9 +485,7 @@ test("shows the letters either side, and lets the numbers be typed", async ({ pa
 
   await page.locator("[data-context-before]").fill("");
   await page.locator("[data-context-after]").fill("");
-  await page.waitForTimeout(400);
-  const alone = await inkOf();
-  expect(withContext, "the neighbours drew nothing").toBeGreaterThan(alone);
+  await expect.poll(inkOf, { message: "the neighbours drew nothing" }).toBeLessThan(withContext);
 
   /*
    * And the numbers. The sidebearing is the honest one to check without

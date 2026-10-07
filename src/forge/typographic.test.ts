@@ -13,6 +13,7 @@
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
+import { longEnoughFor } from "../../test/fixtures";
 
 import { glyphNameFor } from "@/assemble/slots";
 import { ready } from "@/font/boolean";
@@ -23,6 +24,15 @@ import { formOf, startFrom } from "./document";
 import { openWaveBook, waveBookAt, type WaveBook } from "./shapes";
 import { BASES, type Style } from "./style";
 import { codepointsFor } from "./typeface";
+
+/**
+ * The budget for the slow tests below.
+ *
+ * They take about six seconds each on a development machine. Asked of
+ * `longEnoughFor`, so a coverage run gets the room instrumenting costs, and
+ * kept to this rather than five minutes, so a hang still reads as one.
+ */
+const SLOW = longEnoughFor(60_000);
 
 /** The new glyphs, by name, and the character each one is. */
 const TYPOGRAPHIC: Record<string, string> = {
@@ -94,7 +104,7 @@ describe("the typographic punctuation is in the font", () => {
    * own T counts its humps differently at the Black, and so does the T in its
    * trade mark.
    */
-  it("keeps the same points at every weight, on every base", () => {
+  it("keeps the same points at every weight, on every base", { timeout: SLOW }, () => {
     const moved: string[] = [];
     const book: WaveBook = {
       lengths: new Map(),
@@ -128,9 +138,9 @@ describe("the typographic punctuation is in the font", () => {
       openWaveBook(was);
     }
     expect(moved).toEqual([]);
-  }, 300_000);
+  });
 
-  it("never crosses itself, at any weight, on any base", () => {
+  it("never crosses itself, at any weight, on any base", { timeout: SLOW }, () => {
     const folded: string[] = [];
     for (const base of BASES) {
       for (const name of NAMES) {
@@ -143,7 +153,7 @@ describe("the typographic punctuation is in the font", () => {
       }
     }
     expect(folded).toEqual([]);
-  }, 300_000);
+  });
 });
 
 describe("where the typographic punctuation sits", () => {

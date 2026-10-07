@@ -86,8 +86,13 @@ export function tile(selected: boolean, extra?: string): string {
  * width below which it stops working and above which it stops improving, so
  * what it wants is to be told a size for the window it is in, not to be given
  * a share of it.
+ *
+ * On a phone it goes under the work at the full width, as the wider panel
+ * below does. Beside the glyph grid it took more than half of a 390-pixel
+ * screen and still cut its own tabs to a letter each.
  */
-export const SIDE_PANEL = "w-56 lg:w-64 xl:w-72";
+export const SIDE_PANEL =
+  "w-56 lg:w-64 xl:w-72 max-md:w-full max-md:border-l-0 max-md:border-t max-md:border-border";
 
 /**
  * The wider panel, for the three that hold a whole set of controls.

@@ -173,10 +173,6 @@ export function toolInfo(id: ToolId): ToolInfo {
   return BY_ID.get(id) ?? TOOLS[0];
 }
 
-export function isToolId(value: string): value is ToolId {
-  return BY_ID.has(value as ToolId);
-}
-
 export function groupOf(id: ToolId): GroupId {
   return toolInfo(id).group;
 }

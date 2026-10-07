@@ -101,9 +101,10 @@ test("a point of the selection can still be dragged", async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(edge.x, edge.y - 40, { steps: 8 });
   await page.mouse.up();
-  await page.waitForTimeout(200);
 
-  expect(await shape(page), "dragging a point should still move the letter").not.toBe(before);
+  await expect
+    .poll(() => shape(page), { message: "dragging a point should still move the letter" })
+    .not.toBe(before);
 });
 
 test("the corner handle scales what is selected, as one step to undo", async ({ page }) => {
@@ -119,9 +120,10 @@ test("the corner handle scales what is selected, as one step to undo", async ({ 
   await page.mouse.down();
   await page.mouse.move(box.topRight.x + 120, box.topRight.y - 120, { steps: 10 });
   await page.mouse.up();
-  await page.waitForTimeout(250);
 
-  expect(await shape(page), "the letter should have grown").not.toBe(before);
+  await expect
+    .poll(() => shape(page), { message: "the letter should have grown" })
+    .not.toBe(before);
   /*
    * And no points were added. Only a field warp cuts, and a scale is a matrix.
    *
@@ -134,8 +136,9 @@ test("the corner handle scales what is selected, as one step to undo", async ({ 
   // And the whole drag is one thing to take back, not sixty.
   await page.locator("[data-glyph-canvas]").focus();
   await page.keyboard.press("ControlOrMeta+z");
-  await page.waitForTimeout(250);
-  expect(await shape(page), "one undo should put the letter back").toBe(before);
+  await expect
+    .poll(() => shape(page), { message: "one undo should put the letter back" })
+    .toBe(before);
 });
 
 test("the ring outside a corner turns the selection", async ({ page }) => {
@@ -181,17 +184,21 @@ test("a warp bends the selection, and says what it costs", async ({ page }) => {
   // While it is held: the letter has bent and the cost is on screen.
   await expect(page.locator("[data-warp-cost]")).toContainText("points");
   await page.mouse.up();
-  await page.waitForTimeout(300);
 
-  expect(await shape(page), "the letter should have bulged").not.toBe(before);
-  expect(await pointCounts(page), "a warp has to cut to follow the bend").not.toEqual(counts);
+  await expect
+    .poll(() => shape(page), { message: "the letter should have bulged" })
+    .not.toBe(before);
+  await expect
+    .poll(() => pointCounts(page), { message: "a warp has to cut to follow the bend" })
+    .not.toEqual(counts);
 
   // And the whole sweep is one thing to take back.
   await page.locator("[data-glyph-canvas]").focus();
   await page.keyboard.press("ControlOrMeta+z");
-  await page.waitForTimeout(300);
-  expect(await pointCounts(page), "one undo should give the points back").toEqual(counts);
-  expect(await shape(page)).toBe(before);
+  await expect
+    .poll(() => pointCounts(page), { message: "one undo should give the points back" })
+    .toEqual(counts);
+  await expect.poll(() => shape(page)).toBe(before);
 });
 
 test("a blur in the middle of a warp does not end the sweep", async ({ page }) => {
@@ -242,15 +249,17 @@ test("a blur in the middle of a warp does not end the sweep", async ({ page }) =
   // And the rest of the same drag, which must still belong to the same sweep.
   await page.mouse.move(box.x + box.width * 0.9, box.y + box.height / 2, { steps: 6 });
   await page.mouse.up();
-  await page.waitForTimeout(300);
 
-  expect(await pointCounts(page), "the warp still has to cut").not.toEqual(counts);
+  await expect
+    .poll(() => pointCounts(page), { message: "the warp still has to cut" })
+    .not.toEqual(counts);
 
   await page.locator("[data-glyph-canvas]").focus();
   await page.keyboard.press("ControlOrMeta+z");
-  await page.waitForTimeout(300);
-  expect(await pointCounts(page), "one undo has to give every point back").toEqual(counts);
-  expect(await shape(page), "and the letter it started as").toBe(before);
+  await expect
+    .poll(() => pointCounts(page), { message: "one undo has to give every point back" })
+    .toEqual(counts);
+  await expect.poll(() => shape(page), { message: "and the letter it started as" }).toBe(before);
 });
 
 test("every warp in the list actually bends something", async ({ page }) => {
@@ -274,11 +283,11 @@ test("every warp in the list actually bends something", async ({ page }) => {
     // Through the keyboard, which takes the baseline on the way in rather than
     // on a press, and is the path a pointer test would never cover.
     for (let press = 0; press < 12; press++) await page.keyboard.press("ArrowRight");
-    await page.waitForTimeout(150);
-    expect(await shape(page), `${name} bent nothing`).not.toBe(before);
+    await expect.poll(() => shape(page), { message: `${name} bent nothing` }).not.toBe(before);
 
     await page.locator("[data-glyph-canvas]").focus();
     await page.keyboard.press("ControlOrMeta+z");
-    await page.waitForTimeout(150);
+    // Back where it was before the next name is tried.
+    await expect.poll(() => shape(page), { message: `${name} did not undo` }).toBe(before);
   }
 });

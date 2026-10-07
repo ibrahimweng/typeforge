@@ -54,7 +54,7 @@ test("the proof sets the joined letters, and can be asked not to", async ({ page
 
   const joined = await measureInk(page);
   await page.locator("[data-proof-ligatures]").click();
-  await page.waitForTimeout(700);
+  await expect.poll(() => measureInk(page)).not.toBe(joined);
   const separate = await measureInk(page);
 
   expect(separate).toBeGreaterThan(joined);
@@ -400,7 +400,6 @@ test("writes a letter with a pen, down the middle", async ({ page }) => {
   await expect(page.locator("[data-tool-says]")).toHaveText(/Take hold of/);
 
   await page.mouse.click(first.x, first.y);
-  await page.waitForTimeout(200);
   await expect(page.locator("[data-pen-scope]")).toHaveText(/stroke 1, point 1/);
 
   // Turned at one point only, the pen now turns along the stroke -- and the
@@ -409,9 +408,9 @@ test("writes a letter with a pen, down the middle", async ({ page }) => {
   const angle = page.locator("[data-pen-panel]").getByRole("textbox", { name: "Angle" });
   await angle.fill("110");
   await angle.press("Enter");
-  await page.waitForTimeout(300);
   await expect(page.locator("[data-pen-along]")).toHaveText(/turns from/);
 
+  await expect.poll(() => measureInk(page)).not.toBe(written);
   const turned = await measureInk(page);
   // Turning the pen moves ink. Nothing else about the stroke changed.
   expect(Math.abs(turned - written)).toBeGreaterThan(0);
@@ -483,10 +482,8 @@ test("names a pen, and one change reaches every letter using it", async ({ page 
    */
   await takeUpTool(page, "write", "nib");
   await page.mouse.click(box.x + box.width * 0.35, box.y + box.height * 0.3);
-  await page.waitForTimeout(200);
   await expect(page.locator("[data-pen-scope]")).toHaveText(/stroke 1/);
   await page.locator("[data-free-pen]").click();
-  await page.waitForTimeout(200);
   await expect(page.locator("[data-pen-follows]")).toHaveCount(0);
 
   /*
@@ -501,7 +498,6 @@ test("names a pen, and one change reaches every letter using it", async ({ page 
   await expect(row.getByRole("textbox")).toHaveValue("Blackletter");
 
   await page.locator("[data-delete-pen='ruqaa']").click();
-  await page.waitForTimeout(200);
   await expect(page.locator("[data-saved-pen='ruqaa']")).toHaveCount(0);
   // And the letter is untouched: a pen thrown away leaves the strokes written
   // with it exactly as they were.

@@ -74,9 +74,10 @@ test("space puts the hand out, and the letter moves rather than the point", asyn
   await page.mouse.move(middle.x + 160, middle.y + 90, { steps: 8 });
   await page.mouse.up();
   await page.keyboard.up("Space");
-  await page.waitForTimeout(200);
 
-  expect(await canvasPrint(page), "the letter should have moved under the hand").not.toBe(before);
+  await expect
+    .poll(() => canvasPrint(page), { message: "the letter should have moved under the hand" })
+    .not.toBe(before);
   // And the knife did not cut, which is the half that says space beat the tool
   // rather than merely also happening.
   expect(await page.locator("[data-paths-panel]").textContent()).toBe(paths);
@@ -111,12 +112,12 @@ test("the zoom can be typed into, and Fit puts the letter back", async ({ page }
 
   await zoom.fill("240");
   await zoom.press("Enter");
-  await page.waitForTimeout(250);
   await expect(zoom).toHaveValue("240");
-  expect(await canvasPrint(page), "the letter should be drawn larger").not.toBe(fitted);
+  await expect
+    .poll(() => canvasPrint(page), { message: "the letter should be drawn larger" })
+    .not.toBe(fitted);
 
   await page.locator("[data-fit-canvas]").click();
-  await page.waitForTimeout(250);
   await expect(zoom).toHaveValue("100");
 });
 

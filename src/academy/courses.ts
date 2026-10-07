@@ -298,6 +298,4 @@ export const COURSES: Course[] = [
   },
 ];
 
-export const courseById = (id: string): Course | undefined => COURSES.find((one) => one.id === id);
-
 export const ALL_LESSONS: Lesson[] = COURSES.flatMap((one) => one.lessons);

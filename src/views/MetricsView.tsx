@@ -79,7 +79,7 @@ export function MetricsView(): React.JSX.Element {
       <CoachMark id="metrics" />
       <SpacingPreview revision={state.revision} text={state.previewText} />
 
-      <div className="flex items-center gap-3 border-y border-border px-4 py-2.5">
+      <div className="flex items-center gap-3 border-y border-border px-4 py-2.5 max-md:flex-wrap max-md:gap-y-1.5">
         <input
           value={filter}
           onChange={(event) => setFilter(event.target.value)}
@@ -90,7 +90,7 @@ export function MetricsView(): React.JSX.Element {
         <span className="text-2xs text-muted-foreground tabular-nums">
           {rows.length.toLocaleString()} shown
         </span>
-        <span className="ml-auto text-2xs text-muted-foreground">
+        <span className="ml-auto text-2xs text-muted-foreground max-md:ml-0 max-md:basis-full">
           Sidebearings are measured from the outline, so they follow any parameter changes
         </span>
       </div>

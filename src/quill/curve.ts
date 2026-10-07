@@ -91,8 +91,20 @@ export function headingOn(segment: QuillSegment, t: number): Vec2 {
       3 * t * t * (segment.to.y - segment.c2.y),
   );
   if (len(d) > 1e-9) return unit(d);
-  const nudge = t < 0.5 ? Math.min(t + 1e-3, 1) : Math.max(t - 1e-3, 0);
-  return unit(sub(pointOn(segment, nudge), pointOn(segment, t < 0.5 ? t : nudge)));
+  /*
+   * Always from the earlier point to the later one. At the far end this used
+   * to take the nudged point from itself, which is no direction at all -- so
+   * every corner of a stroke written by clicking, whose straight cubics have
+   * their handles on their ends, came out with no heading either side of it:
+   * the offsets collapsed onto the spine at the turn and the join round it
+   * wound the wrong way, a dark wedge in the ink wherever a stroke turned.
+   */
+  if (t < 0.5) {
+    const nudge = Math.min(t + 1e-3, 1);
+    return unit(sub(pointOn(segment, nudge), pointOn(segment, t)));
+  }
+  const nudge = Math.max(t - 1e-3, 0);
+  return unit(sub(pointOn(segment, t), pointOn(segment, nudge)));
 }
 
 /*
