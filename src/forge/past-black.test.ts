@@ -244,3 +244,55 @@ describe("the Sans's Q on a narrow width", () => {
     }
   });
 });
+
+describe("every face's vees", () => {
+  /*
+   * Each vee's point is asked to reach its line, and `corner` reckoned its
+   * reach from the pen's half: a pen with contrast reaches less than that
+   * along the bisector, and the point stood short of the line, more so the
+   * heavier the pen -- the Ribbon's V 66 units over the baseline at 260, the
+   * Technical's 31 at its Black, the Didone's 19. Left out: the written
+   * hands, whose letters are shaped by their joins after, and the Serif,
+   * which takes its vees apart to thin the rising arm and is held to Lora.
+   */
+  const faces = BASES.filter((one) => !one.parts.script.on && one.name !== "Serif");
+  const vees = [
+    ["V", -1],
+    ["v", -1],
+    ["Δ", 1],
+    ["Λ", 1],
+  ] as const;
+  const reach = (name: string, style: Style, pointing: number) => {
+    const box = contoursBounds(draw(name, style).contours);
+    return pointing < 0 ? box.yMin : box.yMax - style.metrics.capHeight;
+  };
+
+  it("stand on their lines at every weight and width", () => {
+    for (const face of faces) {
+      for (const weight of [30, 87, 142, 194, 230, 260]) {
+        for (const width of [75, 100, 125]) {
+          const style = at(face.name, weight, width);
+          for (const [name, pointing] of vees) {
+            const where = `${face.name} ${name} at ${weight}, width ${width}`;
+            expect(Math.abs(reach(name, style, pointing)), where).toBeLessThan(3.5);
+          }
+        }
+      }
+    }
+  }, 300_000);
+
+  it("come onto them a little at a time, with no weight jumping from the next", () => {
+    for (const name of ["Ribbon", "Technical", "Didone"]) {
+      for (const [letter, pointing] of vees) {
+        let last: number | null = null;
+        for (let weight = 120; weight <= 260; weight += 4) {
+          const now = reach(letter, at(name, weight), pointing);
+          if (last !== null) {
+            expect(Math.abs(now - last), `${name} ${letter} at ${weight}`).toBeLessThan(8);
+          }
+          last = now;
+        }
+      }
+    }
+  }, 300_000);
+});
