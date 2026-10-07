@@ -19,7 +19,7 @@
  * matter of keeping the previous value.
  */
 
-import { anyCast, noCast, NO_CAST, sameCast, type Cast, type CastName } from "@/font/cast";
+import { noCast, NO_CAST, sameCast, type Cast, type CastName } from "@/font/cast";
 import { anyCut, noCuts, NO_CUTS, sameCut, type CutName, type Cuts } from "@/font/cuts";
 import { contoursBounds } from "@/font/geometry";
 import { measuredStem } from "@/font/stem";
@@ -171,11 +171,6 @@ export function castFor(character: string, assembly: Assembly): Cast | undefined
   return assembly.castExceptions?.[character] ?? assembly.cast;
 }
 
-export function anythingCast(assembly: Assembly): boolean {
-  if (anyCast(assembly.cast)) return true;
-  return Object.values(assembly.castExceptions ?? {}).some((cast) => anyCast(cast));
-}
-
 export function editCast(assembly: Assembly, cast: Cast | undefined): Assembly {
   return { ...assembly, cast };
 }
@@ -189,10 +184,6 @@ export function castLikeTheRest(assembly: Assembly, character: string): Assembly
   const rest = { ...assembly.castExceptions };
   delete rest[character];
   return { ...assembly, castExceptions: rest };
-}
-
-export function isCastException(assembly: Assembly, character: string): boolean {
-  return assembly.castExceptions?.[character] !== undefined;
 }
 
 export function castHeldBy(assembly: Assembly, character: string, name: CastName): boolean {

@@ -23,8 +23,6 @@ import { DEFAULT_PARAMS, type Contour, type Glyph, type GlyphParams, type Typefa
 /** The letters that drive the rest, in the order they are worth drawing. */
 export const CONTROL_GLYPHS = ["n", "o", "H", "O", "zero", "one", "three"] as const;
 
-export type ControlName = (typeof CONTROL_GLYPHS)[number];
-
 /** Which control letters speak for the lowercase, the capitals and the figures. */
 export const CONTROL_GROUPS: Record<string, readonly string[]> = {
   lowercase: ["n", "o"],
@@ -343,17 +341,4 @@ export function deriveParams(
 function round(value: number, decimals = 2): number {
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
-}
-
-/**
- * Parameters that leave a glyph exactly as drawn.
- *
- * A control letter has to be pinned to these once its edit has been turned into
- * family parameters. Without it the letter is hit twice: once by the designer
- * moving its points, and again by the family weight that those very points
- * produced, so thickening n by 30 units would leave n 60 units thicker than the
- * rest of the alphabet it was meant to be setting the standard for.
- */
-export function neutralParams(): GlyphParams {
-  return { ...DEFAULT_PARAMS };
 }

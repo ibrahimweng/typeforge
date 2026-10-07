@@ -172,10 +172,6 @@ export function resolveComponents(
   return contours;
 }
 
-/** Whether a glyph draws nothing itself and exists only as an arrangement of others. */
-export const isPureComposite = (glyph: Glyph): boolean =>
-  glyph.components.length > 0 && glyph.contours.length === 0;
-
 /** Every glyph that refers to `name`, so an edit can be reflected in them. */
 export function dependentsOf(typeface: Typeface, name: string): string[] {
   return typeface.glyphs

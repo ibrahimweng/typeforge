@@ -36,20 +36,16 @@ let anime: Anime | null = null;
  * begin the download would put the fetch in the way of the very animation it
  * is for; started here it is almost always in hand before anybody clicks.
  */
-const arriving: Promise<void> =
-  typeof window === "undefined"
-    ? Promise.resolve()
-    : import("animejs")
-        .then((loaded) => {
-          anime = loaded;
-        })
-        .catch(() => {
-          // An animation library that will not load is not worth an error
-          // anybody has to see: the application is entirely usable without it.
-        });
-
-/** For tests and callers that need to know the library is in hand. */
-export const animationReady = (): Promise<void> => arriving;
+if (typeof window !== "undefined") {
+  import("animejs")
+    .then((loaded) => {
+      anime = loaded;
+    })
+    .catch(() => {
+      // An animation library that will not load is not worth an error
+      // anybody has to see: the application is entirely usable without it.
+    });
+}
 
 /** Shared timings, in milliseconds. */
 export const DURATION = {
