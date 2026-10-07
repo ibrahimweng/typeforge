@@ -52,7 +52,8 @@ import {
   resolveAdvanceWidth,
   resolveGlyphContours,
 } from "./transform";
-import { type Resolved, resolveAll } from "./resolve-pool";
+import { type PoolOptions, type Resolved, resolveAll } from "./resolve-pool";
+import { exactly, isDraft } from "./draft";
 import { readyToShape } from "@/forge/layers";
 import { readSfnt, writeSfnt, SFNT_TRUETYPE, type SfntFont } from "./sfnt";
 import {
@@ -121,6 +122,12 @@ export interface ExportOptions {
    * carries. Asked for on an OTF it is refused rather than ignored.
    */
   variable?: VariableOptions;
+  /**
+   * Where the outlines are worked out: how many threads, or none (see
+   * `resolve-pool.ts`). Left out, the pool decides. The file is the same
+   * either way, byte for byte; this only says how long it takes.
+   */
+  resolving?: PoolOptions;
 }
 
 export interface VariableOptions {
@@ -162,10 +169,27 @@ export interface ExportResult {
   held: string[];
 }
 
-export async function exportFont(
-  typeface: Typeface,
-  options: ExportOptions,
-): Promise<ExportResult> {
+export async function exportFont(drawn: Typeface, asked: ExportOptions): Promise<ExportResult> {
+  /*
+   * The exact letters, always. A weight nudged with the arrow keys is a draft
+   * for half a second (see `exactly` in `draft.ts`), and a file is written
+   * once and kept: it is never to be the in-between drawing a gesture shows.
+   */
+  const typeface = exactly(drawn);
+  const options: ExportOptions = asked.variable?.masters.some((master) =>
+    isDraft(master.typeface.params),
+  )
+    ? {
+        ...asked,
+        variable: {
+          ...asked.variable,
+          masters: asked.variable.masters.map((master) => ({
+            ...master,
+            typeface: exactly(master.typeface),
+          })),
+        },
+      }
+    : asked;
   /*
    * The shaping and the library it cuts with, before a single outline is
    * resolved.
@@ -248,6 +272,7 @@ export async function exportFont(
           mergeOverlaps,
           roles,
           variable: options.variable,
+          resolving: options.resolving,
         });
 
   const base = `${typeface.meta.familyName}-${typeface.meta.styleName}`.replace(/\s+/g, "");
@@ -259,9 +284,10 @@ export async function exportFont(
    * one with the other or tacked a (1) on.
    */
   const varying = options.variable
-    ? `${typeface.meta.familyName.replace(/[^A-Za-z0-9]+/g, "") || "Untitled"}[${options.variable.axes
-        .map((axis) => axis.tag)
-        .join(",")}]`
+    ? variableName(
+        typeface.meta.familyName,
+        options.variable.axes.map((axis) => axis.tag),
+      )
     : null;
   return {
     bytes,
@@ -271,6 +297,23 @@ export async function exportFont(
     notes,
     held,
   };
+}
+
+/**
+ * What a varying font is called, without its extension: the family, then the
+ * axes it carries, in the brackets a font manager knows to read -- sorted, which
+ * is the Google Fonts rule and the one everybody else has taken up:
+ * `Family[wdth,wght]`. Sorted by code point, so a foundry's own capitalised
+ * axes come before the registered lower-case ones, as theirs do.
+ *
+ * One rule for every varying font the app writes. An opened font written with
+ * a width and a weight axis came out `Family[wght,wdth]` -- in the order the
+ * axes were listed -- while a Draw family with the same two came out
+ * `Family[wdth,wght]`, and the same font had two names.
+ */
+export function variableName(familyName: string, tags: readonly string[]): string {
+  const tidy = familyName.replace(/[^A-Za-z0-9]+/g, "") || "Untitled";
+  return `${tidy}[${[...tags].sort().join(",")}]`;
 }
 
 /**
@@ -479,10 +522,11 @@ function stillPieces(
 async function pooled(
   typeface: Typeface,
   variable: VariableOptions | undefined,
+  resolving: PoolOptions | undefined,
 ): Promise<Resolved[] | null> {
   const all = [typeface, ...(variable?.masters.map((master) => master.typeface) ?? [])];
   if (!all.some((one) => one.glyphs.some((glyph) => isReshaped(glyph, one)))) return null;
-  return resolveAll(all);
+  return resolveAll(all, resolving);
 }
 
 async function exportTrueType(
@@ -497,6 +541,7 @@ async function exportTrueType(
     mergeOverlaps: boolean;
     roles: Roles;
     variable?: VariableOptions;
+    resolving?: PoolOptions;
   },
 ): Promise<Uint8Array> {
   /*
@@ -506,7 +551,7 @@ async function exportTrueType(
    * Null where there is nothing costly to work out, or nowhere to work it out
    * but here, and then each is resolved as it is reached, as it always was.
    */
-  const pool = await pooled(typeface, context.variable);
+  const pool = await pooled(typeface, context.variable, context.resolving);
   const resolved = await resolvedGlyphs(
     typeface,
     "truetype",

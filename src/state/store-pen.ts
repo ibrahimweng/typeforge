@@ -2,6 +2,7 @@ import { retracted } from "@/font/pen";
 import { cloneGlyph } from "@/font/types";
 import type { Glyph, Vec2 } from "@/font/types";
 import { dominantConvention } from "@/font/outline";
+import { forgetResolved } from "@/font/transform";
 import { followPens, inkOf, penAtNodes, type SavedPen } from "@/quill/written";
 import type { QuillSegment, QuillStroke } from "@/quill/types";
 import { strokeToContour } from "@/font/freehand";
@@ -68,6 +69,9 @@ export abstract class PenStore extends OutlineStore {
     const written = glyph.written;
     if (!written || written.expanded) return;
     glyph.contours = inkOf(written.strokes, this.state.typeface?.unitsPerEm ?? 1000);
+    // Swept again in place -- `editPen` does it outside `editGlyph` -- so what
+    // was worked out for the old ink is let go here as well.
+    forgetResolved(glyph);
   }
 
   /**

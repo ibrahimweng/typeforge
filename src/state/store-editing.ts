@@ -13,7 +13,7 @@
 import { deriveParams, isControlGlyph, readControls, type ControlChange } from "@/font/control";
 import { buildLinks, pointsThatMoved, propagateMoves } from "@/font/link";
 import { cloneGlyph } from "@/font/types";
-import { effectiveParams } from "@/font/transform";
+import { effectiveParams, forgetResolved } from "@/font/transform";
 import { DEFAULT_PARAMS, type Glyph, type GlyphParams } from "@/font/types";
 import { NavigationStore } from "./store-navigation";
 
@@ -42,6 +42,8 @@ export abstract class EditingStore extends NavigationStore {
 
     const before = cloneGlyph(typeface.glyphs[index]);
     mutate(typeface.glyphs[index]);
+    // Edited in place, so what was worked out for it before is not its now.
+    forgetResolved(typeface.glyphs[index]);
     /*
      * An expanded letter whose outlines were edited by hand is no longer a way
      * back to its strokes, and this is where that is noticed.
@@ -100,6 +102,7 @@ export abstract class EditingStore extends NavigationStore {
     const index = typeface.glyphIndex.get(name);
     if (index === undefined) return;
     mutate(typeface.glyphs[index]);
+    forgetResolved(typeface.glyphs[index]);
     typeface.glyphs[index].dirty = true;
     this.touch();
   }
@@ -135,6 +138,11 @@ export abstract class EditingStore extends NavigationStore {
 
     const links = this.controlLinks.get(name);
     const moved = links ? propagateMoves(typeface, links, pointsThatMoved(before, after)) : [];
+    // The followers were moved in place, point for point.
+    for (const follower of moved) {
+      const at = typeface.glyphIndex.get(follower);
+      if (at !== undefined) forgetResolved(typeface.glyphs[at]);
+    }
 
     const shapeAfter = new Map(
       [...followers].map((follower) => {
