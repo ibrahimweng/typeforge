@@ -478,9 +478,34 @@ function drawnFresh(
       ? wobbled(inked.flat())
       : null;
   const measured = upright ?? solid;
+  /*
+   * And a letter of a face drawn leaning, placed by its leaning ink, never
+   * stood back upright past its own origin: where the next letter's ink is
+   * at that height, which is how the health check measures a collision (see
+   * `leftEdge` in `health.ts`). A bar or a mark standing high on a leaning
+   * letter -- the ł's bar, the Ħ's, the Đ's, a free-standing tilde or double
+   * acute -- swung back left of the origin by its height times the lean,
+   * into the letter before. Only those move: every other letter already
+   * stands clear of its origin by more than this.
+   */
+  const standing =
+    lean !== 0 &&
+    !upright &&
+    !style.metrics.monospaced &&
+    !laid &&
+    !joinsUp &&
+    !joinEnds(name).entry &&
+    form !== "written" &&
+    solid.length > 0
+      ? uprightLeft(inked.flat(), style)
+      : null;
   const shortfall =
     measured.length > 0 && !joinsUp
-      ? Math.max(0, spacingOf(style) - contoursBounds(measured).xMin)
+      ? Math.max(
+          0,
+          spacingOf(style) - contoursBounds(measured).xMin,
+          standing === null ? 0 : style.metrics.unitsPerEm * UPRIGHT_CLEAR - standing,
+        )
       : 0;
   const placed = slid(cut, shortfall);
   const placedSolid = upright
@@ -757,6 +782,20 @@ function besideTop(
 function shoved(contours: Contour[], by: Vec2): Contour[] {
   return moved(contours, (point) => ({ x: point.x + by.x, y: point.y + by.y }));
 }
+
+/**
+ * Where a letter's ink starts stood upright, leaving out anything wholly over
+ * the ascender, as `leftEdge` in `health.ts` measures it. `inked` is the
+ * letter before the lean.
+ */
+function uprightLeft(inked: Contour[], style: Style): number {
+  const { ascender } = style.metrics;
+  const among = inked.filter((contour) => contoursBounds([contour]).yMin < ascender);
+  return contoursBounds(among.length > 0 ? among : inked).xMin;
+}
+
+/** How far a leaning letter stands clear of its origin upright, at the least, in ems. */
+const UPRIGHT_CLEAR = 0.01;
 
 /** How far a letter leans, as a shear rather than as an angle. */
 /**

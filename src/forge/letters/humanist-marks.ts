@@ -1114,10 +1114,29 @@ function petal(f: Framed, from: Vec2, to: Vec2, wideFrom: number, wideTo: number
   ];
 }
 
-/** A width of Lora's dagger at this weight, never under a share of the pen. */
+/**
+ * A width of Lora's dagger at this weight, never under a share of the pen,
+ * and past the Bold growing at only `DAGGER_PAST` of the rate it grows from
+ * the Regular to the Bold: grown at the whole rate its round ends ran
+ * together at a black weight, and the dagger was a blob.
+ */
 function daggerWide(style: Style, regular: number, bold: number): number {
+  const past = Math.max(0, style.pen.weight - 142);
+  const grown = byPen(
+    { ...style, pen: { ...style.pen, weight: style.pen.weight - past } },
+    regular,
+    bold,
+  );
+  return Math.max(grown + ((bold - regular) / 55) * past * DAGGER_PAST, style.pen.weight * 0.4, 12);
+}
+
+/** A width of Lora's asterisk at this weight, never under a share of the pen. */
+function petalWide(style: Style, regular: number, bold: number): number {
   return Math.max(byPen(style, regular, bold), style.pen.weight * 0.5, 12);
 }
+
+/** How much of its Regular-to-Bold growth a dagger keeps past the Bold: see `daggerWide`. */
+const DAGGER_PAST = 0.45;
 
 /**
  * A run narrowing from `wide` across at `from` to `narrow` across at `to`,
@@ -1165,9 +1184,24 @@ function wedge(f: Framed, from: Vec2, to: Vec2, wide: number, narrow: number): S
 }
 
 /**
- * The upper half of Lora's dagger over its cross at `cross`: a head flaring
- * out to a flat top at 760, and the two arms flaring out from the cross to
- * flat ends 230 either side, each one wedge. `down` turns it over for the
+ * A wedge finished at its wide end in a round as wide as it is, as Lora's
+ * dagger's limbs are: the round stands where the wedge would have ended, so
+ * the limb is as long as asked.
+ */
+function petalWedge(f: Framed, from: Vec2, to: Vec2, wide: number, narrow: number): Stroke[] {
+  const length = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+  const inward = Math.min(wide / 2, length * 0.45);
+  const at0 = at(
+    from.x + ((to.x - from.x) / length) * inward,
+    from.y + ((to.y - from.y) / length) * inward,
+  );
+  return [disc(at0, wide / 2, f.style), ...wedge(f, at0, to, wide, narrow)];
+}
+
+/**
+ * The upper half of Lora's dagger over its cross at `cross`: a round head at
+ * 760 narrowing down to the cross, and the two arms narrowing in to it from
+ * round ends 230 either side, each one wedge. `down` turns it over for the
  * lower half of the double dagger.
  */
 function daggerHead(f: Framed, x: number, cross: number, down: 1 | -1): Stroke[] {
@@ -1180,32 +1214,38 @@ function daggerHead(f: Framed, x: number, cross: number, down: 1 | -1): Stroke[]
   const reach = Math.max(230 * u, end * 1.1);
   const top = cross + down * (bySize(style, 760, 754) - 453) * u;
   return [
-    ...wedge(f, at(x, top), at(x, cross), head, neck),
-    ...wedge(f, at(x - reach, cross), at(x, cross), end, arm),
-    ...wedge(f, at(x + reach, cross), at(x, cross), end, arm),
+    ...petalWedge(f, at(x, top), at(x, cross), head, neck),
+    ...petalWedge(f, at(x - reach, cross), at(x, cross), end, arm),
+    ...petalWedge(f, at(x + reach, cross), at(x, cross), end, arm),
   ];
 }
 
 /**
- * The dagger as Lora's: from 271 under the line to 760, a head flaring to a
- * flat top, arms flaring to flat ends 460 across at 453, and a stem as wide
- * as Lora's swell under the cross, narrowing in one run to a flat point 28
- * across at the Regular and 62 at the Bold.
+ * The dagger as Lora's: from 271 under the line to 760, a round head, arms
+ * with round ends 460 across at 453, and a stem narrow under the cross,
+ * swelling to 106 across at 280 (146 at the Bold) and running down to a flat
+ * point 28 across at the Regular and 62 at the Bold.
  *
- * It was a ball on every end and a stem in three tapers, which pinched where
- * they met; at a black weight the balls ran together into a blob, and Lora's
- * ends are cut, not balled.
+ * Each limb is one clean wedge, and the stem two meeting flat at the swell.
+ * It was drawn as half-strokes leaning their own ways, three to the stem,
+ * with a ball on each end bigger than the limb it ended: it pinched at every
+ * joint, the fault scan found pinhole counters there, and at a black weight
+ * the balls ran together into a blob.
  */
 export function humanistDagger(style: Style): Recipe {
   const f = frame(style);
   const u = loraUnit(f);
   const x = f.edge - f.half + 230 * u;
   const cross = 453 * u;
-  const swell = daggerWide(style, 100, 140) * u;
+  const swellAt = 280 * u;
+  const swell = daggerWide(style, 106, 146) * u;
+  const waist = daggerWide(style, 60, 90) * u;
   const point = daggerWide(style, 28, 62) * u;
   return finish(f, [
     ...daggerHead(f, x, cross, 1),
-    ...wedge(f, at(x, cross), at(x, f.desc - f.over), swell, point),
+    ...wedge(f, at(x, swellAt), at(x, cross), swell, waist),
+    // Started a unit inside the upper one, so the two overlap at the swell.
+    ...wedge(f, at(x, swellAt + 1), at(x, f.desc - f.over), swell, point),
   ]);
 }
 
@@ -1239,8 +1279,8 @@ export function humanistAsterisk(style: Style): Recipe {
   const f = frame(style);
   const u = loraUnit(f);
   const middle = at(f.edge - f.half + 221 * u, 470 * u);
-  const head = daggerWide(style, 75, 104) * u;
-  const heart = daggerWide(style, 30, 50) * u;
+  const head = petalWide(style, 75, 104) * u;
+  const heart = petalWide(style, 30, 50) * u;
   const ends: Array<[number, number]> = [
     [90, 209],
     [157, 192],

@@ -1742,7 +1742,7 @@ const S_WIDEN = 0.5;
  * lump where each end turned in: it is drawn a little wider and lightened as
  * the s is, by `S_HEAVY_CAPITAL` of as much.
  */
-const S_HEAVY_WIDE = 0.6;
+const S_HEAVY_WIDE = 0.3;
 const S_HEAVY_UPRIGHT = 0.1;
 const S_HEAVY_CAPITAL_WIDE = 0.3;
 const S_HEAVY_CAPITAL = 0.6;
@@ -1763,7 +1763,10 @@ function bookS(style: Style, capital: boolean): Recipe {
    * Bold, so the Regular and the Bold are Lora's as they were, and one by
    * an Ultra. See `S_HEAVY_WIDE` and `S_HEAVY_CAPITAL`.
    */
-  const past = textSerif(f) ? Math.min(1, Math.max(0, heaviness(f) - 0.5)) : 0;
+  // And eased out as the contrast rises into a didone's, as the rest of the
+  // s is: held on there, the s at 260 jumped wider step by step.
+  const toDidone = Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
+  const past = textSerif(f) ? Math.min(1, Math.max(0, heaviness(f) - 0.5)) * (1 - toDidone) : 0;
   // The capital a little narrower on its height, as Lora's S is.
   const width =
     (inked * (capital ? 0.59 : 0.62) * f.wide + (f.gain * f.x) / height) *
