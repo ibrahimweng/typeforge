@@ -48,7 +48,7 @@ const at = (x: number, y: number): Vec2 => ({ x, y });
  * A few per cent of clearance costs nothing anyone can see -- at a hundredth of
  * an em it is a fraction of a unit -- and it keeps every arc an arc.
  */
-const CLEARANCE = 1.06;
+export const CLEARANCE = 1.06;
 
 /**
  * The run lengths a family's waves are counted off, taken once and kept.

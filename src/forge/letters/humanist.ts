@@ -1517,9 +1517,11 @@ function bookSpine(
   width: number,
   // The half-width of the pen the run is drawn with.
   half: number,
+  // How much of the pen's depth its level runs are drawn with: see `bookS`.
+  level = 1,
 ): Spine {
-  const top = f.hangs(height) + f.over;
-  const bottom = f.sits(0) - f.over;
+  const top = f.hangs(height, level) + f.over;
+  const bottom = f.sits(0, level) - f.over;
   const tall = top - bottom;
   const rad = (degrees: number) => (degrees * Math.PI) / 180;
   const sin = Math.sin;
@@ -1745,6 +1747,9 @@ const S_SPINE = 1.25;
 /** How much wider the s runs per unit of blackness past a Black. */
 const S_WIDEN = 0.5;
 
+/** A text serif's Black, as `heaviness` counts it: a pen of 194. */
+const S_BLACK = (194 - 96) / 104;
+
 /*
  * A text serif's s and S past the Bold, as Lora's Bold would be drawn on.
  *
@@ -1797,6 +1802,26 @@ function bookS(style: Style, capital: boolean): Recipe {
   // The capital has the cap height to turn in, and is lightened less, and
   // only on a text serif: see `S_HEAVY_CAPITAL`.
   const heavy = capital ? past * S_HEAVY_CAPITAL : Math.min(1, Math.max(0, heaviness(f) - 0.5));
+  /*
+   * Past the Black the lowercase s is laid out on the depth its level runs
+   * are drawn with rather than the stem's. Laid out on the stem's, a run
+   * drawn lighter stopped short of the line and the x-height's overshoot --
+   * the s at a pen of 260 stood on -4 where the o dips to -16 -- and the
+   * bowls were given that much less height to turn in, so the search
+   * narrowed them: the letter shrank as the pen grew, 386 units across
+   * against the Black's 420 beside an o grown from 577 to 698. Widened
+   * instead, the bowls came out too flat for the pen and the spine crossed
+   * half of them, an s that leaned; let lie flatter, it jumped about as the
+   * contrast rose. Laid out on the runs it is drawn with, it sits on the
+   * o's line and stands 419 across, and as upright as before. Run in from
+   * nothing at the Black, so the Black and everything lighter are drawn as
+   * they were.
+   */
+  const beyond =
+    !capital && textSerif(f)
+      ? Math.min(1, Math.max(0, (heaviness(f) - S_BLACK) / (1.5 - S_BLACK))) * (1 - toDidone)
+      : 0;
+  const level = 1 - S_LIGHTER * heavy * beyond;
   // A didone's s as it was: see `S_UPRIGHT`.
   const upright =
     S_UPRIGHT +
@@ -1813,7 +1838,12 @@ function bookS(style: Style, capital: boolean): Recipe {
        */
       hairlined(
         lighter(
-          ink(f, bookSpine(f, height, f.edge, width, f.half * (1 - upright * heavy)), f.end, f.end),
+          ink(
+            f,
+            bookSpine(f, height, f.edge, width, f.half * (1 - upright * heavy), level),
+            f.end,
+            f.end,
+          ),
           1 - S_LIGHTER * heavy,
         ),
         (1 - upright * heavy) / (1 - S_LIGHTER * heavy),

@@ -38,8 +38,8 @@ import {
   weightAtBlackness,
 } from "../style";
 import { LETTERS } from "../letters";
-import { bowlPoint, hasLength, spineEnd, spineStart, superQuarter } from "../shapes";
-import { penReach, reachAlong } from "../sweep";
+import { bowlPoint, CLEARANCE, hasLength, spineEnd, spineStart, superQuarter } from "../shapes";
+import { penReach, reachAlong, sweep } from "../sweep";
 import type { Spine, SpineArc, Stroke, Terminal } from "../types";
 import {
   towards,
@@ -782,21 +782,32 @@ export function grotesqueCapitalQ(style: Style): Recipe {
   const sans = f.style.metrics.xGrows !== undefined;
   const light = sans ? Math.max(atWeights(f, 1, 0.88, 0.75, 0.7, 0.65), 0.65) : 1;
   const shift = sans ? f.half * (1 - light) * 1.27 + atWeights(f, -36, -2, 1, -8, -21) : 0;
-  const tail = ink(
-    f,
-    straight(
-      // Past the Black the tail starts lower, under a counter that has shut down onto it.
-      at(X(lerp(339.5, 350)) + shift, up(f, lerp(200, 260) - 90 * Math.max(0, t - 1))),
-      at(X(lerp(548, 598.7)) + shift, up(f, lerp(-69, -59))),
-    ),
-    LEVEL,
-    LEVEL,
-  );
-  return finish(
-    f,
-    [...ring, inherit(tail, { ...tail, pen: { ...tail.pen, weight: tail.pen.weight * light } })],
-    true,
-  );
+  // Past the Black the tail starts lower, under a counter that has shut down onto it.
+  const start = at(X(lerp(339.5, 350)) + shift, up(f, lerp(200, 260) - 90 * Math.max(0, t - 1)));
+  const tailTo = (endX: number): Stroke => {
+    const one = ink(f, straight(start, at(endX, up(f, lerp(-69, -59)))), LEVEL, LEVEL);
+    return inherit(one, { ...one, pen: { ...one.pen, weight: one.pen.weight * light } });
+  };
+  let endX = X(lerp(548, 598.7)) + shift;
+  let tail = tailTo(endX);
+  /*
+   * And never out past the ring's own right side. The tail is laid off
+   * Geist's measures carried on past its Black, and on a narrower width the
+   * ring's sides take the pen's weight whole while only its counter narrows:
+   * on a Condensed at a pen of 240 the tail's end stood 58 units out past the
+   * ring and at 260 125, a stroke stuck out of the letter. Where it would,
+   * its end is brought back in under the ring, the tail standing steeper.
+   */
+  const right = (stroke: Stroke) =>
+    Math.max(...sweep(stroke).flatMap((contour) => contour.nodes.map((node) => node.point.x)));
+  const ringRight = right(ring[0]);
+  for (let pass = 0; pass < 4; pass++) {
+    const past = right(tail) - ringRight;
+    if (!(past > 0.5)) break;
+    endX -= past;
+    tail = tailTo(endX);
+  }
+  return finish(f, [...ring, tail], true);
 }
 
 /**
@@ -2928,6 +2939,7 @@ function sixStrokes(
   shape: [number, number, number, number] = SIX_BOWL,
   shorter = 0,
   crown = figureCrown(f),
+  room = 1,
 ): Stroke[] {
   const X = across(f, 60, 0.025, fit);
   const u = large(f, 1) * (1 + 0.025 * thinness(f)) * fit;
@@ -2972,7 +2984,7 @@ function sixStrokes(
   const downLeft = sans ? { ...f, curve: atWeights(f, 0.15, 0.2, 0.25, 0.25, 0.2) } : f;
   const end = angleAt(overRight, hood, hoodW, hoodH, Math.max(up(f, cut), hoodY + f.half), false);
   return [
-    ...sixBowl(f, sans, centre, wide, radius, crown, shape),
+    ...sixBowl(f, sans, centre, wide, radius, crown, shape, room),
     ink(
       f,
       chain(
@@ -3001,11 +3013,12 @@ function sixBowl(
   radius: number,
   share: number,
   shape: [number, number, number, number] = SIX_BOWL,
+  room = 1,
 ): Stroke[] {
   if (!sans) return [ink(f, ring(f, centre, wide, radius))];
   const { g, bowls } = sidedPair(f, centre, radius, share);
   return bowls.map(([middle, half]) => {
-    const one = ink(g, lopsidedRing(g, middle, wide, half, shape));
+    const one = ink(g, lopsidedRing(g, middle, wide, half, shape, room));
     return inherit(one, { ...one, pen: g.style.pen });
   });
 }
@@ -3024,6 +3037,12 @@ const SIX_BOWL: [number, number, number, number] = [0.25, 0.03, 0.03, 0.2];
  * upper right: Geist's figure bowls are rounder on the side their stroke
  * leaves by than on the other. Every quarter meets the next level or upright,
  * whatever its fullness, so the ring has no corner.
+ *
+ * `room` turns its corners that much rounder than the pen's own limit. A
+ * corner held at the limit (`CLEARANCE` in `shapes.ts`) has an inside of six
+ * hundredths of the pen's half, which is a point: a bowl squeezed to its pen
+ * comes back with a counter whose corners are notches. Never so much that
+ * the bowl would have to grow to take it.
  */
 function lopsidedRing(
   f: Frame,
@@ -3031,10 +3050,13 @@ function lopsidedRing(
   wide: number,
   half: number,
   fullness: [number, number, number, number],
+  room = 1,
 ): Spine {
+  const pen =
+    room > 1 ? Math.max(f.half, Math.min(f.half * room, Math.min(wide, half) / CLEARANCE)) : f.half;
   const segments = fullness.flatMap(
     (curve, quarter) =>
-      superQuarter(centre, wide, half, 1 - f.square, f.half, curve, quarter) ??
+      superQuarter(centre, wide, half, 1 - f.square, pen, curve, quarter) ??
       bend(f, centre, half, quarter * 90, quarter * 90 + 90, wide).segments,
   );
   return { segments, closed: true };
@@ -3081,6 +3103,14 @@ export function grotesqueNineSided(style: Style): Recipe {
   return nineOf(style, true);
 }
 
+/**
+ * How much rounder than the pen's limit the Sans's nine's corners turn at a
+ * pen of 260 (held where the bowl has no room for it): see `nineOf`.
+ */
+const NINE_ROOM = 1.35;
+/** And how full its lower and upper left are there, against the Black's 0.45 and 0.2. */
+const NINE_ROUNDED = 0.03;
+
 function nineOf(style: Style, sans: boolean): Recipe {
   const f = frame(lighterAcross(style));
   const [, now] = squaredNow(f);
@@ -3100,6 +3130,21 @@ function nineOf(style: Style, sans: boolean): Recipe {
   const pastBlack = f.style.pen.weight / f.xOwn > 194 / 530;
   const knot = (knots: [number, number, number, number, number]) =>
     pastBlack ? knots[4] : atWeights(f, ...knots);
+  /*
+   * Past the Black the bowl has less room inside its pen than any weight
+   * Geist draws, and its corners were held at the pen's limit, where a
+   * turn's inside is no radius at all: the counter came to a notch at three
+   * of its corners, 50 degrees at a pen of 260 against 22 at the Black. So
+   * from the Black on its corners are let out rounder than that limit and
+   * its left, the fullest of its quarters, is rounded off toward its right,
+   * both run in from nothing at the Black and whole at a pen of 260 on a
+   * 530 x-height. The Black itself is drawn as it was.
+   */
+  const beyond = sans
+    ? Math.min(Math.max(((f.style.pen.weight / f.xOwn) * 530 - 194) / (260 - 194), 0), 1)
+    : 0;
+  const lowerLeft = knot([0.1, 0.25, 0.3, 0.45, 0.45]) + (NINE_ROUNDED - 0.45) * beyond;
+  const upperLeft = SIX_BOWL[3] + (NINE_ROUNDED - SIX_BOWL[3]) * beyond;
   return finish(
     f,
     /*
@@ -3112,9 +3157,10 @@ function nineOf(style: Style, sans: boolean): Recipe {
       sans,
       sans ? now(570, 530, 586) : 552,
       fit,
-      sans ? [knot([0.1, 0.25, 0.3, 0.45, 0.45]), SIX_BOWL[1], SIX_BOWL[2], SIX_BOWL[3]] : SIX_BOWL,
+      sans ? [lowerLeft, SIX_BOWL[1], SIX_BOWL[2], upperLeft] : SIX_BOWL,
       sans ? knot([12, 0, 0, 0, 0]) : 0,
       figureCrown(f) * (sans ? knot([1, 1, 1, 0.9, 0.85]) : 1),
+      1 + (NINE_ROOM - 1) * beyond,
     ).map((stroke) => turnedStroke(stroke, about)),
     true,
   );

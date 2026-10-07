@@ -11,6 +11,7 @@ import { spineStart } from "../shapes";
 import { blackness, type Style } from "../style";
 import type { Terminal } from "../types";
 import {
+  apexRounded,
   type Frame,
   roundHalf,
   arch,
@@ -597,8 +598,12 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const top = at(left, f.x);
     const other = at(middle + half, f.x);
-    const point = corner(f, top, at(middle, 0), other);
-    return finish(f, [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
+    // Its point rounded as the A's apex is, upside down: see `apexRounded`.
+    const legs = apexRounded(f, half, f.x, -1);
+    const point = corner(legs, top, at(middle, 0), other);
+    return finish(f, [
+      ink(legs, chain(straight(top, point), straight(point, other)), f.end, f.end),
+    ]);
   },
 
   w: (style) => {
