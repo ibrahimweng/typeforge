@@ -1431,16 +1431,127 @@ function sideGrowth(
 const growths = new WeakMap<Glyph, { key: string; left: number; right: number }>();
 
 function growthKey(glyph: Glyph, typeface: Typeface, params: GlyphParams): string {
-  const contours = resolveComponents(glyph, typeface);
-  return [
-    JSON.stringify(params),
-    typeface.unitsPerEm,
-    contours.reduce(
-      (sum, contour) =>
-        contour.nodes.reduce((total, node) => total + node.point.x * 3 + node.point.y, sum),
-      contours.length,
-    ),
-  ].join("|");
+  return [JSON.stringify(params), typeface.unitsPerEm, drawingKey(glyph, typeface)].join("|");
+}
+
+/**
+ * Everything of a letter's own that its resolved outline and advance depend
+ * on, as a short fingerprint: every contour as its components put it together
+ * -- each point, each handle and whether it has one, each node's type,
+ * whether the contour is closed -- and the advance, the name and the code
+ * points (which say whether it takes slabs), and its own cuts and cast.
+ *
+ * What the letter was worked out for is kept against the glyph object, and
+ * the store edits a glyph in place: a dragged point, a moved handle, an
+ * added node, all on the same object. So whatever is kept has to say what
+ * drawing it was worked out from, all of it. This used to be a sum of
+ * `x * 3 + y` over the points, which a moved handle never changes, nor a
+ * point moved ten across and thirty down -- and then the outline a weight
+ * was last worked out at was handed back for the letter as it was before the
+ * edit, on the canvas and in the file written from it.
+ *
+ * Hashed rather than written out, because it is asked for every letter each
+ * time the line is set: two independent 32-bit lanes over the exact bits of
+ * every number, so two drawings that differ in any of them share a key by
+ * accident about once in 2^64. The store also forgets what was kept for a
+ * letter it edits (`forgetResolved`); this is what makes that a nicety
+ * rather than the only thing standing between an edit and a stale outline,
+ * since a letter built from components changes when its parts do.
+ */
+function drawingKey(
+  glyph: Glyph,
+  typeface: Typeface,
+  contours: Contour[] = resolveComponents(glyph, typeface),
+): string {
+  const lanes = new Fingerprint();
+  lanes.add(contours.length);
+  for (const contour of contours) {
+    lanes.add(contour.closed ? contour.nodes.length + 0.5 : contour.nodes.length);
+    for (const node of contour.nodes) {
+      lanes.add(node.point.x);
+      lanes.add(node.point.y);
+      const type = NODE_TYPES[node.type];
+      if (type !== undefined) lanes.add(type);
+      else lanes.text(node.type);
+      if (node.handleIn) {
+        lanes.add(node.handleIn.x);
+        lanes.add(node.handleIn.y);
+      } else lanes.add(Number.NaN);
+      if (node.handleOut) {
+        lanes.add(node.handleOut.x);
+        lanes.add(node.handleOut.y);
+      } else lanes.add(Number.NaN);
+    }
+  }
+  lanes.add(glyph.advanceWidth);
+  lanes.text(glyph.name);
+  lanes.add(glyph.unicodes.length);
+  for (const code of glyph.unicodes) lanes.add(code);
+  if (glyph.cuts !== undefined) lanes.text(JSON.stringify(glyph.cuts));
+  if (glyph.cast !== undefined) lanes.text(JSON.stringify(glyph.cast));
+  return lanes.key();
+}
+
+const NODE_TYPES: Record<string, number> = { corner: 1, smooth: 2, tangent: 3 };
+
+const fingerprintNumber = new Float64Array(1);
+const fingerprintWords = new Uint32Array(fingerprintNumber.buffer);
+
+/** Two murmur-style 32-bit lanes with different seeds, fed exact float bits. */
+class Fingerprint {
+  private one = 0x2f6b9a31;
+  private two = 0x9e3779b9;
+
+  add(value: number): void {
+    fingerprintNumber[0] = value;
+    this.word(fingerprintWords[0]);
+    this.word(fingerprintWords[1]);
+  }
+
+  text(value: string): void {
+    this.add(value.length);
+    for (let at = 0; at < value.length; at++) this.word(value.charCodeAt(at));
+  }
+
+  private word(word: number): void {
+    let k = Math.imul(word, 0xcc9e2d51);
+    k = (k << 15) | (k >>> 17);
+    k = Math.imul(k, 0x1b873593);
+    this.one ^= k;
+    this.one = (this.one << 13) | (this.one >>> 19);
+    this.one = (Math.imul(this.one, 5) + 0xe6546b64) | 0;
+    let j = Math.imul(word ^ 0x85ebca6b, 0x27d4eb2f);
+    j = (j << 17) | (j >>> 15);
+    this.two = Math.imul(this.two ^ j, 0x165667b1);
+    this.two = ((this.two << 11) | (this.two >>> 21)) + 0x61c88647;
+  }
+
+  key(): string {
+    const finish = (h: number): number => {
+      let x = h;
+      x ^= x >>> 16;
+      x = Math.imul(x, 0x85ebca6b);
+      x ^= x >>> 13;
+      x = Math.imul(x, 0xc2b2ae35);
+      x ^= x >>> 16;
+      return x >>> 0;
+    };
+    return `${finish(this.one).toString(36)}.${finish(this.two).toString(36)}`;
+  }
+}
+
+/**
+ * Forget everything worked out for a letter and kept against it: the weights
+ * it was exactly drawn at, and the room its weight, its width and its slabs
+ * take beside it. Called by the store whenever it edits a glyph in place.
+ * The keys would catch the edit as well (see `drawingKey`); this drops the
+ * outlines of the letter as it was at once rather than at the next look.
+ */
+export function forgetResolved(glyph: Glyph): void {
+  anchorBook.delete(glyph);
+  growths.delete(glyph);
+  gives.delete(glyph);
+  slabRooms.delete(glyph);
 }
 
 /** And what putting back the strokes a change of width took added, likewise. */
@@ -1538,11 +1649,8 @@ function slabRoom(glyph: Glyph, typeface: Typeface, params: GlyphParams): number
     params.weight,
     typeface.unitsPerEm,
     cutScaleOf(typeface).stem,
-    contours.reduce(
-      (sum, contour) =>
-        contour.nodes.reduce((total, node) => total + node.point.x * 3 + node.point.y, sum),
-      contours.length,
-    ),
+    // The whole drawing, handles and all: see `drawingKey`.
+    drawingKey(glyph, typeface, contours),
   ].join(",");
   const known = slabRooms.get(glyph);
   if (known?.key === key) return known.room;

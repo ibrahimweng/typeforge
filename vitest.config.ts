@@ -41,7 +41,22 @@ export default defineConfig({
      * thirty seconds in the ordinary case: a passing test costs what it costs,
      * and this only changes what happens to one that has genuinely hung.
      */
-    env: { MEASURING: measuring ? "1" : "" },
+    /*
+     * And the letters of a font being written are resolved in place, unless
+     * the run says otherwise (`TYPEFORGE_THREADS=3 npx vitest ...`).
+     *
+     * The suite runs a process for every core already, and an export that
+     * started threads of its own on top of that only fought the other files
+     * for the same cores -- slower than in place, and past its timeout. That
+     * used to be guessed from the load average, which made the path a test
+     * took depend on what else the machine was doing; this says it outright.
+     * The threads are tested where a test asks for them by name
+     * (`resolve-pool.test.ts`), and write the same bytes.
+     */
+    env: {
+      MEASURING: measuring ? "1" : "",
+      TYPEFORGE_THREADS: process.env.TYPEFORGE_THREADS ?? "0",
+    },
     testTimeout: 30_000,
     /*
      * Coverage, off unless it is asked for.

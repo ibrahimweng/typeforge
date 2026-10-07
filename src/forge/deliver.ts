@@ -7,7 +7,7 @@
  * it and writes the files.
  */
 
-import { exportFont, type ExportFormat } from "@/font/export";
+import { exportFont, type ExportFormat, variableName } from "@/font/export";
 import type { Axis, Instance } from "@/font/variable";
 import { zip } from "@/font/zip";
 import { familyOf, weighted, widthsFor, type Forge } from "./document";
@@ -290,17 +290,17 @@ async function varying(
     variable: { axes, instances, masters, corners: weights.length > 1 && widths.length > 1 },
   });
 
-  const tidy = familyName.replace(/[^A-Za-z0-9]+/g, "") || "Untitled";
   /*
    * The name every foundry gives a variable font: the family, then the axes it
    * carries, in the brackets a font manager knows to read -- in the order of
    * the alphabet, which is the Google Fonts rule and the one everybody else
-   * has taken up: `Family[wdth,wght].ttf`.
+   * has taken up: `Family[wdth,wght].ttf`. The same rule as an opened font's
+   * varying file, from the same place.
    */
-  const fileName = `${tidy}[${axes
-    .map((axis) => axis.tag)
-    .sort()
-    .join(",")}].ttf`;
+  const fileName = `${variableName(
+    familyName,
+    axes.map((axis) => axis.tag),
+  )}.ttf`;
   return {
     fileName,
     bytes: result.bytes,

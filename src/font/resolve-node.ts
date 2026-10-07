@@ -13,10 +13,11 @@
  * of it reaches a browser.
  */
 
-import { availableParallelism, loadavg } from "node:os";
+import { availableParallelism } from "node:os";
+import { serialize } from "node:v8";
 import { Worker } from "node:worker_threads";
 
-import type { PoolReply, Thread } from "./resolve-pool";
+import type { PoolReply, PoolStart, Thread } from "./resolve-pool";
 
 /**
  * Whether this Node reads TypeScript without being asked, which a thread
@@ -27,25 +28,63 @@ export function canThread(): boolean {
 }
 
 /**
- * How many cores nothing else is busy on: all of them, less the load on the
- * machine over the last minute, which counts this process's own thread too.
+ * How many threads to resolve on when nobody has said: one for every core
+ * but the one this process is running on.
  *
- * Threads only pay where there are idle cores to run them on. On a busy
- * machine -- a test run with every file in a process of its own -- three more
- * threads each reading the source and warming up only fight the rest for the
- * same cores: an opened font with slots cut in it took longer to write on
- * threads than in place, and past the time its test allows.
+ * Said by `TYPEFORGE_THREADS` where it is set -- a whole number, and `0` for
+ * none at all -- and otherwise worked out from the cores the machine has, and
+ * nothing else. It used to be the cores less the load over the last minute,
+ * which made whether a font was written on threads or in place depend on what
+ * else the machine happened to be doing: the same export took one path on one
+ * run and the other on the next, and no test could say which it had tested.
+ * A run that shares the machine on purpose -- a test suite with a process for
+ * every file -- says so with the variable instead.
+ *
+ * A value that is not a whole number is ignored rather than guessed at. The
+ * pool caps whatever this says (`MOST` in `resolve-pool.ts`).
  */
-export function idleCores(): number {
-  return Math.floor(availableParallelism() - loadavg()[0]);
+export function threadCount(): number {
+  const said = process.env.TYPEFORGE_THREADS?.trim();
+  if (said !== undefined && said !== "") {
+    const count = Number(said);
+    if (Number.isInteger(count) && count >= 0) return count;
+  }
+  return availableParallelism() - 1;
+}
+
+/**
+ * The font, written once for every thread.
+ *
+ * It is ten megabytes and more for an opened font, and `postMessage` copies
+ * what it is given for each thread it is sent to: three threads, three copies
+ * made one after another on the thread that wants its letters. Written once
+ * into memory the threads share, each reads it from there, and nothing writes
+ * to it after. The writing is V8's own, the one `postMessage` itself uses, so
+ * the font a thread reads is the font it would have been sent.
+ */
+const shared = new WeakMap<PoolStart, SharedArrayBuffer>();
+
+function sharedStart(start: PoolStart): SharedArrayBuffer {
+  let buffer = shared.get(start);
+  if (!buffer) {
+    const bytes = serialize(start);
+    buffer = new SharedArrayBuffer(bytes.length);
+    new Uint8Array(buffer).set(bytes);
+    shared.set(start, buffer);
+  }
+  return buffer;
 }
 
 export function thread(): Thread {
   const worker = new Worker(new URL("./resolve-thread.ts", import.meta.url));
   return {
-    post: (message) => worker.postMessage(message),
+    post: (message) =>
+      message.kind === "start"
+        ? worker.postMessage({ kind: "shared-start", buffer: sharedStart(message) })
+        : worker.postMessage(message),
     listen: (reply, failed) => {
       worker.on("message", (message: PoolReply) => reply(message));
+      worker.on("messageerror", () => failed());
       worker.on("error", () => failed());
       worker.on("exit", (code) => {
         if (code !== 0) failed();

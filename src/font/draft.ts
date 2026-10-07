@@ -38,6 +38,21 @@ export function isDraft(params: GlyphParams): boolean {
   return drafts.has(params);
 }
 
+/**
+ * The same font with its family parameters no longer a draft: the very same
+ * values, on a fresh object the draft mark is not on.
+ *
+ * For anything that must have the exact letters whenever it is asked, which a
+ * file does. The store marks the weight a draft for half a second after an
+ * arrow press (`setFamilyParam`), and a font written inside that half second
+ * was written with the letters drawn in between two weights rather than
+ * weighed -- on the page, where the letters are resolved in place; a worker
+ * gets a copy of the parameters, which the mark does not travel with.
+ */
+export function exactly<T extends { params: GlyphParams }>(typeface: T): T {
+  return isDraft(typeface.params) ? { ...typeface, params: { ...typeface.params } } : typeface;
+}
+
 /** A letter as it was exactly drawn at one weight. */
 export interface Anchor {
   weight: number;
