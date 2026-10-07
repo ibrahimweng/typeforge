@@ -902,7 +902,10 @@ test("spreads one edit across the whole alphabet", async ({ page }) => {
   await expect
     .poll(() => page.locator('[data-forge-cell="b"] path').getAttribute("d"))
     .not.toBe(before);
-  expect(await page.locator('[data-forge-cell="H"] path').getAttribute("d")).not.toBe(alsoBefore);
+  // The strip catches up a few letters at a time, so the H may come after the b.
+  await expect
+    .poll(() => page.locator('[data-forge-cell="H"] path').getAttribute("d"))
+    .not.toBe(alsoBefore);
 });
 
 test("says how many letters an edit will reach", async ({ page }) => {
