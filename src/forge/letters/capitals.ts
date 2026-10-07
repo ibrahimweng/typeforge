@@ -12,6 +12,7 @@ import { blackness, type Style } from "../style";
 import { sweep } from "../sweep";
 import type { Stroke } from "../types";
 import {
+  apexRounded,
   barWeight,
   enclosing,
   type Frame,
@@ -52,37 +53,6 @@ import {
   flareOut,
   kReach,
 } from "./common";
-
-/**
- * The frame an apex of two legs `half` out either side and `tall` high is
- * rounded in: the face's own, or one rounding wider where the face's radius
- * leaves the inside of the turn standing above where the legs' inner edges
- * meet. Only on a face that rounds its corners at all.
- */
-function apexRounded(f: Frame, half: number, tall: number): Frame {
-  if (!(f.radius > 0) || f.style.parts.script.on) return f;
-  const long = Math.hypot(half, tall);
-  const sin = half / long;
-  if (sin >= 0.999) return f;
-  // How far the pen reaches square across a leg, and straight up.
-  const across = f.reach(at(tall / long, -half / long));
-  const up = f.reach(at(0, 1));
-  const wanted = Math.max(f.radius, f.half * 1.05);
-  // How far the inside of the arc would stand over where the legs' insides meet.
-  const spike = across / sin - up - wanted * (1 / sin - 1);
-  if (!(spike > f.half * APEX_SPIKE)) return f;
-  return { ...f, radius: ((across / sin - up) / (1 / sin - 1)) * APEX_CLEAR };
-}
-
-/** How far past the radius that just clears it an apex is rounded: see `apexRounded`. */
-const APEX_CLEAR = 1.1;
-
-/**
- * How tall a spike an apex is left with before it is rounded wider, in
- * half-pens: a sliver of a few units at a text weight is under the pen's own
- * round and nobody sees it, and those letters are left as they were drawn.
- */
-const APEX_SPIKE = 0.25;
 
 /** How open the notch between an R's stem and its leg is kept at the line, in half-pens. */
 const R_NOTCH = 0.4;
@@ -594,8 +564,12 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const top = at(left, f.cap);
     const other = at(middle + half, f.cap);
-    const point = corner(f, top, at(middle, 0), other);
-    return finish(f, [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
+    // Its point rounded as the A's apex is, upside down: see `apexRounded`.
+    const legs = apexRounded(f, half, f.cap, -1);
+    const point = corner(legs, top, at(middle, 0), other);
+    return finish(f, [
+      ink(legs, chain(straight(top, point), straight(point, other)), f.end, f.end),
+    ]);
   },
 
   W: (style) => {

@@ -1564,6 +1564,41 @@ export function corners(f: Frame, tips: Vec2[]): Vec2[] {
   return through(f, tips).slice(1, -1);
 }
 
+/**
+ * The frame an apex of two legs `half` out either side and `tall` high is
+ * rounded in: the face's own, or one rounding wider where the face's radius
+ * leaves the inside of the turn standing above where the legs' inner edges
+ * meet. Only on a face that rounds its corners at all.
+ *
+ * An apex pointing up, as an A's, or with `pointing` at -1 one pointing down,
+ * as the vee of a V or the valley between an M's diagonals: the same spike
+ * stands down into the counter there.
+ */
+export function apexRounded(f: Frame, half: number, tall: number, pointing = 1): Frame {
+  if (!(f.radius > 0) || f.style.parts.script.on) return f;
+  const long = Math.hypot(half, tall);
+  const sin = half / long;
+  if (sin >= 0.999) return f;
+  // How far the pen reaches square across a leg, and straight up.
+  const across = f.reach(at(tall / long, (-pointing * half) / long));
+  const up = f.reach(at(0, pointing));
+  const wanted = Math.max(f.radius, f.half * 1.05);
+  // How far the inside of the arc would stand over where the legs' insides meet.
+  const spike = across / sin - up - wanted * (1 / sin - 1);
+  if (!(spike > f.half * APEX_SPIKE)) return f;
+  return { ...f, radius: ((across / sin - up) / (1 / sin - 1)) * APEX_CLEAR };
+}
+
+/** How far past the radius that just clears it an apex is rounded: see `apexRounded`. */
+const APEX_CLEAR = 1.1;
+
+/**
+ * How tall a spike an apex is left with before it is rounded wider, in
+ * half-pens: a sliver of a few units at a text weight is under the pen's own
+ * round and nobody sees it, and those letters are left as they were drawn.
+ */
+const APEX_SPIKE = 0.25;
+
 /** The one-corner case, which is most of them. */
 export function corner(f: Frame, from: Vec2, tip: Vec2, to: Vec2): Vec2 {
   return through(f, [from, tip, to])[1];
@@ -3811,9 +3846,23 @@ export function emAt(f: Frame, top: number, width: number): Stroke[] {
       topRight = leaving(f, at(right - inset, top), -1, vertex, -1);
       vertex = corner(f, topLeft, at(middle, dip), topRight);
     }
+    /*
+     * And the valley rounded wide enough that the inside of its turn does not
+     * stand down into the ink between the diagonals, as the A's apex is (see
+     * `apexRounded`): on the Technical at 260 a spike stood up out of the
+     * M's vee. Laid out again on that rounding where it is wider.
+     */
+    const legs = apexRounded(f, (topRight.x - topLeft.x) / 2, top - dip, -1);
+    if (legs !== f) {
+      for (let pass = 0; pass < 3; pass++) {
+        topLeft = leaving(f, at(left + inset, top), 1, vertex, 1);
+        topRight = leaving(f, at(right - inset, top), -1, vertex, -1);
+        vertex = corner(legs, topLeft, at(middle, dip), topRight);
+      }
+    }
     return [
       ...stems,
-      ink(f, chain(straight(topLeft, vertex), straight(vertex, topRight)), LEVEL, LEVEL),
+      ink(legs, chain(straight(topLeft, vertex), straight(vertex, topRight)), LEVEL, LEVEL),
     ];
   }
   // Run down the stem no further than a short letter has stem to run down.
