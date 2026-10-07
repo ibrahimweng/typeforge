@@ -14,13 +14,16 @@ import {
   dot,
   fatFace,
   finish,
+  frame,
   hook,
   ink,
   type LetterName,
   markBox,
   markFrame,
+  markGrown,
   type Recipe,
   ring,
+  unCondensed,
   shortEnd,
   straight,
   turn,
@@ -135,17 +138,28 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   tilde: (style) => {
     const f = markFrame(style);
     const m = markBox(f);
+    /*
+     * Heavier only by running wider, on the pen a mark can carry (see
+     * `markGrown`). Its two ends are cut level across a wave that rises from
+     * them, so a heavier pen pushed the left one out past where the letter is
+     * spaced from, and on a sloped face it leant into the letter before.
+     */
+    const grown = markGrown(f);
+    const pen =
+      grown > 0
+        ? frame({ ...f.style, pen: { ...f.style.pen, weight: f.style.pen.weight - grown } })
+        : f;
     const radius = Math.max(m.w / 2, f.least);
-    const middle = (m.foot + m.top) / 2;
+    const middle = (m.foot + m.top - grown) / 2;
     return finish(f, [
       ink(
-        f,
+        pen,
         chain(
           turn(at(m.cx - radius, middle), radius, 180, 0),
           turn(at(m.cx + radius, middle), radius, 180, 360),
         ),
-        shortEnd(f),
-        shortEnd(f),
+        shortEnd(pen),
+        shortEnd(pen),
       ),
     ]);
   },
@@ -182,7 +196,7 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   },
 
   ring: (style) => {
-    const f = markFrame(style);
+    const f = markFrame(unCondensed(style));
     const m = markBox(f);
     /*
      * Drawn lighter than the stems, and wide enough to have a hole in it.
@@ -216,7 +230,10 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     // stems for the same reason the ring is -- what it is is the curve, and a
     // full-weight pen on a shape this small fills the curve in.
     const pen = { ...f.style.pen, weight: f.style.pen.weight * 0.82 };
-    const radius = Math.max(Math.min(m.w * 0.9, m.top - m.foot), pen.weight * 0.7);
+    // Deeper by what its pen gained past the most a mark carries (see
+    // `markGrown`), or a heavier weight's cup was the same size drawn thicker
+    // into itself, and on an Expanded had less ink than a lighter one's.
+    const radius = Math.max(Math.min(m.w * 0.9, m.top - m.foot + markGrown(f)), pen.weight * 0.7);
     return finish(f, [
       { spine: turn(at(m.cx, m.top), radius, 180, 360), pen, start: BUTT, end: BUTT },
     ]);

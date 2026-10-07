@@ -63,6 +63,7 @@ import {
   turnedDown,
   hookFrom,
   stemSide,
+  unCondensed,
 } from "./common";
 
 /** The hairline of a text face's marks: the thin of its own pen, with a floor. */
@@ -1261,8 +1262,15 @@ export const PUNCTUATION_RECIPES: Record<LetterName, (style: Style) => Recipe> =
      * blobs with a hairline spine each and the mark could not be read.
      */
     const room = style.metrics.capHeight * 0.62 * 0.3;
+    /*
+     * And at its Normal's width, where the pen is held (see `unCondensed`):
+     * on a Condensed, the held pen's two esses closed round the eye between
+     * them, and a Black's section mark came out lighter than its Regular's.
+     */
     const held =
-      style.pen.weight > room ? { ...style, pen: { ...style.pen, weight: room } } : style;
+      style.pen.weight > room
+        ? { ...unCondensed(style), pen: { ...style.pen, weight: room } }
+        : style;
     const f = frame(held);
     const height = f.cap * 0.62;
     const step = height * 0.53;

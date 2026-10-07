@@ -43,6 +43,7 @@ import {
   spine,
   bend,
   headingAt,
+  unCondensed,
 } from "./common";
 
 type Framed = ReturnType<typeof frame>;
@@ -380,10 +381,17 @@ function loraChevron(
 
 /** Lora's single chevron's measures at this weight: see `humanistGuilsingl`. */
 function singleChevron(style: Style, u: number) {
+  const tipWide = byPen(style, 108, 144) * u;
   return {
-    reach: byPen(style, 233, 225.5) * u,
+    /*
+     * Past the Bold the point goes on widening and the arms go on growing
+     * heavier, and across Lora's reach the two arms met inside the point:
+     * a heavy weight's chevron was a wedge, set hard against its letter. So
+     * they reach on by four fifths of what the point gains.
+     */
+    reach: byPen(style, 233, 225.5) * u + Math.max(0, tipWide - 144 * u) * 0.8,
     rise: byPen(style, 256, 251.5) * u,
-    tipWide: byPen(style, 108, 144) * u,
+    tipWide,
     endWide: byPen(style, 45, 79) * u,
     y: 276 * u,
   };
@@ -981,7 +989,11 @@ function loraOrdinal(style: Style, name: "a" | "o", wide: number): Recipe {
   const f = frame(style);
   const u = loraUnit(f);
   const share = bySize(style, 0.632, 0.66);
-  const little = sized(style, share, 0.7);
+  /*
+   * At the Normal's width on a Condensed (see `unCondensed`): a letter this
+   * small has no counter to spare, and a Condensed Bold's a closed up.
+   */
+  const little = sized(unCondensed(style), share, 0.7);
   const set = { ...little, metrics: { ...little.metrics, width: little.metrics.width * wide } };
   const drawn = setInside(() => recipeOf(name, borrowing)!(set).strokes);
   // Finished as the letter it is: the a's head ends in its drop.

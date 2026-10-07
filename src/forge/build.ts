@@ -545,6 +545,30 @@ function drawnFresh(
    * measured off another font, say) hung the tail further back the wider it
    * was, and into the letter before.
    */
+  /*
+   * And a dash stands off its neighbours by at least two fifths of its own
+   * depth (`DASH_SIDE`). Geist and Lora close their dashes with the n, as the
+   * fitting does, which at a text weight leaves them a little over half a
+   * dash deep either side; at a Black the bar is twice as deep and the white
+   * beside it a third less, and "1–9" and "H—H" read as one long bar.
+   */
+  if (
+    DASHES.has(name) &&
+    !style.metrics.monospaced &&
+    !laid &&
+    !joinsUp &&
+    placedSolid.length > 0
+  ) {
+    const ink = contoursBounds(placedSolid);
+    const least = (ink.yMax - ink.yMin) * DASH_SIDE;
+    const left = least - (ink.xMin + centring);
+    if (left > 0) {
+      centring += left;
+      advanceWidth += left;
+    }
+    const right = least - (advanceWidth - ink.xMax - centring);
+    if (right > 0) advanceWidth += right;
+  }
   const hang = fittedSides && placedSolid.length > 0 ? overhangOf(name, style) : 0;
   if (hang > 0) {
     const short = -hang - (contoursBounds(placedSolid).xMin + centring);
@@ -887,6 +911,11 @@ function insideTheEdge(contours: Contour[], style: Style): Contour[] {
  * own width, and anything too small in its zone to have sides -- a full stop,
  * a quote -- which keeps the plain sidebearing.
  */
+/** The dashes, which stand off their neighbours by their own depth: see `drawnFresh`. */
+const DASHES = new Set(["endash", "emdash"]);
+/** The least white either side of a dash, against its depth. */
+const DASH_SIDE = 0.4;
+
 const FIT_LIMIT = 40 / 530;
 const FIT_SAMPLES = 32;
 /**

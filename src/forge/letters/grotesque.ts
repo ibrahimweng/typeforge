@@ -750,9 +750,15 @@ export function grotesqueCapitalO(style: Style): Recipe {
 function capitalRing(f: Frame, narrower = 0): Stroke {
   const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
-  const wide = (lerp(649, 720, 614) - narrower) * k + 2 * ultra(f);
-  const side = lerp(90, 201, 34) * k;
-  const crown = lerp(84, 157, 32) * k;
+  /*
+   * As heavy as the pen whatever the width, and only the counter across by
+   * the face's width, as an n's is: the whole ring scaled with it, a
+   * Condensed's O stood on sides three quarters of its H's, and a Condensed
+   * Black's closed to a slot.
+   */
+  const side = lerp(90, 201, 34);
+  const crown = lerp(84, 157, 32);
+  const wide = (lerp(649, 720, 614) - narrower - 2 * side) * k + 2 * side + 2 * ultra(f);
   const over = f.style.metrics.overshoot;
   const top = f.cap + over - crown / 2;
   const bottom = -over + crown / 2;
@@ -780,13 +786,17 @@ export function grotesqueCapitalD(style: Style): Recipe {
   const f = frame(style);
   const [X, lerp] = squaredNow(f);
   const k = X(1) - X(0);
-  const wide = lerp(561, 632, 530) * k + 2 * ultra(f);
-  const side = lerp(90, 201, 34) * k;
-  const crown = lerp(89, 170, 32) * k;
+  // As the O's: only the counter across by the width, as heavy as the pen.
+  // And `wide` is set off the stem's side as it is, where `X` took it across
+  // by the width a second time and a Condensed Black's bowl shut to a hairline.
+  const side = lerp(90, 201, 34);
+  const crown = lerp(89, 170, 32);
+  const stem = 2 * f.half;
+  const wide = (lerp(561, 632, 530) - stem - side) * k + stem + side + 2 * ultra(f);
   const g = sidedFrame(f, side, crown);
   const top = f.cap - crown / 2;
   const bottom = crown / 2;
-  const right = X(wide) - side / 2;
+  const right = X(0) + wide - side / 2;
   const bowl = ink(
     g,
     // Its round a little shorter than half its height, as Geist's is: at
@@ -1253,6 +1263,13 @@ function sansOne(f: Frame): Stroke[] {
   const along = Math.max(qc > 0 && root > 0 ? (-qb - Math.sqrt(root)) / (2 * qa) : 1, 1);
   const tip = at(coveTop + d.x * along, flagTop + d.y * along);
   const fill = Math.min(deep, head) * 1.4 + 8;
+  /*
+   * And heavier, lighter than Geist Thin, where the flag, the turn and the
+   * head are all thinner than the fill was measured against and have pulled
+   * away from its sides: a family's Thin, a quarter of the Regular's stem,
+   * had two pinholes beside the fill, over the flag and under the head.
+   */
+  const past = Math.max(0, thinness(f) - 1);
   return [
     ink(f, straight(at(stem, 0), at(stem, flagTop)), f.end, BUTT),
     penned(
@@ -1272,7 +1289,7 @@ function sansOne(f: Frame): Stroke[] {
       ),
       even(head),
     ),
-    penned(ink(f, straight(at(coveTop, flagTop), tip), BUTT, BUTT), even(fill)),
+    penned(ink(f, straight(at(coveTop, flagTop), tip), BUTT, BUTT), even(fill * (1 + past * 5))),
   ];
 }
 
@@ -5010,7 +5027,12 @@ export function grotesqueSection(style: Style): Recipe {
    */
   const room = style.metrics.capHeight * SECTION_HALF * 0.24;
   const eased = stackedPen(style, SMALL_ESS_GAIN);
-  const held = eased.pen.weight > room ? { ...eased, pen: { ...eased.pen, weight: room } } : eased;
+  // Past it heavier at a third of the rate, or a Black's was drawn at its
+  // Bold's pen round its own narrower counters, and lighter than its Regular.
+  const held =
+    eased.pen.weight > room
+      ? { ...eased, pen: { ...eased.pen, weight: room + (eased.pen.weight - room) / 3 } }
+      : eased;
   const f = frame(essAcross(held));
   const g: Frame = f.curve > 0 ? f : { ...f, curve: OVAL_CURVE, square: 0 };
   const top = f.crest(f.cap) - f.upright;
@@ -6163,7 +6185,16 @@ function nowBlack(): number {
 function thinness(f: Frame): number {
   const held = f.style.metrics.lightHeld;
   if (!held) return 0;
-  return Math.min(1, Math.max(0, (held.from - f.style.pen.weight) / (held.from - 30)));
+  /*
+   * And on past the Thin, as far as half as far again, where a family's
+   * lightest member is lighter than Geist Thin: a hundred is a quarter of the
+   * Regular's stem, 22 on the Sans to Geist Thin's 30. Held at the Thin's
+   * measures, a Thin's O, D and Q stood on Geist Thin's sides of 34 beside an
+   * H of 22, half again as heavy. Not a letter drawn small (see `sized`),
+   * whose lighter pen is its size and not its weight.
+   */
+  const most = f.style.pen.black === undefined ? 1.5 : 1;
+  return Math.min(most, Math.max(0, (held.from - f.style.pen.weight) / (held.from - 30)));
 }
 
 /** The height of a bar centred on Geist's `y`, moved with the crossbar control. */

@@ -77,6 +77,14 @@ export interface Metrics {
    */
   width: number;
   /**
+   * The share of that width a member of the family takes from the width
+   * axis, a `wdth` over a hundred (see `widthedStyle`): left out on the
+   * drawing, which is the Normal. Said rather than worked out from `width`,
+   * since a letter set small (a superior, a fraction's figures) is drawn
+   * narrower on purpose and is not thereby a Condensed.
+   */
+  widthAxis?: number;
+  /**
    * Every letter given the same advance, an i as much as an m.
    *
    * A whole family of type that no amount of turning the other controls
