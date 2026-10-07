@@ -177,4 +177,46 @@ describe("starting from a base", () => {
     forgeStore.undo();
     expect(forgeStore.getSnapshot().forge).not.toBe(before.forge);
   });
+
+  /*
+   * Going back to a base is the ordinary way of comparing two, and every
+   * letter is remembered against the document object -- so the document the
+   * base was started as last time, handed back, is a font already drawn.
+   * Only while it is exactly the base, though: a document anything has
+   * changed is never passed off as one.
+   */
+  it("hands back the document a base was started as, already drawn", () => {
+    forgeStore.startFromBase("Sans");
+    const sans = forgeStore.getSnapshot().forge;
+    const n = draw("n", sans);
+    forgeStore.startFromBase("Serif");
+    expect(forgeStore.getSnapshot().forge).not.toBe(sans);
+    forgeStore.startFromBase("Sans");
+    expect(forgeStore.getSnapshot().forge).toBe(sans);
+    expect(draw("n", forgeStore.getSnapshot().forge)).toBe(n);
+  });
+
+  it("starts a base afresh when the document it was last started as has changed", () => {
+    forgeStore.startFromBase("Sans");
+    const sans = forgeStore.getSnapshot().forge;
+    forgeStore.startFromBase("Serif");
+    // Nothing here edits a document in place, and this is what would happen
+    // if something ever did.
+    sans.style.pen.weight += 30;
+    forgeStore.startFromBase("Sans");
+    const again = forgeStore.getSnapshot().forge;
+    expect(again).not.toBe(sans);
+    expect(again.style.pen.weight).toBe(sans.style.pen.weight - 30);
+  });
+
+  it("draws a base afresh once the shaping has arrived", () => {
+    forgeStore.startFromBase("Sans");
+    const sans = forgeStore.getSnapshot().forge;
+    forgeStore.startFromBase("Serif");
+    forgeStore.refresh();
+    forgeStore.startFromBase("Sans");
+    const again = forgeStore.getSnapshot().forge;
+    expect(again).not.toBe(sans);
+    expect(again).toEqual(sans);
+  });
 });
