@@ -1617,7 +1617,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
    * settles the font as well, and drafting a font the hand has already left
    * only takes the frames the next step of the drag wanted.
    */
-  const moving = state.forge !== latest;
+  const moving = !state.resting && state.forge !== latest;
   React.useEffect(() => {
     if (!draftable || moving) return;
     // What was made for this font already is kept, as the shapes below keep
