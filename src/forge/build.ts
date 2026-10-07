@@ -720,6 +720,24 @@ function drawnFresh(
       advanceWidth += short + 1e-6;
     }
   }
+  /*
+   * And room for a shadow. The letter is spaced by its solid face, and a
+   * shadow thrown sideways off it was drawn into the next letter's space: a
+   * Serif Black set with one ran every letter into its neighbour. So the
+   * advance takes the width of the throw on the side it is thrown to, and
+   * the face keeps its own sidebearings. Not on a monospaced column or a grid
+   * cell, which say where a letter goes, nor on a script, whose letters hand
+   * over to each other at their edges. Last, so the face is fitted, dashed
+   * and hung exactly as it is without a shadow, and the throw is added on.
+   */
+  if (cutting && cast?.extrude.on && !style.metrics.monospaced && !laid && !joinsUp) {
+    const thrown =
+      cast.extrude.distance *
+      Math.max(scaleOf(style).stem, 1) *
+      Math.cos((cast.extrude.angle * Math.PI) / 180);
+    if (thrown < 0) centring -= thrown;
+    advanceWidth += Math.abs(thrown);
+  }
   const slide = shortfall + centring;
   return {
     advanceWidth,

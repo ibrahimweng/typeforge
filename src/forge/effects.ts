@@ -221,8 +221,11 @@ export function effectInk(
     const pools = poolTool(strokes, effects.pool, stem, shape);
     if (pools.length > 0) shape = unite([...shape, ...pools], "winding", "whole");
   }
+  // The dry brush's streaks, which are holes in the ink on purpose: see below.
+  const streaks: Contour[] = [];
   if (canCarve && effects.skip.on && strokes.length > 0) {
-    const gaps = skipTool(strokes, effects.skip, stem);
+    const gaps = skipTool(strokes, effects.skip, stem, shape);
+    streaks.push(...gaps);
     if (gaps.length > 0) shape = takenAway(shape, gaps);
   }
   if (effects.rough.on) {
@@ -260,14 +263,21 @@ export function effectInk(
   // And no outline left crossing itself, as after the cut and the cast.
   // And swept again after it, which can tie off a speck of its own: under a
   // Formal Script k with points grown after the chamfer, one stood by the leg.
+  /*
+   * A dry brush's streak is a slit in the ink, and that is what it is for:
+   * the sweeps for slits between two strokes, and for splinters, are not
+   * asked about one.
+   */
+  const exempt = [...figures, ...streaks];
+  const unsplit = (contour: Contour) =>
+    streaks.length > 0 && contourArea(contour) < 0 && inGroove(contour, streaks)
+      ? contour
+      : unsplintered(contour, stem, hairline);
   const done = swept(
-    untangled(
-      swept(shape, stem, strokes, figures).map((contour) => unsplintered(contour, stem, hairline)),
-      scale.slant,
-    ),
+    untangled(swept(shape, stem, strokes, exempt).map(unsplit), scale.slant),
     stem,
     strokes,
-    figures,
+    exempt,
   ).map(unpinched);
   /*
    * Nor a crumb of what the cast grew. A point on the thin terminal of a
@@ -615,40 +625,85 @@ function perimeterOf(points: Vec2[]): number {
 // ---------------------------------------------------------------------------
 
 /**
- * Discs where the tool paused.
+ * The ink as it reads across and along one place on a stroke: where its edges
+ * are either side of a point in it, square to the way it runs.
+ */
+interface Inked {
+  outlines: Vec2[][];
+  inside: (point: Vec2) => boolean;
+}
+
+function inkedOf(shape: Contour[]): Inked {
+  const outlines = shape.map((contour) => flattenContour(contour, 12));
+  const inside = (point: Vec2): boolean => {
+    let winding = 0;
+    for (const points of outlines) {
+      for (let index = 0; index < points.length; index++) {
+        const a = points[index];
+        const b = points[(index + 1) % points.length];
+        const side = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
+        if (a.y <= point.y) {
+          if (b.y > point.y && side > 0) winding++;
+        } else if (b.y <= point.y && side < 0) winding--;
+      }
+    }
+    return winding !== 0;
+  };
+  return { outlines, inside };
+}
+
+/** How far the ink runs from a point in it, each way along a line. */
+function across(ink: Inked, at: Vec2, normal: Vec2): { left: number; right: number } | null {
+  if (!ink.inside(at)) return null;
+  const left = rayHitDistance(ink.outlines, at, normal);
+  const right = rayHitDistance(ink.outlines, at, { x: -normal.x, y: -normal.y });
+  if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
+  return { left, right };
+}
+
+/**
+ * Ink gathered where the tool stopped, and where it went over the same ground.
  *
- * Two places, and they are different questions. Where two strokes meet the
- * tool went over the same ground twice and left twice the ink, which is found
- * by looking for the closest approach between two spines. Where a stroke stops
- * the tool sat still for an instant before lifting, which is found by looking
- * at the ends -- and only the ends that are really ends, because a pool inside
- * a counter is a blot.
+ * Where two strokes meet the tool went over the same ground twice and the ink
+ * ran into the corner between them: each inside corner by a join is filled
+ * with a fillet, as ink fills a crotch. At an end the pen sat still for an
+ * instant before it lifted, and the ink spread past the cut and softened its
+ * corners: the cut is domed a little, corner to corner, and no wider than the
+ * stroke. Both are found on the outline as the ink draws it, not on the
+ * skeleton, so they land where the ink really turns and ends -- which on a
+ * heavy face and at a dressed terminal is well off the end and the line of
+ * the spine.
+ *
+ * It used to be a disc of a fixed share of the stem on the end of every
+ * spine and at the middle of every join: at a Black a bead hung off every
+ * foot, and on an s and a g it sat on the curve beside the terminal. Only the
+ * ends that are really ends pool, and only a plain cut: a serif, a beak, a
+ * drop or a round end has nowhere to pool. A dot, a mark no longer than it is
+ * wide, joins nothing and ends nowhere.
  */
 function poolTool(
   strokes: Stroke[],
   pool: Effects["pool"],
   stem: number,
-  ink: Contour[] = [],
+  shape: Contour[],
 ): Contour[] {
-  const size = pool.size * stem;
-  if (size <= 0) return [];
+  if (pool.size <= 0) return [];
+  const ink = inkedOf(shape);
   const added: Contour[] = [];
-  /*
-   * Only on ink. Two strokes can pass within a stem of each other without
-   * touching -- the lead-in and the arm of a Handwriting `k` either side of
-   * its stem -- and half-way between them is the counter: the pool stood
-   * there as a stray dot inside the letter.
-   */
-  const flat = ink.map((contour) => flattenContour(contour, RAY_STEPS));
-  const onInk = (point: Vec2) => flat.length === 0 || windingAt(flat, point) !== 0;
 
   if (pool.where !== "ends" && strokes.length > 1) {
+    /*
+     * Where two strokes meet the tool went over the same ground twice and
+     * the ink ran into the corner between them: each inside corner near a
+     * join is filled with a fillet, as ink fills a crotch. Found on the
+     * outline, so it lands in the corner the ink really makes.
+     */
     const near = stem * 1.15;
     const walked = strokes.map((stroke) => alongSpine(stroke.spine, SAMPLES));
-    // A dot -- a mark no longer than it is wide -- joins nothing.
     const mark = walked.map(
       (points, at) => runLength(points) < Math.max(strokes[at].pen.weight, stem),
     );
+    const joins: Vec2[] = [];
     for (let one = 0; one < walked.length; one++) {
       if (mark[one]) continue;
       for (let other = one + 1; other < walked.length; other++) {
@@ -664,7 +719,72 @@ function poolTool(
             }
           }
         }
-        if (closest < near && where !== null && onInk(where)) added.push(disc(where, size * 0.62));
+        /*
+         * Only on ink. Two strokes can pass within a stem of each other
+         * without touching -- the lead-in and the arm of a Handwriting `k`
+         * either side of its stem -- and half-way between them is the
+         * counter: there is no join there for ink to gather in.
+         */
+        if (closest < near && where !== null && ink.inside(where)) joins.push(where);
+      }
+    }
+    const radius = pool.size * stem * 0.3;
+    if (joins.length > 0 && radius >= 1) {
+      for (const contour of shape) {
+        const nodes = contour.nodes;
+        const count = nodes.length;
+        if (count < 3) continue;
+        nodes.forEach((node, index) => {
+          const corner = node.point;
+          if (!joins.some((join) => Math.hypot(join.x - corner.x, join.y - corner.y) < stem))
+            return;
+          const before = nodes[(index - 1 + count) % count];
+          const after = nodes[(index + 1) % count];
+          const back = unit(node.handleIn ?? before.point, corner);
+          const on = unit(corner, node.handleOut ?? after.point);
+          if (!back || !on) return;
+          // Ink on the left: a turn to the right is an inside corner.
+          const turn = Math.atan2(back.x * on.y - back.y * on.x, back.x * on.x + back.y * on.y);
+          if (turn > -(20 * Math.PI) / 180 || turn < -(160 * Math.PI) / 180) return;
+          // The paper's angle in the corner, and how far along each edge the
+          // fillet runs before it leaves it.
+          const open = Math.PI + turn;
+          const reach = Math.min(
+            radius / Math.tan(open / 2),
+            Math.hypot(before.point.x - corner.x, before.point.y - corner.y) * 0.45,
+            Math.hypot(after.point.x - corner.x, after.point.y - corner.y) * 0.45,
+          );
+          if (reach < 1) return;
+          const from = { x: corner.x - back.x * reach, y: corner.y - back.y * reach };
+          const to = { x: corner.x + on.x * reach, y: corner.y + on.y * reach };
+          const pull = 0.55;
+          added.push(
+            oneWay({
+              closed: true,
+              nodes: [
+                { point: corner, handleIn: null, handleOut: null, type: "corner" },
+                {
+                  point: from,
+                  handleIn: null,
+                  handleOut: {
+                    x: from.x + (corner.x - from.x) * pull,
+                    y: from.y + (corner.y - from.y) * pull,
+                  },
+                  type: "corner",
+                },
+                {
+                  point: to,
+                  handleIn: {
+                    x: to.x + (corner.x - to.x) * pull,
+                    y: to.y + (corner.y - to.y) * pull,
+                  },
+                  handleOut: null,
+                  type: "corner",
+                },
+              ],
+            }),
+          );
+        });
       }
     }
   }
@@ -673,19 +793,65 @@ function poolTool(
     for (const stroke of strokes) {
       if (stroke.spine.closed) continue;
       const walked = alongSpine(stroke.spine, SAMPLES);
-      if (walked.length < 2) continue;
-      /*
-       * Not on a dot: a mark no longer than it is wide pooled at both of its
-       * ends came out as two blots stacked in a figure of eight, and pooled as
-       * a join with the stem under it, the pool bridged the gap and the
-       * Marker's `i` wore its dot as a keyhole at a heavy weight.
-       */
+      if (walked.length < 3) continue;
       if (runLength(walked) < Math.max(stroke.pen.weight, stem)) continue;
-      if (stroke.start.open === true) added.push(disc(walked[0], size * 0.5));
-      if (stroke.end.open === true) added.push(disc(walked[walked.length - 1], size * 0.5));
+      const ends: Array<[boolean, Vec2, Vec2]> = [
+        [stroke.start.open === true, walked[0], walked[2]],
+        [stroke.end.open === true, walked[walked.length - 1], walked[walked.length - 3]],
+      ];
+      for (const [open, tip, inward] of ends) {
+        if (!open) continue;
+        const out = unit(inward, tip);
+        if (!out) continue;
+        const normal = { x: -out.y, y: out.x };
+        const half = penHalfAcross(stroke, normal);
+        // A little in from the end of the spine, where the stroke is itself.
+        const back = { x: tip.x - out.x * half, y: tip.y - out.y * half };
+        const wide = across(ink, back, normal);
+        if (!wide) continue;
+        // Only a plain end: one much wider or narrower than the pen is a
+        // serif, a beak or a drop, which pools no more than it is.
+        if (Math.abs(wide.left + wide.right - half * 2) > half * 2 * 0.25) continue;
+        const side = (wide.left + wide.right) / 2;
+        const middle = (wide.left - wide.right) / 2;
+        // The cut the stroke ends in, found either side of its middle.
+        const hit = (offset: number): Vec2 | null => {
+          const from = {
+            x: back.x + normal.x * (middle + offset),
+            y: back.y + normal.y * (middle + offset),
+          };
+          if (!ink.inside(from)) return null;
+          const reach = rayHitDistance(ink.outlines, from, out);
+          if (!Number.isFinite(reach) || reach > half * 3) return null;
+          return { x: from.x + out.x * reach, y: from.y + out.y * reach };
+        };
+        const one = hit(-side * 0.7);
+        const two = hit(side * 0.7);
+        const mid = hit(0);
+        if (!one || !two || !mid) continue;
+        // A straight cut, or it is a round end already and has nowhere to pool.
+        const chord = { x: (one.x + two.x) / 2, y: (one.y + two.y) / 2 };
+        if (Math.hypot(mid.x - chord.x, mid.y - chord.y) > side * 0.08) continue;
+        const along = unit(one, two);
+        if (!along) continue;
+        const face = { x: along.y, y: -along.x };
+        const outward = face.x * out.x + face.y * out.y >= 0 ? face : { x: -face.x, y: -face.y };
+        // Across the whole cut, from corner to corner, and domed past it.
+        const width = (Math.hypot(two.x - one.x, two.y - one.y) / 0.7 / 2) * (1 + pool.size * 0.08);
+        const dome = side * pool.size * 0.5;
+        added.push(oval(chord, outward, dome, width));
+      }
     }
   }
   return added;
+}
+
+/** Which way one point lies from another, or nothing where they are the same. */
+function unit(from: Vec2, to: Vec2): Vec2 | null {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const run = Math.hypot(dx, dy);
+  return run < 1e-9 ? null : { x: dx / run, y: dy / run };
 }
 
 // ---------------------------------------------------------------------------
@@ -693,95 +859,211 @@ function poolTool(
 // ---------------------------------------------------------------------------
 
 /**
- * Gaps taken out along the way the stroke was drawn.
+ * Streaks of paper where the brush ran out of ink.
  *
- * Laid along the stroke rather than scattered, because that is the difference
- * between a letter drawn with a dry marker and a letter somebody has spilled
- * something on. Each gap is a thin rectangle following the local direction of
- * the spine and pushed off to one side of it, so what is left reads as the
- * tool having lifted on one edge, which is what running dry actually looks
- * like.
+ * What a dry brush leaves: towards the end of a stroke the ink gives out, the
+ * bristles part and the paper shows through in fine streaks that run with the
+ * stroke, following its curve, and open out as they run off its end. So each
+ * gap starts as a hair inside the stroke, is laid along its own middle and
+ * bent with it, set off to one side of it and kept a wall's width inside its
+ * edges -- measured on the ink, not on the pen, so it holds on a heavy face
+ * too -- and runs out through the end. Only at an end the brush lifted from:
+ * none is laid across a join, where it would cut two strokes at once. And no
+ * streak closed at both ends: a letter keeps its counters and nothing else,
+ * and a slit of paper shut up inside a stroke reads as a fault in the file.
+ *
+ * It used to be a straight rectangle laid along the spine's local direction
+ * and pushed off to one side: square ends, and wherever the stroke curved or
+ * met another, a corner through the edge. On a heavy Serif the letters came
+ * back chipped with white rectangles and shards of ink floating in them, and
+ * a Sans S, 4, 8 and & had gaps slashed across them on the slant. A streak
+ * that stops short of an edge is a streak; one that bites it is damage.
  */
-function skipTool(strokes: Stroke[], skip: Effects["skip"], stem: number): Contour[] {
+function skipTool(
+  strokes: Stroke[],
+  skip: Effects["skip"],
+  stem: number,
+  shape: Contour[],
+): Contour[] {
   if (skip.density <= 0 || skip.width <= 0 || skip.length <= 0) return [];
   const long = skip.length * stem;
   const wide = skip.width * stem;
+  // How much ink a streak leaves either side of it, at the least.
+  const wall = stem * 0.12;
+  const ink = inkedOf(shape);
   const gaps: Contour[] = [];
 
   strokes.forEach((stroke, index) => {
-    const walked = alongSpine(stroke.spine, SAMPLES);
-    if (walked.length < 3) return;
-    const along = runLength(walked);
-    // One gap per stroke-length of stroke at full density, so a long stem wears
-    // more than a short arm rather than the same amount.
-    const many = Math.max(1, Math.round((along / (long * 2.2)) * skip.density * 4));
+    const length = spineLength(stroke.spine);
+    if (!(length > 0) || length < Math.max(stroke.pen.weight, stem) * 1.5) return;
     const seed = skip.seed * 2246822519 + index * 668265263;
-    const mine: Contour[] = [];
+    const others = strokes.filter((_, at) => at !== index);
+    const count = Math.max(8, Math.ceil(length / (stem * 0.1)));
+    const walked = alongSpine(stroke.spine, count);
+    const step = length / count;
+    // Where the brush lifted: an end with no other stroke near it. One that
+    // runs into another stroke is a join, and the ink there is both of them;
+    // and a round drawn closed, the o's, has no end at all, only the place
+    // its two ends meet.
+    const head = walked[0];
+    const tail = walked[walked.length - 1];
+    if (stroke.spine.closed || Math.hypot(tail.x - head.x, tail.y - head.y) < stem) return;
+    const free = [0, walked.length - 1].filter((at) => !nearAny(walked[at], others, stem * 0.6));
+    if (free.length === 0) return;
+    // At full density every free end runs dry; a long stroke sooner than a
+    // short arm.
+    const many = Math.min(
+      free.length,
+      Math.max(1, Math.round((length / (long * 2.2)) * skip.density * 4)),
+    );
+    if (hashed(seed, 999) < 0.5) free.reverse();
+    // The last few steps before the end are the cap, round or pooled, and
+    // measure as neither the stroke's middle nor its width.
+    const trim = Math.ceil((stem * 0.3) / step);
 
-    for (let which = 0; which < many; which++) {
-      const at = hashed(seed, which * 3);
-      const side = hashed(seed, which * 3 + 1) < 0.5 ? -1 : 1;
-      const across = (0.18 + hashed(seed, which * 3 + 2) * 0.34) * stem * side;
-      const step = Math.min(walked.length - 2, Math.max(1, Math.floor(at * (walked.length - 2))));
-      const here = walked[step];
-      const next = walked[step + 1];
-      const dx = next.x - here.x;
-      const dy = next.y - here.y;
-      const far = Math.hypot(dx, dy);
-      if (far < 1e-9) continue;
-      const tangent = { x: dx / far, y: dy / far };
-      const normal = { x: -tangent.y, y: tangent.x };
-      const reach = long * (0.6 + hashed(seed, which * 3 + 1) * 0.8) * 0.5;
-      const half = wide * 0.5;
-      /*
-       * Open to the flank it is pushed toward, from its inner side out past
-       * the stroke's own edge. A gap floating inside the stroke left a thread
-       * of ink standing between it and the paper -- the Casual Script's
-       * strokes were scored all along with slivers split off their edges,
-       * which reads as a tear rather than as a tool that lifted on one side.
-       * Out past this stroke's own ink, and then held off the part of the
-       * stroke nearer its spine than the gap's inner side (below), so that on
-       * a curve too the gap is always open to the paper.
-       */
-      const own = penHalfAcross(stroke, { x: normal.x * side, y: normal.y * side });
-      const inner = across - side * half;
-      // Wholly outside this stroke -- a hairline's gap -- it could only have
-      // cut whatever the hairline runs into.
-      if (Math.abs(inner) >= own) continue;
-      const out = side * (own * 1.5 + stem * 0.2);
-      const outer = Math.abs(out) > Math.abs(across + side * half) ? out : across + side * half;
-      const at1 = { x: here.x + normal.x * inner, y: here.y + normal.y * inner };
-      const at2 = { x: here.x + normal.x * outer, y: here.y + normal.y * outer };
-      const rect = oneWay(
-        poly([
-          { x: at1.x - tangent.x * reach, y: at1.y - tangent.y * reach },
-          { x: at1.x + tangent.x * reach, y: at1.y + tangent.y * reach },
-          { x: at2.x + tangent.x * reach, y: at2.y + tangent.y * reach },
-          { x: at2.x - tangent.x * reach, y: at2.y - tangent.y * reach },
-        ]),
-      );
-      if (!loaded()) {
-        mine.push(rect);
-        continue;
+    for (let placed = 0; placed < many; placed++) {
+      const end = free[placed];
+      // Tried a few times over for each: a stretch that would cross a join
+      // or run out of room is not laid, and the next is tried instead.
+      for (let which = 0; which < 6; which++) {
+        const pick = (k: number) => hashed(seed, (placed * 6 + which) * 8 + k);
+        const span = Math.min(long * (0.6 + pick(1) * 0.8), length * 0.6);
+        const reach = Math.round(span / step);
+        const first = end === 0 ? trim : walked.length - 1 - reach;
+        const last = end === 0 ? reach : walked.length - 1 - trim;
+        if (last - first < 6) continue;
+        // The stroke along the stretch, read off the ink: where its middle is
+        // and how wide it is at each step.
+        type Place = { here: Vec2; normal: Vec2; middle: number; thick: number };
+        const places: Place[] = [];
+        for (let at = first; at <= last; at++) {
+          const here = walked[at];
+          const before = walked[Math.max(0, at - 1)];
+          const after = walked[Math.min(walked.length - 1, at + 1)];
+          const heading = { x: after.x - before.x, y: after.y - before.y };
+          const run = Math.hypot(heading.x, heading.y);
+          if (run < 1e-9) break;
+          const normal = { x: -heading.y / run, y: heading.x / run };
+          // Not through a join: another stroke's ink here is not this stroke's.
+          if (nearAny(here, others, stem * 0.1)) break;
+          const edges = across(ink, here, normal);
+          if (!edges) break;
+          const thick = edges.left + edges.right;
+          // Wider than the pen by half again is a join or a serif.
+          if (thick > Math.max(penHalfAcross(stroke, normal) * 2, stem) * 1.5) break;
+          places.push({ here, normal, middle: (edges.left - edges.right) / 2, thick });
+        }
+        if (places.length !== last - first + 1) continue;
+        // Steady all along: a stretch whose middle jumps or whose width
+        // swings is running round a corner.
+        const steady = places.every(
+          (one, at) =>
+            at === 0 ||
+            (Math.abs(one.middle - places[at - 1].middle) < stem * 0.08 &&
+              Math.abs(one.thick - places[at - 1].thick) < stem * 0.1),
+        );
+        if (!steady) continue;
+        // From inside the stroke out to its end.
+        if (end === 0) places.reverse();
+        const narrowest = Math.min(...places.map((one) => one.thick));
+        /*
+         * One to three bristles' worth of streak, side by side, as a dry
+         * brush parts: one wide gap reads as a highlight, several fine ones
+         * as bristles.
+         */
+        const bristles = 1 + Math.floor(pick(2) * 3);
+        const fine = (wide * (0.55 + 0.45 * pick(3))) / Math.sqrt(bristles);
+        const spread = fine * 1.7 * (bristles - 1);
+        const spare = narrowest / 2 - wall - fine / 2 - spread / 2;
+        if (spare < 0) continue;
+        const lane = (pick(4) * 2 - 1) * 0.7 * spare;
+        const outer = places[places.length - 1];
+        const previous = places[places.length - 2];
+        const out = unit(previous.here, outer.here);
+        if (!out) continue;
+        for (let bristle = 0; bristle < bristles; bristle++) {
+          // Each starts at its own place, fine as a hair, and opens out to
+          // its full width by the time it runs off the end.
+          const start = pick(5 + bristle) * 0.35;
+          const shift = lane + (bristle - (bristles - 1) / 2) * fine * 1.7;
+          const left: Vec2[] = [];
+          const right: Vec2[] = [];
+          const lay = (here: Vec2, normal: Vec2, off: number, half: number) => {
+            left.push({ x: here.x + normal.x * (off + half), y: here.y + normal.y * (off + half) });
+            right.push({
+              x: here.x + normal.x * (off - half),
+              y: here.y + normal.y * (off - half),
+            });
+          };
+          places.forEach((one, at) => {
+            const u = at / (places.length - 1);
+            if (u < start) return;
+            const v = (u - start) / (1 - start);
+            lay(
+              one.here,
+              one.normal,
+              one.middle + shift,
+              (fine / 2) * Math.sin((Math.PI / 2) * v) ** 0.7,
+            );
+          });
+          if (left.length < 5) continue;
+          // And on past the cap, straight, clear of the ink.
+          for (const past of [stem * 0.4, stem * 0.8]) {
+            const here = { x: outer.here.x + out.x * past, y: outer.here.y + out.y * past };
+            lay(here, outer.normal, outer.middle + shift, fine / 2);
+          }
+          gaps.push(oneWay(smoothLoop([...left, ...right.slice(1).reverse()])));
+        }
+        break;
       }
-      // The stroke drawn with a pen only as wide as the gap is deep: what
-      // stays when the tool lifts on this side.
-      const keeps = Math.abs(inner) / Math.max(own, 1e-6);
-      const core = sweep({ ...stroke, pen: { ...stroke.pen, weight: stroke.pen.weight * keeps } });
-      mine.push(...subtract([rect], core, "winding"));
     }
-    /*
-     * And only where this stroke is the ink. Where it runs into another --
-     * a lead-in into its stem, a stem into its bowl -- the other stroke is
-     * still there under the lifted edge, and a gap laid across it left a
-     * white slit through the middle of the stem: the Casual Script's `i`,
-     * `b` and `u` were split down their stems.
-     */
-    if (mine.length === 0) return;
-    const others = strokes.filter((_, at) => at !== index).flatMap((one) => sweep(one));
-    gaps.push(...(loaded() && others.length > 0 ? subtract(mine, others, "winding") : mine));
   });
   return gaps;
+}
+
+/** Whether a point lies in the ink of any of some strokes, grown by a margin. */
+function nearAny(point: Vec2, strokes: Stroke[], margin: number): boolean {
+  return strokes.some((stroke) => {
+    const line = alongSpine(stroke.spine, 32);
+    for (let at = 0; at + 1 < line.length; at++) {
+      const a = line[at];
+      const b = line[at + 1];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const span = dx * dx + dy * dy;
+      const t =
+        span > 0
+          ? Math.min(Math.max(((point.x - a.x) * dx + (point.y - a.y) * dy) / span, 0), 1)
+          : 0;
+      const x = a.x + dx * t - point.x;
+      const y = a.y + dy * t - point.y;
+      const off = Math.hypot(x, y);
+      const normal = off > 1e-9 ? { x: x / off, y: y / off } : { x: 1, y: 0 };
+      if (off < penHalfAcross(stroke, normal) + margin) return true;
+    }
+    return false;
+  });
+}
+
+/**
+ * A closed curve through some points, each a smooth node with its handles
+ * laid along the line between its neighbours a sixth of the way to each.
+ */
+function smoothLoop(points: Vec2[]): Contour {
+  const count = points.length;
+  const nodes: GlyphNode[] = points.map((point, at) => {
+    const before = points[(at - 1 + count) % count];
+    const after = points[(at + 1) % count];
+    const dx = (after.x - before.x) / 6;
+    const dy = (after.y - before.y) / 6;
+    return {
+      point,
+      handleIn: { x: point.x - dx, y: point.y - dy },
+      handleOut: { x: point.x + dx, y: point.y + dy },
+      type: "smooth" as const,
+    };
+  });
+  return { nodes, closed: true };
 }
 
 // ---------------------------------------------------------------------------
@@ -1280,22 +1562,6 @@ function lightness(at: HeaviestAt, u: number, opens: { start: boolean; end: bool
   return opens.start ? 1 - u : 0;
 }
 
-/** The winding number of flattened outlines about a point: nought is paper. */
-function windingAt(outlines: Vec2[][], point: Vec2): number {
-  let total = 0;
-  for (const outline of outlines) {
-    for (let at = 0; at < outline.length; at++) {
-      const a = outline[at];
-      const b = outline[(at + 1) % outline.length];
-      const side = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
-      if (a.y <= point.y) {
-        if (b.y > point.y && side > 0) total++;
-      } else if (b.y <= point.y && side < 0) total--;
-    }
-  }
-  return total;
-}
-
 /** How far a walked line runs from end to end. */
 function runLength(points: Vec2[]): number {
   let total = 0;
@@ -1321,37 +1587,29 @@ function poly(points: Vec2[]): Contour {
   return { nodes, closed: true };
 }
 
-/** A circle, as four points with the handles that make a circle out of them. */
-function disc(centre: Vec2, radius: number): Contour {
-  const pull = radius * 0.5522847498;
-  const around: Array<[Vec2, Vec2, Vec2]> = [
-    [
-      { x: centre.x + radius, y: centre.y },
-      { x: 0, y: -pull },
-      { x: 0, y: pull },
-    ],
-    [
-      { x: centre.x, y: centre.y + radius },
-      { x: pull, y: 0 },
-      { x: -pull, y: 0 },
-    ],
-    [
-      { x: centre.x - radius, y: centre.y },
-      { x: 0, y: pull },
-      { x: 0, y: -pull },
-    ],
-    [
-      { x: centre.x, y: centre.y - radius },
-      { x: -pull, y: 0 },
-      { x: pull, y: 0 },
-    ],
+/**
+ * An oval, as four points with the handles that make one: `along` either way
+ * down `axis` and `across` either side of it.
+ */
+function oval(centre: Vec2, axis: Vec2, along: number, across: number): Contour {
+  const side = { x: -axis.y, y: axis.x };
+  const at = (u: number, v: number): Vec2 => ({
+    x: centre.x + axis.x * u + side.x * v,
+    y: centre.y + axis.y * u + side.y * v,
+  });
+  const k = 0.5522847498;
+  const ends: Array<[number, number, number, number]> = [
+    [along, 0, 0, across * k],
+    [0, across, -along * k, 0],
+    [-along, 0, 0, -across * k],
+    [0, -across, along * k, 0],
   ];
   return {
     closed: true,
-    nodes: around.map(([point, into, outOf]) => ({
-      point,
-      handleIn: { x: point.x + into.x, y: point.y + into.y },
-      handleOut: { x: point.x + outOf.x, y: point.y + outOf.y },
+    nodes: ends.map(([u, v, du, dv]) => ({
+      point: at(u, v),
+      handleIn: at(u - du, v - dv),
+      handleOut: at(u + du, v + dv),
       type: "tangent" as const,
     })),
   };
