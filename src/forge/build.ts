@@ -1276,7 +1276,7 @@ function dressedSmall(given: Stroke[], style: Style, name: string): Stroke[] {
     const key = as ? `${as.name} ${as.dx} ${as.dy}` : "";
     groups.set(key, [...(groups.get(key) ?? []), index]);
   });
-  const dressed: Stroke[] = [];
+  const dressed: Stroke[][] = given.map(() => []);
   for (const indices of groups.values()) {
     const group = indices.map((index) => given[index]);
     const as = group[0].setAs;
@@ -1287,11 +1287,22 @@ function dressedSmall(given: Stroke[], style: Style, name: string): Stroke[] {
           as.name,
         ).map((stroke) => shiftedStroke(stroke, as.dx, as.dy))
       : dressedAll(group, style, name);
-    indices.forEach((index, at) => {
-      dressed[index] = done[at];
-    });
+    /*
+     * Dressing can hand back more strokes than it was given: a text serif's
+     * vee is taken apart into its two arms first (see `splitVees`). Matched
+     * one for one, the second arm fell off the end, and the trade mark's M
+     * lost its right diagonal and read as an N. So a group that grew is
+     * kept whole, in the place of its first stroke.
+     */
+    if (done.length === indices.length) {
+      indices.forEach((index, at) => {
+        dressed[index] = [done[at]];
+      });
+    } else {
+      dressed[indices[0]] = done;
+    }
   }
-  return dressed;
+  return dressed.flat();
 }
 
 function shiftedContour(contour: Contour, dx: number, dy: number): Contour {
