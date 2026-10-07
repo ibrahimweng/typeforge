@@ -171,6 +171,26 @@ describe("tooth", () => {
     const fat = removed("H", display, cuts);
     expect(Math.abs(thin - fat)).toBeLessThan(0.1);
   });
+
+  /*
+   * The clean-up after the saw used to open the whole letter -- shrink it and
+   * grow it back -- to find slivers, and on the hairlines of a Didone at the
+   * lightest pen that never came back: a sawn m drew for minutes. Read off
+   * the outline along the knife instead, it is a walk round a few hundred
+   * points.
+   */
+  it("saws a hairline Didone without stalling", () => {
+    const didone = BASES.find((base) => base.name === "Didone")!;
+    const light = { ...didone, pen: { ...didone.pen, weight: 30 } };
+    const cuts = cutWith((one) => {
+      one.tooth.on = true;
+    });
+    const started = performance.now();
+    for (const letter of "mnh") {
+      expect(drawn(letter, light, cuts).contours.length, letter).toBeGreaterThan(0);
+    }
+    expect(performance.now() - started).toBeLessThan(15_000);
+  }, 60_000);
 });
 
 describe("inline", () => {
