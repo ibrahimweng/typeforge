@@ -122,11 +122,10 @@ test("quantises the letters onto a pixel grid", async ({ page }) => {
   await slider.focus();
   // Up to a coarse grid, where the quantising is unmistakable.
   for (let i = 0; i < 20; i++) await page.keyboard.press("ArrowRight");
-  await page.waitForTimeout(1200);
 
-  const inkAfter = await measureInk(page);
   // Squaring a letter off changes how much of the canvas it covers.
-  expect(inkAfter).not.toBe(inkBefore);
+  await expect.poll(() => measureInk(page)).not.toBe(inkBefore);
+  const inkAfter = await measureInk(page);
   expect(inkAfter).toBeGreaterThan(0);
   expect(errors).toEqual([]);
 });
@@ -149,11 +148,9 @@ test("puts slab serifs on the stroke ends", async ({ page }) => {
   const slider = await paramSlider(page, "Slab serifs");
   await slider.focus();
   for (let i = 0; i < 45; i++) await page.keyboard.press("ArrowRight");
-  await page.waitForTimeout(900);
 
   // Bars laid across the stroke ends cover more of the canvas.
-  const inkAfter = await measureInk(page);
-  expect(inkAfter).toBeGreaterThan(inkBefore);
+  await expect.poll(() => measureInk(page)).toBeGreaterThan(inkBefore);
   expect(errors).toEqual([]);
 });
 
