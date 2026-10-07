@@ -64,7 +64,7 @@ import {
   writeAgain,
   writing,
 } from "./shapes";
-import { enclosing, recording as partsRecording } from "./letters/common";
+import { enclosing, recording as partsRecording, shiftingVees } from "./letters/common";
 import { seamsOf, wobbleOf } from "./script";
 import { penReach, reachAlong, sweep } from "./sweep";
 import {
@@ -308,6 +308,66 @@ export function makeLetter(
   return made;
 }
 
+/** The vees whose point `landedVees` lands, and which way each points. */
+const VEES: Record<string, -1 | 1> = { V: -1, v: -1, "\u0394": 1, "\u039b": 1 };
+
+/**
+ * A vee landed on its line by its finished ink, where only the finished letter
+ * can say where that is: a written hand's, whose letter is moved and joined
+ * after its recipe draws it (the Formal Script's V stood 40 units over the
+ * baseline from a pen of 120, and its v at 260 had its point 120 units up,
+ * the turn come off a cliff in `corner`), and a text serif's, which takes its
+ * vees apart to thin the rising arm (`splitVees`) -- past the Bold only there,
+ * run in from nothing at a pen of 194, so the Serif's Lora is as it was.
+ * Every other face's vee lands itself: see `veeStroke`.
+ *
+ * A written letter in the middle of a word is lifted by the hand's own
+ * unsteadiness (`wobbleOf`), and lands on its line moved by that.
+ */
+function landedVees(name: string, style: Style, drawn: (shift: number) => Recipe): Recipe {
+  const first = drawn(0);
+  const pointing = VEES[name];
+  if (!pointing) return first;
+  const { script, slab } = style.parts;
+  const split = !script.on && style.metrics.risingHairline && slab.on && slab.shape === "wedge";
+  if (!script.on && !split) return first;
+  const lift =
+    script.on && joinEnds(name).entry ? wobbleOf(name, script, style.metrics.xHeight).lift : 0;
+  const line = (pointing < 0 ? 0 : style.metrics.capHeight) + lift;
+  const miss = (recipe: Recipe) => {
+    const box = contoursBounds(inkAll(recipe.strokes, style, name).flat());
+    return (pointing < 0 ? box.yMin : box.yMax) - line;
+  };
+  const was = miss(first);
+  if (!Number.isFinite(was)) return first;
+  // A written vee hanging past its line is landed whole, however little it
+  // hangs; one short of it, from a few units on. Both are nought on the line.
+  const past = pointing < 0 ? was < 0 : was > 0;
+  const share = script.on
+    ? past
+      ? 1
+      : Math.min(1, Math.max(0, (Math.abs(was) - VEE_LET) / VEE_LET))
+    : Math.min(1, Math.max(0, (style.pen.weight - SERIF_BLACK) / (260 - SERIF_BLACK)));
+  if (!(share > 0)) return first;
+  const wanted = was * (1 - share);
+  let shift = 0;
+  let best = { recipe: first, off: was - wanted };
+  for (let pass = 0; pass < 6 && Math.abs(best.off) >= 0.5; pass++) {
+    shift -= best.off;
+    const recipe = drawn(shift);
+    const off = miss(recipe) - wanted;
+    if (!Number.isFinite(off)) break;
+    if (Math.abs(off) < Math.abs(best.off)) best = { recipe, off };
+    else break;
+  }
+  return best.recipe;
+}
+
+/** How far a vee may miss its line and be left, and over how much more it is landed whole. */
+const VEE_LET = 3;
+/** The Serif's Black, past which its vees are landed: see `landedVees`. */
+const SERIF_BLACK = 194;
+
 /**
  * Letters drawn already, for the letter asked for again with everything that
  * decides it the same.
@@ -385,7 +445,9 @@ function drawnFresh(
   const recipe = laid ? null : recipeOf(name, form);
   if (!laid && !recipe) return null;
   // Past the Black, a geometric face's rounds thinned at their sides: see `rounds.ts`.
-  const built: Recipe | null = recipe ? thinnedRounds(recipe(widthOf(style, name)), style) : null;
+  const drawn = (shift: number): Recipe =>
+    shiftingVees(shift, () => thinnedRounds(recipe!(widthOf(style, name)), style));
+  const built: Recipe | null = recipe ? landedVees(name, style, drawn) : null;
   const strokes = laid ? laid.strokes : built!.strokes;
 
   const inked = inkAll(strokes, onGrid ?? style, name);
@@ -487,12 +549,17 @@ function drawnFresh(
    * acute -- swung back left of the origin by its height times the lean,
    * into the letter before. Only those move: every other letter already
    * stands clear of its origin by more than this.
+   *
+   * A letter laid on the grid too, to the health check's own line
+   * (`SIDE_CLEAR`) and no further, its cells keeping their width: on the
+   * Brush and the scripts the grid's accents, the double acute among them,
+   * stood in a cell over the cap height and leant back into the letter
+   * before.
    */
   const standing =
     lean !== 0 &&
     !upright &&
     !style.metrics.monospaced &&
-    !laid &&
     !joinsUp &&
     !joinEnds(name).entry &&
     form !== "written" &&
@@ -504,7 +571,11 @@ function drawnFresh(
       ? Math.max(
           0,
           spacingOf(style) - contoursBounds(measured).xMin,
-          standing === null ? 0 : style.metrics.unitsPerEm * UPRIGHT_CLEAR - standing,
+          standing === null
+            ? 0
+            : laid
+              ? style.metrics.unitsPerEm * SIDE_CLEAR + 1e-6 - standing
+              : style.metrics.unitsPerEm * UPRIGHT_CLEAR - standing,
         )
       : 0;
   const placed = slid(cut, shortfall);
@@ -525,7 +596,21 @@ function drawnFresh(
    */
   let centring = 0;
   if (style.metrics.monospaced) {
+    /*
+     * The column is measured off the drawn letters, and a letter laid on the
+     * grid can be wider than any of them: the Condensed typewriter's Щ and
+     * щ, five cells across, stood past both sides of a column cut for the
+     * drawn m. Such a letter is given as much more as keeps it off both
+     * edges (`SIDE_CLEAR`); every other keeps the column.
+     */
     advanceWidth = monoAdvance(style);
+    if (laid && placedSolid.length > 0) {
+      const ink = contoursBounds(placedSolid);
+      advanceWidth = Math.max(
+        advanceWidth,
+        ink.xMax - ink.xMin + style.metrics.unitsPerEm * SIDE_CLEAR * 2 + 2e-6,
+      );
+    }
     if (placedSolid.length > 0) {
       const bounds = contoursBounds(placedSolid);
       centring = (advanceWidth - bounds.xMin - bounds.xMax) / 2;
@@ -541,6 +626,24 @@ function drawnFresh(
       fittedSides = true;
       centring = sides.shift;
       advanceWidth = sides.advance;
+    } else if (
+      FIGURES.includes(name) &&
+      built!.width === undefined &&
+      style.metrics.figures !== "proportional" &&
+      placedSolid.length > 0
+    ) {
+      /*
+       * A tabular figure on a face that is not fitted: in the middle of a
+       * column as wide as the widest figure's ink and a sidebearing either
+       * side, as a fitted face sets its own. Placed where each was drawn
+       * instead, in a column as wide as the furthest any of them reached, the
+       * one stood most of a stem left of the nought, and at a Black or an
+       * Expanded the whole set sat at the left of a column a third too wide.
+       */
+      const ink = contoursBounds(placedSolid);
+      // And never narrower than this figure, in whatever form it was chosen.
+      advanceWidth = Math.max(figureColumnInk(style), ink.xMax - ink.xMin) + spacingOf(style) * 2;
+      centring = (advanceWidth - ink.xMin - ink.xMax) / 2;
     } else {
       advanceWidth = advanceFor(name, built!, placedSolid, style);
     }
@@ -601,6 +704,39 @@ function drawnFresh(
       centring += short;
       advanceWidth += short;
     }
+  } else if (fittedSides && lean === 0 && placedSolid.length > 0) {
+    /*
+     * And a letter that does not hang is never fitted onto its own origin
+     * (`SIDE_CLEAR`). The sides the eye sets close in at a Black and close
+     * again on a Condensed, and on the Serif's Condensed Black they took the
+     * feet of its X and the figure of its one-half past the edge, into the
+     * letter before. Only those move: everything else stands clear by more.
+     */
+    const short =
+      style.metrics.unitsPerEm * SIDE_CLEAR - (contoursBounds(placedSolid).xMin + centring);
+    if (short > 0) {
+      // A hair over, so the sum lands on the near side of the line it is measured against.
+      centring += short + 1e-6;
+      advanceWidth += short + 1e-6;
+    }
+  }
+  /*
+   * And room for a shadow. The letter is spaced by its solid face, and a
+   * shadow thrown sideways off it was drawn into the next letter's space: a
+   * Serif Black set with one ran every letter into its neighbour. So the
+   * advance takes the width of the throw on the side it is thrown to, and
+   * the face keeps its own sidebearings. Not on a monospaced column or a grid
+   * cell, which say where a letter goes, nor on a script, whose letters hand
+   * over to each other at their edges. Last, so the face is fitted, dashed
+   * and hung exactly as it is without a shadow, and the throw is added on.
+   */
+  if (cutting && cast?.extrude.on && !style.metrics.monospaced && !laid && !joinsUp) {
+    const thrown =
+      cast.extrude.distance *
+      Math.max(scaleOf(style).stem, 1) *
+      Math.cos((cast.extrude.angle * Math.PI) / 180);
+    if (thrown < 0) centring -= thrown;
+    advanceWidth += Math.abs(thrown);
   }
   const slide = shortfall + centring;
   return {
@@ -820,6 +956,13 @@ function uprightLeft(inked: Contour[], style: Style): number {
 
 /** How far a leaning letter stands clear of its origin upright, at the least, in ems. */
 const UPRIGHT_CLEAR = 0.01;
+
+/**
+ * How far a fitted upright letter that does not hang stands clear of its
+ * origin, at the least, in ems: what the health check counts as touching the
+ * letter before (`leftEdge` in `health.ts`), and no more.
+ */
+const SIDE_CLEAR = 0.005;
 
 /** How far a letter leans, as a shear rather than as an angle. */
 /**
@@ -1182,17 +1325,36 @@ const figureInkCache = new WeakMap<Style, number>();
 
 /** The ink width of the widest figure, for a face fitted optically. */
 function figureInk(style: Style): number {
-  const known = figureInkCache.get(style);
+  return widestFigure(style, figureInkCache, false);
+}
+
+const figureColumnCache = new WeakMap<Style, number>();
+
+/**
+ * The same, of the figures in the forms the face draws them in, for the
+ * column a face that is not fitted sets each figure in the middle of: the
+ * Ribbon's grotesque six is wider than the construction's, and measured off
+ * the construction's its column was too narrow to hold it.
+ */
+function figureColumnInk(style: Style): number {
+  return widestFigure(style, figureColumnCache, true);
+}
+
+function widestFigure(style: Style, cache: WeakMap<Style, number>, formed: boolean): number {
+  const known = cache.get(style);
   if (known !== undefined) return known;
   let widest = 0;
   for (const name of FIGURES) {
-    const built = LETTERS[name](widthOf(style, name));
+    const recipe = formed
+      ? (recipeOf(name, style.forms?.[name] ?? "") ?? LETTERS[name])
+      : LETTERS[name];
+    const built = recipe(widthOf(style, name));
     const contours = leaning(inkAll(built.strokes, style, name).flat(), style);
     if (contours.length === 0) continue;
     const box = contoursBounds(contours);
     widest = Math.max(widest, box.xMax - box.xMin);
   }
-  figureInkCache.set(style, widest);
+  cache.set(style, widest);
   return widest;
 }
 

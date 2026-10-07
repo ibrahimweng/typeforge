@@ -11,6 +11,7 @@ import { bowlPoint, spineEnd, spineStart } from "../shapes";
 import type { Style } from "../style";
 import type { Spine, Stroke } from "../types";
 import {
+  veeStroke,
   archSpine,
   arm,
   at,
@@ -24,6 +25,7 @@ import {
   crested,
   cup,
   deg,
+  counterOf,
   type Frame,
   finish,
   frame,
@@ -41,6 +43,13 @@ import {
   turn,
   middleBar,
 } from "./common";
+
+/**
+ * How far past the ascender the delta's curl may stand at the least, in ems:
+ * the slack the health check gives every letter (`LINE_SLACK` in
+ * `health.ts`), or the pen where that is more.
+ */
+const DELTA_SLACK = 0.06;
 
 /**
  * The beta of a joined hand: a stem with two bowls hung off it, as a pen
@@ -259,9 +268,9 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const foot = at(left, 0);
     const other = at(middle + half, 0);
-    const peak = corner(f, foot, at(middle, f.cap), other);
+    // Its apex drawn clean at a heavy weight: see `veeStroke`.
     return finish(f, [
-      ink(f, chain(straight(foot, peak), straight(peak, other)), BUTT, BUTT),
+      veeStroke(f, foot, at(middle, f.cap), other, BUTT, BUTT, 1),
       ink(f, straight(at(left, f.sits(0)), at(middle + half, f.sits(0))), f.end, f.end),
     ]);
   },
@@ -293,8 +302,8 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const foot = at(left, 0);
     const other = at(middle + half, 0);
-    const peak = corner(f, foot, at(middle, f.cap), other);
-    return finish(f, [ink(f, chain(straight(foot, peak), straight(peak, other)), f.end, f.end)]);
+    // Its apex drawn clean at a heavy weight: see `veeStroke`.
+    return finish(f, [veeStroke(f, foot, at(middle, f.cap), other, f.end, f.end, 1)]);
   },
 
   /** Three bars and no stem, the middle one held in at both ends. */
@@ -325,7 +334,7 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u03a0": (style) => {
     const f = frame(style);
     const left = f.edge;
-    const right = left + f.style.metrics.counterWidth + f.style.pen.weight;
+    const right = left + counterOf(f) + f.style.pen.weight;
     return finish(f, [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, BUTT),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, BUTT),
@@ -507,10 +516,35 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const leaves = bowlPoint(centre, wide, radius, 1 - f.square, f.half, 90, f.curve);
     // Never tighter than the pen turns cleanly: at a fat face's weight a curl
     // turned on the least radius left a sliver spiking out of its inside.
-    const curl = Math.max(wide * 0.36, f.least * 1.35);
-    const knee = at(f.edge + wide * 0.34 + curl, f.x + (f.asc - f.x) * 0.45);
-    const heading = Math.atan2(knee.y - leaves.y, knee.x - leaves.x);
-    const from = (heading * 180) / Math.PI + 90;
+    const turned = Math.max(wide * 0.36, f.least * 1.35);
+    const kneeOf = (curl: number) => at(f.edge + wide * 0.34 + curl, f.x + (f.asc - f.x) * 0.45);
+    const fromOf = (knee: Vec2) =>
+      (Math.atan2(knee.y - leaves.y, knee.x - leaves.x) * 180) / Math.PI + 90;
+    /*
+     * And never turned so wide that its crown stands further past the
+     * ascender than a letter may (`LINE_SLACK` in `health.ts`): the curl grows
+     * with the width, and an Expanded Fairground's stood over the line. Turned
+     * tighter there, by as little as it takes; everywhere else as it was.
+     */
+    const crown = (curl: number) => {
+      const knee = kneeOf(curl);
+      return knee.y + curl * (1 - Math.sin(deg(fromOf(knee)))) + f.half;
+    };
+    const roof = f.asc + Math.max(f.style.pen.weight, f.style.metrics.unitsPerEm * DELTA_SLACK) - 1;
+    let curl = turned;
+    const least = Math.min(turned, f.least * 1.35);
+    if (crown(turned) > roof && crown(least) <= roof) {
+      let fits = least;
+      let over = turned;
+      for (let step = 0; step < 24; step++) {
+        const mid = (fits + over) / 2;
+        if (crown(mid) > roof) over = mid;
+        else fits = mid;
+      }
+      curl = fits;
+    }
+    const knee = kneeOf(curl);
+    const from = fromOf(knee);
     const hub = at(knee.x - curl * Math.cos(deg(from)), knee.y - curl * Math.sin(deg(from)));
     // In two pieces at every weight, however far round the curl turns.
     const neck = chain(straight(leaves, knee), inPieces(turn(hub, curl, from, 20), 2));

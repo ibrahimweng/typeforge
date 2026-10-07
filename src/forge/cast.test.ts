@@ -36,7 +36,7 @@ import {
 import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter, letterNames } from "./build";
 import { LETTERS } from "./letters";
-import { castInk, noCast, type Cast } from "./cast";
+import { castInk, noCast, outlined, type Cast } from "./cast";
 import { piecesOf, scaleOf } from "./cut";
 import { shapedInk } from "./layers";
 import { noCuts, type Cuts } from "@/font/cuts";
@@ -81,6 +81,34 @@ const plain = (letter: string, style = SANS): Contour[] => drawLetter(letter, st
 const POINT_BUDGET = { rim: 120, everything: 125 };
 
 describe("the shadow", () => {
+  it("is given room in the advance on the side it is thrown to", () => {
+    // The letter is spaced by its face, and a shadow thrown sideways was drawn
+    // into the next letter's space: a Serif Black ran every letter into the
+    // one beside it.
+    for (const [face, angle] of [
+      ["Serif", -45],
+      ["Sans", 135],
+    ] as const) {
+      const base = BASES.find((one) => one.name === face)!;
+      const style = { ...base, pen: { ...base.pen, weight: 194 } };
+      const thrown = cast((one) => {
+        one.extrude = { on: true, distance: 1.2, angle };
+      });
+      for (const letter of ["H", "O", "a", "k"]) {
+        const plainly = drawLetter(letter, style)!;
+        const shadowed = drawLetter(letter, style, undefined, undefined, undefined, thrown)!;
+        const box = contoursBounds(shadowed.contours);
+        const was = contoursBounds(plainly.contours);
+        // No nearer its edges than the face was.
+        const side = Math.min(was.xMin, plainly.advanceWidth - was.xMax);
+        expect(box.xMin, `${face} ${letter}`).toBeGreaterThanOrEqual(side - 1);
+        expect(shadowed.advanceWidth - box.xMax, `${face} ${letter}`).toBeGreaterThanOrEqual(
+          side - 1,
+        );
+      }
+    }
+  });
+
   it("reaches as far as it is thrown, and no further", () => {
     const reach = 1.5;
     const thrown = put(
@@ -816,5 +844,39 @@ describe("a rim that ties no loops", () => {
     // A rim, and all of it.
     expect(ink(rimmed)).toBeGreaterThan(ink(a) * 1.05);
     for (const contour of rimmed) expect(loopsAnywhere(contour)).toBe(false);
+  });
+});
+
+describe("a rim round islands that take each other for inside", () => {
+  it("keeps the counters standing in them open", () => {
+    /*
+     * Where a slot pinches a counter shut at a point, the piece either side of
+     * the pinch can take the other's first point for inside, so every solid
+     * reads as an island and every counter as one standing in an island. The
+     * rim then grew the islands as bare solids, counters and all filled in: an
+     * o cut with slots and an inline came back from a rim a black disc. Two
+     * rings laid through each other are the same arrangement, drawn plainly.
+     */
+    const square = (from: number, to: number, first: number): Contour => {
+      const corners: Vec2[] = [
+        { x: from, y: from },
+        { x: to, y: from },
+        { x: to, y: to },
+        { x: from, y: to },
+      ];
+      const turned = [...corners.slice(first), ...corners.slice(0, first)];
+      return {
+        closed: true,
+        nodes: turned.map((point) => ({ point, handleIn: null, handleOut: null, type: "corner" })),
+      };
+    };
+    const hole = (from: number, to: number): Contour => {
+      const solid = square(from, to, 0);
+      return { ...solid, nodes: [...solid.nodes].reverse() };
+    };
+    // Each ring starts on the corner that lies in the other's counter.
+    const rings = [square(0, 100, 2), hole(20, 80), square(50, 150, 0), hole(70, 130)];
+    const counters = outlined(rings, 3).filter((contour) => contourArea(contour) < 0);
+    expect(counters.length).toBeGreaterThan(0);
   });
 });

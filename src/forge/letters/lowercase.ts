@@ -11,6 +11,7 @@ import { spineStart } from "../shapes";
 import { blackness, type Style } from "../style";
 import type { Terminal } from "../types";
 import {
+  veeStroke,
   type Frame,
   roundHalf,
   arch,
@@ -19,7 +20,6 @@ import {
   bend,
   BUTT,
   chain,
-  corner,
   doubleVee,
   corners,
   crossbar,
@@ -597,8 +597,8 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const middle = left + half;
     const top = at(left, f.x);
     const other = at(middle + half, f.x);
-    const point = corner(f, top, at(middle, 0), other);
-    return finish(f, [ink(f, chain(straight(top, point), straight(point, other)), f.end, f.end)]);
+    // Its point drawn clean at a heavy weight: see `veeStroke`.
+    return finish(f, [veeStroke(f, top, at(middle, 0), other, f.end, f.end, -1)]);
   },
 
   w: (style) => {

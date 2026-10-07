@@ -73,16 +73,34 @@ export function measuredStem(
   letters: Ruled[],
   metrics: { xHeight: number; unitsPerEm: number },
 ): number {
+  return stemAndSource(letters, metrics).stem;
+}
+
+/**
+ * The stem, and which letters it was read from: the first `ruled` names of
+ * `STEM_LETTERS` -- the one that answered and every one tried before it -- or
+ * every letter of the font (`ruled` of -1) when none of them answered and the
+ * widest letter, or the em, was used instead.
+ *
+ * For a caller that keeps the answer and has to know when it has gone stale:
+ * an edit to any of those letters can change it, and an edit to any other
+ * cannot.
+ */
+export function stemAndSource(
+  letters: Ruled[],
+  metrics: { xHeight: number; unitsPerEm: number },
+): { stem: number; ruled: number } {
   const at = metrics.xHeight > 0 ? metrics.xHeight / 3 : metrics.unitsPerEm * 0.16;
   const byName = new Map(letters.map((letter) => [letter.name, letter.contours]));
 
-  for (const name of STEM_LETTERS) {
+  for (const [index, name] of STEM_LETTERS.entries()) {
     const contours = byName.get(name);
     if (!contours) continue;
     const width = stemFrom(contours, at);
     // A run narrower than a hundredth of the em is a hairline or a mistake,
     // and taking it for the stem would make every cut invisible.
-    if (width !== null && width > metrics.unitsPerEm * 0.01) return width;
+    if (width !== null && width > metrics.unitsPerEm * 0.01)
+      return { stem: width, ruled: index + 1 };
   }
 
   // Nothing from the list. Rule across whatever is widest instead, which for a
@@ -100,8 +118,8 @@ export function measuredStem(
   }
   if (widest) {
     const width = stemFrom(widest.contours, at);
-    if (width !== null && width > metrics.unitsPerEm * 0.01) return width;
+    if (width !== null && width > metrics.unitsPerEm * 0.01) return { stem: width, ruled: -1 };
   }
 
-  return metrics.unitsPerEm * 0.09;
+  return { stem: metrics.unitsPerEm * 0.09, ruled: -1 };
 }

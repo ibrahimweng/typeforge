@@ -57,6 +57,15 @@ function slopeBox(f: ReturnType<typeof markFrame>, m: ReturnType<typeof markBox>
   return { ...m, w };
 }
 
+/**
+ * The least white a ring keeps across its middle, against the face's stem.
+ *
+ * Half a stem: a hole narrower than two fifths of one is what the effects take
+ * for a slit in the ink and fill (`slit` in `effects.ts`), and a quarter of a
+ * stem square is what a counter check reads as a pinhole.
+ */
+const RING_OPEN = 0.5;
+
 export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // -------------------------------------------------------------------------
   // The marks
@@ -218,9 +227,27 @@ export const MARK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * held to the box alone it closed up, because what a ring is is the white
      * inside it and there was almost none left.
      */
-    const radius = Math.max(Math.min(m.w * 0.82, (m.top - m.foot) / 2), pen.weight);
-    const centre = at(m.cx, m.foot + radius + pen.weight / 2);
-    return finish(f, [{ spine: ring(f, centre, radius), pen, start: BUTT, end: BUTT }], true);
+    const drawn = Math.max(Math.min(m.w * 0.82, (m.top - m.foot) / 2), pen.weight);
+    /*
+     * And lighter again where that leaves too little white: at a heavy weight
+     * the box stops growing before the pen does, the radius is held at the
+     * pen, and the counter came down to a third of a stem -- a pinhole on the
+     * Fairground, and on the Marker and the Brush a hole their tools then
+     * filled in, so the ring was a blot. Kept as large as it was outside, and
+     * drawn with as much less pen as it takes to leave half a stem of the
+     * face's own across the middle (`RING_OPEN`), never under half the pen it
+     * had. Where the white was already there, nothing moves.
+     */
+    const outer = drawn + pen.weight / 2;
+    const held = Math.max(outer - (style.pen.weight * RING_OPEN) / 2, pen.weight * 0.5);
+    const light = held < pen.weight ? { ...pen, weight: held } : pen;
+    const radius = light === pen ? drawn : outer - light.weight / 2;
+    const centre = at(m.cx, m.foot + outer);
+    return finish(
+      f,
+      [{ spine: ring(f, centre, radius), pen: light, start: BUTT, end: BUTT }],
+      true,
+    );
   },
 
   breve: (style) => {

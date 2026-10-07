@@ -14,7 +14,7 @@
  * finished loading.
  */
 
-import { contoursBounds } from "@/font/geometry";
+import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { wrapAngle } from "../angles";
 import { LETTERS, recipeOf } from "../letters";
@@ -220,6 +220,35 @@ export function inherit(from: Stroke, to: Stroke): Stroke {
   return to;
 }
 
+/**
+ * A closed ring drawn lighter, by as little as it takes, where its counter
+ * would be narrower than `least` across: never under `lightest` of its own
+ * pen. Measured off the ring as it sweeps, so whatever the pen's contrast and
+ * angle do to its sides is counted. A ring that already has the room comes
+ * back as it was.
+ */
+export function openedRing(stroke: Stroke, least: number, lightest = 0.5): Stroke {
+  const across = (weight: number): number => {
+    const contours = sweep({ ...stroke, pen: { ...stroke.pen, weight } });
+    if (contours.length < 2) return 0;
+    const inner = contours.reduce((one, other) =>
+      Math.abs(contourArea(other)) < Math.abs(contourArea(one)) ? other : one,
+    );
+    const box = contoursBounds([inner]);
+    return Math.min(box.xMax - box.xMin, box.yMax - box.yMin);
+  };
+  const own = stroke.pen.weight;
+  let weight = own;
+  for (let pass = 0; pass < 6; pass++) {
+    const room = across(weight);
+    if (room >= least) break;
+    const next = Math.max(own * lightest, weight - (least - room));
+    if (next === weight) break;
+    weight = next;
+  }
+  return weight === own ? stroke : inherit(stroke, { ...stroke, pen: { ...stroke.pen, weight } });
+}
+
 /** Draw something and report which parts it turned out to need. */
 export function recordPartsWhile(draw: () => unknown): Set<PartName> {
   const found = new Set<PartName>();
@@ -333,6 +362,26 @@ export function ring(f: Frame, centre: Vec2, halfWidth: number, halfHeight = hal
 export function widthShare(style: Style): number {
   const share = style.metrics.widthAxis ?? 1;
   return share > 0 ? share : 1;
+}
+
+/**
+ * The face's counter -- the white inside an n, which the letters built of
+ * two or three stems stand apart by -- at this member's share of the width
+ * axis (`widthAxis`). Read off `counterWidth` alone, the H, the Cyrillic
+ * letters on two and three posts and the Pi stood as wide in a Condensed and
+ * an Expanded as in the Normal, among letters that had moved.
+ */
+export function counterOf(f: Frame): number {
+  return f.style.metrics.counterWidth * widthShare(f.style);
+}
+
+/**
+ * The white between the H's two stems: the face's counter at the letter's own
+ * proportion. Shared by the H and the H-bar, which stand on the same two
+ * stems.
+ */
+export function hCounter(f: Frame): number {
+  return counterOf(f) * (f.style.metrics.stretch ?? 1);
 }
 
 /**
@@ -1562,6 +1611,273 @@ export function overhang(
  */
 export function corners(f: Frame, tips: Vec2[]): Vec2[] {
   return through(f, tips).slice(1, -1);
+}
+
+/**
+ * The frame an apex of two legs `half` out either side and `tall` high is
+ * rounded in: the face's own, or one rounding wider where the face's radius
+ * leaves the inside of the turn standing above where the legs' inner edges
+ * meet. Only on a face that rounds its corners at all.
+ *
+ * An apex pointing up, as an A's, or with `pointing` at -1 one pointing down,
+ * as the vee of a V or the valley between an M's diagonals: the same spike
+ * stands down into the counter there.
+ */
+export function apexRounded(f: Frame, half: number, tall: number, pointing = 1): Frame {
+  const asked = apexSpike(f, half, tall, pointing);
+  if (!asked) return f;
+  const { share, across, up, sin, wanted } = asked;
+  const clears = ((across / sin - up) / (1 / sin - 1)) * APEX_CLEAR;
+  return { ...f, radius: wanted + (clears - wanted) * share };
+}
+
+/**
+ * How far an apex's inside would stand past where its legs' insides meet, as
+ * a share of the way from where that is let be (`APEX_FROM`) to where it is
+ * cleared whole (`APEX_SPIKE`), with what it was worked out from. Nothing on
+ * a face that does not round its corners, or where there is no spike.
+ */
+function apexSpike(
+  f: Frame,
+  half: number,
+  tall: number,
+  pointing: number,
+  held = false,
+): { share: number; across: number; up: number; sin: number; wanted: number } | null {
+  if (!(f.radius > 0) || f.style.parts.script.on) return null;
+  const long = Math.hypot(half, tall);
+  const sin = half / long;
+  if (sin >= 0.999) return null;
+  // How far the pen reaches square across a leg, and straight up.
+  const across = f.reach(at(tall / long, (-pointing * half) / long));
+  const up = f.reach(at(0, pointing));
+  const wanted = heldRound(f, f.half, half, tall, held);
+  if (!(wanted > 0)) return null;
+  // How far the inside of the arc would stand over where the legs' insides meet.
+  const spike = across / sin - up - wanted * (1 / sin - 1);
+  // A vee's point is drawn clean of even a small needle (see `veeStroke`).
+  const [from, whole] = held ? [VEE_FROM, VEE_SPIKE] : [APEX_FROM, APEX_SPIKE];
+  const share = Math.min(1, (spike / f.half - from) / (whole - from));
+  return share > 0 ? { share, across, up, sin, wanted } : null;
+}
+
+/**
+ * The radius a vee's point is rounded at: the face's, or the pen's least --
+ * and, `held` to what its legs can spare (half of each, as `roundCorners`
+ * holds it), no more than that, and nought where that is too little to round
+ * at all, which leaves the point sharp. A Ribbon's narrow V asks a radius of
+ * 220 and its legs at 260 spared it a good deal less: reckoned at 220, its
+ * point was taken for clean and kept a needle of white.
+ */
+function heldRound(f: Frame, penHalf: number, half: number, tall: number, held: boolean): number {
+  const wanted = Math.max(f.radius, penHalf * 1.05);
+  // Only a face rounding wider than its pen asks more than the legs can give.
+  if (!held || !(f.radius > penHalf * 1.06)) return wanted;
+  const spared = (Math.hypot(half, tall) / 2) * (half / tall);
+  const round = Math.min(wanted, spared);
+  return round >= penHalf * 1.06 * 0.999 ? round : 0;
+}
+
+/**
+ * The frame a narrow vee's point is drawn in where it would leave a spike:
+ * the pen's contrast eased out, by as much as the spike is let in, and its
+ * weight set so the legs stand exactly as heavy across as they did.
+ *
+ * Past the Black a face's pen takes on contrast (`heavierPen`), which leaves
+ * the turn at a vee's point a third lighter than its legs, and the inside of
+ * the turn ran on past where the legs' insides meet as a needle of white: on
+ * the Technical's V at 260, 40 to 65 units of it. `apexRounded` clears an A's
+ * apex by rounding it wider, but a narrow vee has no leg to spare for that --
+ * let it take the legs, a Condensed V became a U. An even pen turns the point
+ * as heavy as the legs, and a turn no rounder than the face's own then meets
+ * them cleanly. Only the diagonals and the turn are drawn with it; the legs
+ * are as heavy as before, and every point is where it was.
+ */
+export function apexEvened(f: Frame, half: number, tall: number, pointing = 1): Frame {
+  const asked = apexSpike(f, half, tall, pointing, true);
+  if (!asked) return f;
+  const { pen } = f.style;
+  const long = Math.hypot(half, tall);
+  const sin = half / long;
+  const square = at(tall / long, (-pointing * half) / long);
+  const reach = (one: typeof pen, direction: Vec2) => {
+    const r = reachAlong(direction, penReach(one));
+    return Math.hypot(r.x, r.y);
+  };
+  // The pen at a contrast, weighted so the legs stand as heavy across as they did.
+  const at_ = (contrast: number) => {
+    const eased = { ...pen, contrast };
+    return {
+      ...eased,
+      weight: (eased.weight * asked.across) / Math.max(reach(eased, square), 1e-6),
+    };
+  };
+  // Whether a turn at the face's own radius on it leaves a spike.
+  const spiked = (one: typeof pen) => {
+    const wanted = heldRound(f, one.weight / 2, half, tall, true);
+    if (!(wanted > 0)) return false;
+    return asked.across / sin - reach(one, at(0, pointing)) - wanted * (1 / sin - 1) > 0;
+  };
+  // As little of the contrast taken out as clears it: the point keeps as
+  // much of the face's squareness as it can.
+  let low = 0;
+  let high = pen.contrast;
+  if (spiked(at_(high))) {
+    for (let step = 0; step < 24; step++) {
+      const mid = (low + high) / 2;
+      if (spiked(at_(mid))) high = mid;
+      else low = mid;
+    }
+  } else low = high;
+  // Run in with the spike, from the face's own contrast.
+  const even = at_(Math.max(low, pen.contrast * (1 - asked.share)));
+  return {
+    ...f,
+    half: even.weight / 2,
+    style: { ...f.style, pen: even },
+    reach: (direction) => reach(even, direction),
+  };
+}
+
+/** How far past the radius that just clears it an apex is rounded: see `apexRounded`. */
+const APEX_CLEAR = 1.1;
+
+/**
+ * How tall a spike, in half-pens, an apex is rounded wide enough to clear
+ * whole at, and from how tall it starts to be (`APEX_FROM`), run in between.
+ * A sliver of a few units at a text weight is under the pen's own round and
+ * nobody sees it, and those letters are left as they were drawn: no apex at
+ * a Black reaches `APEX_FROM` (the Technical's stand at 0.15 at 194).
+ * Switched on whole at a quarter of the pen, as it was, the spike short of it
+ * was left whole: the Technical's A and M stood 47 and 36 rows of sliver at
+ * a pen of 230.
+ */
+const APEX_SPIKE = 0.18;
+const APEX_FROM = 0.15;
+
+/**
+ * The same for a vee's point, which is cleared from a much smaller spike:
+ * its needle runs down the narrow white between the legs, where even a few
+ * units of it read -- the Ribbon's V kept 8 at 260, under the A's mark.
+ */
+const VEE_SPIKE = 0.08;
+const VEE_FROM = 0.03;
+
+/**
+ * A vee's two legs meeting in one point, `pointing` down (a V) or up (a
+ * lambda), drawn so the point is clean at a heavy weight: on a pen evened at
+ * the point (`apexEvened`), and landed on its line by its ink.
+ *
+ * Landed by measuring, past where the spike comes in: `corner` reckons where
+ * a turn's ink reaches from the pen's half, and a pen with contrast reaches
+ * less than that straight down -- the Technical's V stood 67 units off the
+ * line at 260 -- while a narrow vee's turn near the length its legs can spare
+ * flips between rounded and not, and the reckoning with it: its v hung 112
+ * under the line at one weight and stood 51 over it at the next.
+ */
+export function veeStroke(
+  f: Frame,
+  from: Vec2,
+  tip: Vec2,
+  to: Vec2,
+  start: Terminal,
+  end: Terminal,
+  pointing: number,
+): Stroke {
+  const half = Math.abs(to.x - from.x) / 2;
+  const tall = Math.abs(tip.y - from.y);
+  const shaped = apexEvened(f, half, tall, pointing);
+  const stroke = (legs: Frame, point: Vec2) =>
+    ink(legs, chain(straight(from, point), straight(point, to)), start, end);
+  const reached = (legs: Frame, point: Vec2) => {
+    const ys = sweep(stroke(legs, point)).flatMap((contour) =>
+      contour.nodes.map((node) => node.point.y),
+    );
+    return (pointing < 0 ? Math.min(...ys) : Math.max(...ys)) - tip.y;
+  };
+  const share = apexSpike(f, half, tall, pointing, true)?.share ?? 0;
+  const reckoned = corner(shaped, from, tip, to);
+  /*
+   * And wherever the reckoning stands off the line, on every face and at
+   * every weight: it counts a turn's reach as the pen's half, and a pen with
+   * contrast reaches less than that along the vee's bisector, more so the
+   * heavier it is -- the Ribbon's V stood 66 units over the line at 260, the
+   * Technical's 31 at 194, the Didone's and the scripts' 20 to 45 -- and where
+   * a narrow vee's turn rounds or not as its point moves, it came off a cliff
+   * altogether: the V of a pen of 200 stood its point 251 units off the line.
+   * A miss of a few units is left as it is, and the landing comes in over the
+   * next few, so no weight jumps from the one beside it.
+   */
+  const first = reached(shaped, reckoned);
+  const drift = drawnAsIs(f) ? Math.min(1, Math.max(0, (Math.abs(first) - VEE_LET) / VEE_LET)) : 0;
+  const landing = Math.max(share, drift);
+  if (!(landing > 0) && veeShift === 0) return stroke(shaped, reckoned);
+  /*
+   * The point walked to the line, each step the miss and halved when it
+   * overshoots, and the nearest kept: the ink walked to as far off the line
+   * as it stood, less the share of that the landing has come in by.
+   */
+  const walk = (legs: Frame): { point: Vec2; miss: number } => {
+    const off = (point: Vec2) => reached(legs, point) - aim;
+    let point = corner(legs, from, tip, to);
+    let miss = off(point);
+    let best = { point, miss };
+    let step = 1;
+    for (let pass = 0; pass < 16 && Number.isFinite(miss) && Math.abs(miss) >= 0.5; pass++) {
+      const next = at(point.x, point.y - miss * step);
+      const after = off(next);
+      if (Math.sign(after) !== Math.sign(miss)) step /= 2;
+      point = next;
+      miss = after;
+      if (Math.abs(miss) < Math.abs(best.miss)) best = { point, miss };
+    }
+    return best;
+  };
+  const aim = first * (1 - landing) + veeShift;
+  const landed = walk(shaped);
+  if (Math.abs(landed.miss) <= 1) return stroke(shaped, landed.point);
+  /*
+   * And where even that has no point that lands -- the legs too short to
+   * turn at the pen's round anywhere near the line, so it rounds above it
+   * and not below -- the point is left sharp, which the pen's own round
+   * finishes on the face's own pen, and that lands wherever it is asked to.
+   */
+  const sharp = { ...f, radius: 0 };
+  return stroke(sharp, walk(sharp).point);
+}
+
+/**
+ * Whether a vee's own sweep says where its point lands: not on a text serif
+ * that takes its vees apart to thin the rising arm (`splitVees` in
+ * `build.ts`), which is landed on its finished ink there. A written hand's is
+ * landed here and again on its finished letter, which its joins move after.
+ */
+function drawnAsIs(f: Frame): boolean {
+  const { slab } = f.style.parts;
+  return !(f.style.metrics.risingHairline && slab.on && slab.shape === "wedge");
+}
+
+/**
+ * How far, in units, a vee's point may miss its line and be left as it is,
+ * and over how much more the landing comes in whole: see `veeStroke`.
+ */
+const VEE_LET = 3;
+
+/**
+ * How far a vee's ink is asked to move from where `veeStroke` would land it,
+ * by whoever can see the finished letter: see `landingVees` in `build.ts`.
+ */
+let veeShift = 0;
+
+/** A recipe drawn with its vees' points moved by `by` units along their own pointing. */
+export function shiftingVees<T>(by: number, run: () => T): T {
+  const was = veeShift;
+  veeShift = by;
+  try {
+    return run();
+  } finally {
+    veeShift = was;
+  }
 }
 
 /** The one-corner case, which is most of them. */
@@ -3229,7 +3545,7 @@ export function cyrDrop(f: Frame, top: number): number {
 /** Two stems the width of a counter apart, which four of these are built on. */
 export function cyrPosts(f: Frame): [number, number] {
   const left = f.edge;
-  return [left, left + f.style.metrics.counterWidth + f.style.pen.weight];
+  return [left, left + counterOf(f) + f.style.pen.weight];
 }
 
 export function cyrBe(f: Frame, top: number): Stroke[] {
@@ -3504,7 +3820,7 @@ export function cyrChe(f: Frame, top: number): Stroke[] {
 }
 
 export function cyrSha(f: Frame, top: number): Stroke[] {
-  const gap = f.style.metrics.counterWidth + f.style.pen.weight;
+  const gap = counterOf(f) + f.style.pen.weight;
   const left = f.edge;
   return [
     ...[0, 1, 2].map((step) => standing(f, left + gap * step, top)),
@@ -3513,7 +3829,7 @@ export function cyrSha(f: Frame, top: number): Stroke[] {
 }
 
 export function cyrShcha(f: Frame, top: number): Stroke[] {
-  const gap = f.style.metrics.counterWidth + f.style.pen.weight;
+  const gap = counterOf(f) + f.style.pen.weight;
   const left = f.edge;
   const tail = tailPast(f, left + gap * 2);
   return [
@@ -3593,7 +3909,7 @@ export function cyrLje(f: Frame, top: number): Stroke[] {
    * stem is a slanted stroke the bowl cannot be hung on without folding.
    */
   if (f.style.parts.script.on) {
-    const stem = f.edge + width + f.style.metrics.counterWidth * 0.5 + f.style.pen.weight;
+    const stem = f.edge + width + counterOf(f) * 0.5 + f.style.pen.weight;
     const high = softHigh(f, top);
     return [
       ...cyrEl(f, top),
@@ -3694,7 +4010,7 @@ export function cyrHard(f: Frame, top: number): Stroke[] {
 export function cyrYeru(f: Frame, top: number): Stroke[] {
   const soft = cyrSoft(f, top);
   const reach = spineRight(soft[1].spine);
-  const apart = reach + stemSide(f) * 2 + f.style.metrics.counterWidth * 0.42;
+  const apart = reach + stemSide(f) * 2 + counterOf(f) * 0.42;
   return [...soft, ink(f, straight(at(apart, 0), at(apart, top)), f.end, f.end)];
 }
 
@@ -3724,6 +4040,9 @@ export function cyrE(f: Frame, top: number): Stroke[] {
 }
 
 /** A stem, a bar, and a ring beside it. */
+/** The least half-width of the yu's ring, in half-pens: see `cyrYu`. */
+const YU_LEAST = 1.4;
+
 export function cyrYu(f: Frame, top: number): Stroke[] {
   const radius = Math.max(top / 2, f.least);
   /*
@@ -3731,10 +4050,18 @@ export function cyrYu(f: Frame, top: number): Stroke[] {
    * stem of counter: bent to its narrow oval, the ring of a heavy yu closed
    * up into a disc.
    */
+  /*
+   * And on a Condensed never narrower than leaves two fifths of a stem
+   * across its counter (`YU_LEAST`): at a heavy weight the ring was bent to
+   * the narrow member's width alone and shut -- the Technical's and the
+   * Flared's at 260, the scripts' at 142. Only on the width axis, which
+   * draws a member nobody is watching: a drawing made narrow by hand is
+   * the health check's to speak up about.
+   */
   const wide =
     f.style.parts.script.on && f.style.pen.weight > SCRIPT_HELD_FROM
       ? Math.max(bendWidth(f, radius), f.half * 2)
-      : bendWidth(f, radius);
+      : Math.max(bendWidth(f, radius), widthShare(f.style) < 1 ? f.half * YU_LEAST : 0);
   const stem = f.edge;
   const centre = at(stem + f.half * 2.4 + wide, top / 2);
   return [
@@ -3811,9 +4138,23 @@ export function emAt(f: Frame, top: number, width: number): Stroke[] {
       topRight = leaving(f, at(right - inset, top), -1, vertex, -1);
       vertex = corner(f, topLeft, at(middle, dip), topRight);
     }
+    /*
+     * And the valley rounded wide enough that the inside of its turn does not
+     * stand down into the ink between the diagonals, as the A's apex is (see
+     * `apexRounded`): on the Technical at 260 a spike stood up out of the
+     * M's vee. Laid out again on that rounding where it is wider.
+     */
+    const legs = apexRounded(f, (topRight.x - topLeft.x) / 2, top - dip, -1);
+    if (legs !== f) {
+      for (let pass = 0; pass < 3; pass++) {
+        topLeft = leaving(f, at(left + inset, top), 1, vertex, 1);
+        topRight = leaving(f, at(right - inset, top), -1, vertex, -1);
+        vertex = corner(legs, topLeft, at(middle, dip), topRight);
+      }
+    }
     return [
       ...stems,
-      ink(f, chain(straight(topLeft, vertex), straight(vertex, topRight)), LEVEL, LEVEL),
+      ink(legs, chain(straight(topLeft, vertex), straight(vertex, topRight)), LEVEL, LEVEL),
     ];
   }
   // Run down the stem no further than a short letter has stem to run down.

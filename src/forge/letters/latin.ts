@@ -30,6 +30,7 @@ import {
   finish,
   frame,
   heaviness,
+  hCounter,
   joinsLevel,
   leaving,
   LEVEL,
@@ -52,6 +53,7 @@ import {
   roundHalf,
   tReach,
   wallAt,
+  widthShare,
   middleBar,
   tittle,
 } from "./common";
@@ -134,6 +136,12 @@ function borrowedAs(name: string, style: Style, form: string | undefined): Strok
 
 /** The least half-width of the œ's first bowl, in half-pens: see `oe`. */
 const OE_LEAST = 1.25;
+
+/**
+ * And on a Condensed of the width axis, two fifths of a stem across rather
+ * than a quarter: the Technical's at 142 stood on the health check's line.
+ */
+const OE_LEAST_CONDENSED = 1.4;
 
 export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // -------------------------------------------------------------------------
@@ -315,8 +323,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   Hbar: (style) => {
     const f = frame(style);
     const left = f.edge;
-    const right =
-      left + f.style.metrics.counterWidth * (f.style.metrics.stretch ?? 1) + f.style.pen.weight;
+    const right = left + hCounter(f) + f.style.pen.weight;
     const bar = f.cap * f.style.parts.crossbar.height;
     // Across both stems and out past the left of them, which is what tells an
     // H-bar from an H at a glance.
@@ -395,11 +402,15 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     /*
      * And never so narrow that the first bowl's counter is under a quarter of
-     * a stem across: narrowed by the share on a narrow face at a heavy weight
+     * a stem across (two fifths on a Condensed: `OE_LEAST_CONDENSED`): narrowed by the share on a narrow face at a heavy weight
      * (the Technical's at 260), it came down to the pen's own round and the o
      * closed to a slit.
      */
-    const bowl = Math.max(f.bowl * 0.68, f.least, f.half * OE_LEAST);
+    const bowl = Math.max(
+      f.bowl * 0.68,
+      f.least,
+      f.half * (widthShare(f.style) < 1 ? OE_LEAST_CONDENSED : OE_LEAST),
+    );
     const first = at(f.edge + bowl, f.x / 2);
     const second = at(first.x + bowl * 2, f.x / 2);
 

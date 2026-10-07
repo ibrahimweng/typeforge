@@ -289,3 +289,60 @@ describe("what it costs", () => {
     expect(pointsIn(marked.contours)).toBeLessThan(320);
   });
 });
+
+describe("the effects at a heavy weight", () => {
+  const heavy = (face: string, weight: number): Style => {
+    const base = BASES.find((one) => one.name === face)!;
+    return { ...base, pen: { ...base.pen, weight } };
+  };
+
+  /*
+   * A pool used to be a disc on the end of every spine, a fixed share of the
+   * stem across: at a Black every foot of an n, an H and a k wore a bead
+   * hanging a quarter of a stem below the baseline. Ink gathered at an end
+   * spreads over the cut, a little, and no further.
+   */
+  it("pools no bead past the ends of a Black letter", () => {
+    const pool = withOnly((e) => {
+      e.pool.on = true;
+    });
+    for (const face of ["Sans", "Serif", "Grotesque"]) {
+      for (const weight of [194, 260]) {
+        const style = heavy(face, weight);
+        for (const letter of ["n", "H", "k", "a"]) {
+          const { plain, marked } = bothWays(letter, pool, style);
+          const was = contoursBounds(plain.contours);
+          const now = contoursBounds(marked.contours);
+          const past = Math.max(
+            was.yMin - now.yMin,
+            now.yMax - was.yMax,
+            was.xMin - now.xMin,
+            now.xMax - was.xMax,
+          );
+          expect(past / weight, `${face} ${weight} ${letter}`).toBeLessThan(0.15);
+        }
+      }
+    }
+  });
+
+  /*
+   * A dry brush streaks a stroke; it does not break a letter. Gaps laid as
+   * rectangles across the flank chipped a piece off a Serif H.
+   */
+  it("breaks no piece off a letter with a dry brush", () => {
+    const skip = withOnly((e) => {
+      e.skip.on = true;
+    });
+    for (const face of ["Sans", "Serif", "Grotesque"]) {
+      for (const weight of [87, 194, 260]) {
+        const style = heavy(face, weight);
+        for (const letter of ["n", "a", "k", "s", "H", "S", "eight", "ampersand"]) {
+          const { plain, marked } = bothWays(letter, skip, style);
+          expect(piecesOf(marked.contours), `${face} ${weight} ${letter}`).toBe(
+            piecesOf(plain.contours),
+          );
+        }
+      }
+    }
+  });
+});
