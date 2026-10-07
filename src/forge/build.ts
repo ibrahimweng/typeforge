@@ -487,12 +487,17 @@ function drawnFresh(
    * acute -- swung back left of the origin by its height times the lean,
    * into the letter before. Only those move: every other letter already
    * stands clear of its origin by more than this.
+   *
+   * A letter laid on the grid too, to the health check's own line
+   * (`SIDE_CLEAR`) and no further, its cells keeping their width: on the
+   * Brush and the scripts the grid's accents, the double acute among them,
+   * stood in a cell over the cap height and leant back into the letter
+   * before.
    */
   const standing =
     lean !== 0 &&
     !upright &&
     !style.metrics.monospaced &&
-    !laid &&
     !joinsUp &&
     !joinEnds(name).entry &&
     form !== "written" &&
@@ -504,7 +509,11 @@ function drawnFresh(
       ? Math.max(
           0,
           spacingOf(style) - contoursBounds(measured).xMin,
-          standing === null ? 0 : style.metrics.unitsPerEm * UPRIGHT_CLEAR - standing,
+          standing === null
+            ? 0
+            : laid
+              ? style.metrics.unitsPerEm * SIDE_CLEAR + 1e-6 - standing
+              : style.metrics.unitsPerEm * UPRIGHT_CLEAR - standing,
         )
       : 0;
   const placed = slid(cut, shortfall);
@@ -600,6 +609,21 @@ function drawnFresh(
     if (short > 0) {
       centring += short;
       advanceWidth += short;
+    }
+  } else if (fittedSides && lean === 0 && placedSolid.length > 0) {
+    /*
+     * And a letter that does not hang is never fitted onto its own origin
+     * (`SIDE_CLEAR`). The sides the eye sets close in at a Black and close
+     * again on a Condensed, and on the Serif's Condensed Black they took the
+     * feet of its X and the figure of its one-half past the edge, into the
+     * letter before. Only those move: everything else stands clear by more.
+     */
+    const short =
+      style.metrics.unitsPerEm * SIDE_CLEAR - (contoursBounds(placedSolid).xMin + centring);
+    if (short > 0) {
+      // A hair over, so the sum lands on the near side of the line it is measured against.
+      centring += short + 1e-6;
+      advanceWidth += short + 1e-6;
     }
   }
   const slide = shortfall + centring;
@@ -820,6 +844,13 @@ function uprightLeft(inked: Contour[], style: Style): number {
 
 /** How far a leaning letter stands clear of its origin upright, at the least, in ems. */
 const UPRIGHT_CLEAR = 0.01;
+
+/**
+ * How far a fitted upright letter that does not hang stands clear of its
+ * origin, at the least, in ems: what the health check counts as touching the
+ * letter before (`leftEdge` in `health.ts`), and no more.
+ */
+const SIDE_CLEAR = 0.005;
 
 /** How far a letter leans, as a shear rather than as an angle. */
 /**

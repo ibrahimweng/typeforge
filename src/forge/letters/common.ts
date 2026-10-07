@@ -336,6 +336,17 @@ export function widthShare(style: Style): number {
 }
 
 /**
+ * The white between the H's two stems: the face's counter at the letter's own
+ * proportion, and at the width axis's share of it where the face says the H
+ * follows the axis (`metrics.counterWidthed`). Shared by the H and the H-bar,
+ * which stand on the same two stems.
+ */
+export function hCounter(f: Frame): number {
+  const { counterWidth, stretch, counterWidthed } = f.style.metrics;
+  return counterWidth * (stretch ?? 1) * (counterWidthed ? widthShare(f.style) : 1);
+}
+
+/**
  * The style drawn at its base's own width where it is drawn narrower: for
  * the few shapes whose whole job is the white inside them and that a
  * Condensed draws at its Normal's size -- a ring over a letter is no

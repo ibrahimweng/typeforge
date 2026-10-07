@@ -122,6 +122,22 @@ const DRAWN: Record<string, Run[]> = {
    * and stood a whole cell over the cap height, past the line.
    */
   dollar: ["2,4 0,4 0,2 2,2 2,0 0,0", "1,4:n", "1,5:s", "1,0:s", "1,-1:n"],
+  /*
+   * And three more whose skeletons put a run on the cap line itself, which
+   * the half-cell lattice a skeleton is traced onto rounds onto the line and
+   * then into the row over it: the bar of the trademark's T, the top of the
+   * De's left leg and the top of the lambda all came back a cell over the
+   * cap height, past the line. Drawn here under it, as the T and the H are.
+   *
+   * The trademark's T and M two rows deep and hung from the cap line, the M's
+   * vertex on the lower of them.
+   */
+  trademark: ["0,4 2,4", "1,4 1,3", "3,3 3,4:n", "5,3 5,4:n", "3,4 4,3", "5,4 4,3"],
+  // The De: a top bar on two legs, the left one turning out to the foot, and
+  // a base wider than the counter with a descender at either end of it.
+  Д: ["1,4 3,4 3,0", "1,4 1,1 0,0", "0,-1 0,0 3,0 3,-1"],
+  // The lambda: a hook at the ascender, down into two legs splayed apart.
+  λ: ["0,4 1,4 1,2 2,1 2,0", "1,2 0,1 0,0"],
 };
 
 /** The port a step from one cell to its neighbour leaves by. */

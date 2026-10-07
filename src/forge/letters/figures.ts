@@ -6,10 +6,12 @@
  * imports it; see it for what a recipe is and how the table is used.
  */
 
+import { contoursBounds } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { spineEnd } from "../shapes";
 import { stemBlack, type Style } from "../style";
-import { penReach, reachAlong } from "../sweep";
+import { penReach, reachAlong, sweep } from "../sweep";
+import type { Stroke } from "../types";
 import {
   drops,
   arm,
@@ -49,7 +51,6 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
 
   one: (style) => {
     const f = frame(style);
-    const stem = f.edge + figureWidth(f) * 0.5;
     /*
      * The flag, which is what stops a one reading as a lowercase l.
      *
@@ -60,10 +61,24 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const top = f.hangs(f.cap);
     const out = Math.max(figureWidth(f) * 0.42, figureWidth(f) * 0.3 + f.half * 1.1);
     const fall = ((top - f.cap * 0.78) * out) / (figureWidth(f) * 0.42);
-    return finish(f, [
+    const middle = f.edge + figureWidth(f) * 0.5;
+    const strokes = (stem: number) => [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, BUTT),
       ink(f, straight(at(stem - out, top - fall), at(stem, top)), f.end, BUTT),
-    ]);
+    ];
+    /*
+     * The stem on the middle of the column -- or, where the face asks
+     * (`metrics.oneCentred`), the ink, on the nought's: from the flag's cut
+     * end on the left to the stem's side on the right. Both measured off the
+     * swept strokes, since how far the flag's cut end reaches past its spine
+     * is the terminal's to say, and a Condensed's nought is let out either
+     * side of the column it is drawn in (`penHeld`).
+     */
+    if (!f.style.metrics.oneCentred) return finish(f, strokes(middle));
+    const inked = (made: Stroke[]) => contoursBounds(made.flatMap((stroke) => sweep(stroke)));
+    const nought = inked(FIGURE_RECIPES.zero(style).strokes);
+    const box = inked(finish(f, strokes(middle)).strokes);
+    return finish(f, strokes(middle + (nought.xMin + nought.xMax - box.xMin - box.xMax) / 2));
   },
 
   two: (style) => {

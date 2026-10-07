@@ -50,6 +50,14 @@ export interface Metrics {
    * uprights is spaced by.
    */
   counterWidth: number;
+  /**
+   * Whether the capital H, which is measured off that counter rather than off
+   * `width`, takes the width axis's share of it too (`widthAxis`), as every
+   * other capital of the face does. Left out, its Condensed and its Expanded
+   * stood exactly as wide as its Normal, among capitals that had moved: the
+   * Grotesque's H did.
+   */
+  counterWidthed?: boolean;
   /** White space left either side of a letter. */
   sidebearing: number;
   /**
@@ -110,6 +118,18 @@ export interface Metrics {
    * left out, is the one width; proportional needs `fit` to space them.
    */
   figures?: "tabular" | "proportional";
+  /**
+   * Whether the tabular one stands with its ink in the middle of the figures'
+   * column, as the nought and the eight do, rather than with its stem there.
+   *
+   * Asked of a face whose figures stand where they are drawn rather than
+   * being fitted: a fitted face centres every figure on its own ink already
+   * (`fitted` in `build.ts`). With its stem on the middle line, the one's flag
+   * hangs to the left with nothing to balance it on the right, and the
+   * Grotesque's one stood most of a stem left of the column's middle at every
+   * weight.
+   */
+  oneCentred?: boolean;
   /**
    * Sides the eye sets rather than the measure, per letter: each side's white
    * as a multiple of the sidebearing at this weight, before a capital's extra.
@@ -2251,7 +2271,15 @@ export const GROTESQUE: Style = {
   name: "Grotesque",
   family: "sans",
   blurb: "A sans that has closed up: tight apertures, high shoulders, squared bowls.",
-  metrics: { ...PLAIN.metrics, xHeight: 535, width: 0.97, counterWidth: 318, heavyOpen: 0.2 },
+  metrics: {
+    ...PLAIN.metrics,
+    xHeight: 535,
+    width: 0.97,
+    counterWidth: 318,
+    heavyOpen: 0.2,
+    oneCentred: true,
+    counterWidthed: true,
+  },
   pen: { weight: 104, contrast: 0.06, angle: 0 },
   /*
    * The two-storey a, which is what most text faces use and what none of them

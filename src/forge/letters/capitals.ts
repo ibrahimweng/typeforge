@@ -48,6 +48,7 @@ import {
   middleBar,
   bookish,
   heaviness,
+  hCounter,
   openVee,
   flareOut,
   kReach,
@@ -324,8 +325,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   H: (style) => {
     const f = frame(style);
     const left = f.edge;
-    const right =
-      left + f.style.metrics.counterWidth * (f.style.metrics.stretch ?? 1) + f.style.pen.weight;
+    const right = left + hCounter(f) + f.style.pen.weight;
     return finish(f, [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, f.end),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, f.end),
