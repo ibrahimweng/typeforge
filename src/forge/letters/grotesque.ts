@@ -155,8 +155,13 @@ const BEYOND_SPAN = 0.123;
  */
 const E_OPEN = 0.25;
 const ESS_OPEN = 0.2;
-/** In Geist's units. */
+/**
+ * In Geist's units: the head's cut, and the foot's. The foot moves less, as
+ * its terminal still has to close the lower counter on its left: cut the
+ * whole 35 lower it ended under the counter's middle and left it open there.
+ */
 const ESS_APART = 35;
+const ESS_FOOT_APART = 15;
 const BEYOND_BOWL = 0.25;
 const AMPERSAND_OPEN = 0.5;
 const DOLLAR_OPEN = 0.3;
@@ -4947,10 +4952,11 @@ export function grotesqueS(style: Style): Recipe {
   const sans = f.style.metrics.xGrows !== undefined;
   /*
    * And from the current Black on, its head cut higher and its foot lower
-   * (`ESS_APART`): run on down the Regular-to-Black line, at 260 each end
+   * (`ESS_APART`, `ESS_FOOT_APART`): run on down the Regular-to-Black line, at 260 each end
    * came to within a hairline of the spine and the s read as an 8.
    */
   const apart = ESS_APART * beyondBlack(style);
+  const footApart = ESS_FOOT_APART * beyondBlack(style);
   return {
     ...finish(
       f,
@@ -4976,7 +4982,7 @@ export function grotesqueS(style: Style): Recipe {
           head: [385 + apart, 358 + apart],
           // The Thin's foot cut lower and its spine's quarters taller, as
           // Geist Thin's are: its terminal stood 20 high and 12 left.
-          foot: [175 - 20 * thinness(f) - apart, 172 - apart],
+          foot: [175 - 20 * thinness(f) - footApart, 172 - footApart],
           inner: (sans ? 0.52 : 0.42) + 0.15 * thinness(f),
           innerBlack: sans ? 0.8 : 0.5,
           blackWiden:
