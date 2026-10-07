@@ -959,9 +959,20 @@ function nameForFile(letter: string): string {
 function Part({ part, mine }: { part: PartName; mine: boolean }): React.JSX.Element | null {
   const state = useForge();
   const spec = specFor(part);
+  /*
+   * Counted a moment behind the font, rather than in the render that shows it.
+   *
+   * Which letters have a part is found by running every letter's recipe, four
+   * hundred and fifty-two of them and some twice, for each new style -- and a
+   * new base is a new style. Asked in the render a click on a base makes, it
+   * was half of that render, and the new letter on the stage waited for a
+   * count of letters in a panel. Deferred, the stage and the specimen go up
+   * first and the counts follow in the render after, from the same font.
+   */
+  const counted = React.useDeferredValue(state.forge);
   const { letters, held } = React.useMemo(
-    () => reach(state.forge, part),
-    [state.forge, part, state.revision],
+    () => reach(counted, part),
+    [counted, part, state.revision],
   );
   if (!spec) return null;
 

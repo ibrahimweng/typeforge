@@ -46,7 +46,7 @@ import { anyCast, type Cast } from "./cast";
 import { anyCut, type Cuts } from "./cuts";
 import type { CutScale } from "@/forge/cut";
 import { shapedInk } from "@/forge/layers";
-import { measuredStem } from "./stem";
+import { STEM_LETTERS, stemAndSource } from "./stem";
 import {
   DEFAULT_PARAMS,
   type Contour,
@@ -93,20 +93,91 @@ export function anythingCut(typeface: Typeface): boolean {
  * A new typeface object -- which is what every edit produces here -- measures
  * again, which is what makes the stem follow a font the weight slider has
  * made heavier.
+ *
+ * But not every edit makes a new typeface object. The store edits a letter in
+ * place, and undo puts a copy back into the same font, so an answer kept
+ * against the typeface alone outlived an edit to the very letters it was
+ * measured from: thicken the I and the slabs and the room a change of width
+ * gives back stayed at the old stem until the font was opened again. So what
+ * is kept says what it was read from -- the drawing of every letter ruled
+ * across, by the same fingerprint the outlines are kept by (`drawingKey`) --
+ * and is measured again when any of those letters is not that drawing any
+ * more. An edit to any other letter cannot change the answer and does not
+ * cost a measurement.
  */
-const stems = new WeakMap<Typeface, number>();
+interface KeptStem {
+  stem: number;
+  /** The metrics it was ruled at. */
+  xHeight: number;
+  unitsPerEm: number;
+  /** How many of `STEM_LETTERS` it read, or -1 for every letter in the font. */
+  ruled: number;
+  /** For `ruled` letters: what each of them was when it was read. */
+  key: string;
+  /** For every letter: the letters themselves, and the edits made since. */
+  glyphs: readonly Glyph[] | null;
+  edits: number;
+}
+
+const stems = new WeakMap<Typeface, KeptStem>();
+
+/**
+ * Edits made in place, counted by `forgetResolved`. Only the stem read off
+ * every letter at once uses it, since fingerprinting the whole font on every
+ * question would cost more than measuring it again.
+ */
+let editsInPlace = 0;
+
+/** The drawing of the first `ruled` stem letters, as one fingerprint. */
+function ruledKey(typeface: Typeface, ruled: number): string | null {
+  const keys: string[] = [];
+  for (const name of STEM_LETTERS.slice(0, ruled)) {
+    const at = typeface.glyphIndex.get(name);
+    const glyph = at === undefined ? undefined : typeface.glyphs[at];
+    if (glyph === undefined) {
+      keys.push("-");
+      continue;
+    }
+    // An index that has drifted from the glyphs cannot vouch for anything.
+    if (glyph.name !== name) return null;
+    keys.push(drawingKey(glyph, typeface, glyph.contours));
+  }
+  return keys.join(",");
+}
+
+function stillTrue(kept: KeptStem, typeface: Typeface): boolean {
+  if (kept.xHeight !== typeface.metrics.xHeight || kept.unitsPerEm !== typeface.unitsPerEm)
+    return false;
+  if (kept.ruled >= 0) return ruledKey(typeface, kept.ruled) === kept.key;
+  const glyphs = kept.glyphs;
+  return (
+    glyphs !== null &&
+    kept.edits === editsInPlace &&
+    glyphs.length === typeface.glyphs.length &&
+    glyphs.every((glyph, index) => typeface.glyphs[index] === glyph)
+  );
+}
 
 export function cutScaleOf(typeface: Typeface): CutScale {
-  let stem = stems.get(typeface);
-  if (stem === undefined) {
-    stem = measuredStem(
+  let kept = stems.get(typeface);
+  if (kept === undefined || !stillTrue(kept, typeface)) {
+    const { stem, ruled } = stemAndSource(
       typeface.glyphs.map((glyph) => ({ name: glyph.name, contours: glyph.contours })),
       { xHeight: typeface.metrics.xHeight, unitsPerEm: typeface.unitsPerEm },
     );
-    stems.set(typeface, stem);
+    kept = {
+      stem,
+      xHeight: typeface.metrics.xHeight,
+      unitsPerEm: typeface.unitsPerEm,
+      ruled,
+      key: ruled >= 0 ? (ruledKey(typeface, ruled) ?? "") : "",
+      glyphs: ruled >= 0 ? null : [...typeface.glyphs],
+      edits: editsInPlace,
+    };
+    stems.set(typeface, kept);
   }
   return {
-    stem,
+    stem: kept.stem,
     ascender: typeface.metrics.ascender,
     descender: typeface.metrics.descender,
     xHeight: typeface.metrics.xHeight,
@@ -1546,8 +1617,11 @@ class Fingerprint {
  * take beside it. Called by the store whenever it edits a glyph in place.
  * The keys would catch the edit as well (see `drawingKey`); this drops the
  * outlines of the letter as it was at once rather than at the next look.
+ * It also counts the edit, for the font's stem when that was read off every
+ * letter at once (see `cutScaleOf`).
  */
 export function forgetResolved(glyph: Glyph): void {
+  editsInPlace += 1;
   anchorBook.delete(glyph);
   growths.delete(glyph);
   gives.delete(glyph);

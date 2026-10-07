@@ -171,6 +171,8 @@ class ForgeStore {
 
   private past: Forge[] = [];
   private future: Forge[] = [];
+  /** The document each base was last started as: see `startFromBase`. */
+  private started = new Map<string, Forge>();
   private listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
@@ -477,10 +479,27 @@ class ForgeStore {
   startFromBase(name: string): void {
     const base = baseNamed(name);
     if (!base) return;
-    const fresh = startFrom(base);
+    const made = startFrom(base);
+    const written = JSON.stringify(made);
+    /*
+     * The same document as the last time this base was started, when it is
+     * still exactly that.
+     *
+     * Everything drawn is remembered against the document object -- every
+     * letter, which parts each letter has, what the health walk found -- so a
+     * new object for the same base is the whole font drawn again from
+     * nothing. Going from the Sans to the Serif and back is the ordinary way
+     * of comparing them, and it redrew the Sans every time. Handed the object
+     * it had before, every view finds its letters already made. Compared as
+     * written out, so a document anything has changed since is never handed
+     * back as if it were the base.
+     */
+    const kept = this.started.get(name);
+    const fresh = kept !== undefined && JSON.stringify(kept) === written ? kept : made;
+    this.started.set(name, fresh);
     // Picking the base the drawing already is, untouched, changes nothing and
     // is not written down as something to undo.
-    if (JSON.stringify(fresh) !== JSON.stringify(this.state.forge)) this.commit(fresh);
+    if (written !== JSON.stringify(this.state.forge)) this.commit(fresh);
     // A name the tool gave follows the base; a name somebody typed stays.
     const { familyName } = this.state;
     const given =
@@ -669,6 +688,8 @@ class ForgeStore {
    * letter of it has to be drawn afresh.
    */
   refresh(): void {
+    // A base started before now was drawn without whatever has just arrived.
+    this.started.clear();
     const again = { ...this.state.forge };
     this.set({
       forge: again,

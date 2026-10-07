@@ -1510,11 +1510,50 @@ interface Cell {
   outside: boolean;
 }
 
+/*
+ * The cells made for a font, kept with it as its drawings are.
+ *
+ * A cell is the letter drawn, spelled out as a path and framed, and all three
+ * are a matter of the font and the letter alone -- so a font the strip has
+ * shown before, which is what going back to a base is (see `startFromBase`),
+ * has nothing left to make. The empty boxes of letters nowhere near the
+ * screen are kept as well, so a cell asked for twice is the same object and
+ * the strip has nothing to put on the page again.
+ */
+const cellsMade = new WeakMap<Forge, Map<string, Cell>>();
+
 function cellOf(name: string, near: ReadonlySet<string>, forge: Forge): Cell {
+  const drawn = near.has(name);
+  let made = cellsMade.get(forge);
+  if (!made) {
+    made = new Map();
+    cellsMade.set(forge, made);
+  }
+  // An empty box kept under a name of its own, since the same letter drawn is
+  // a different cell.
+  const key = drawn ? name : `\u0000${name}`;
+  let cell = made.get(key);
+  if (!cell) {
+    cell = cellMade(name, drawn, forge);
+    made.set(key, cell);
+  }
+  return cell;
+}
+
+/**
+ * The cell for a letter if nothing has to be drawn to have it: one already
+ * made for this font, or an empty box for a letter nowhere near the screen.
+ */
+function cellAtHand(name: string, near: ReadonlySet<string>, forge: Forge): Cell | undefined {
+  if (!near.has(name)) return cellOf(name, near, forge);
+  return cellsMade.get(forge)?.get(name);
+}
+
+function cellMade(name: string, near: boolean, forge: Forge): Cell {
   // A letter nobody has scrolled to yet is not drawn at all. It has an empty
   // box the right size, which is what it had while it was off screen anyway,
   // and it fills in before it arrives.
-  const drawn = near.has(name) ? draw(name, forge) : null;
+  const drawn = near ? draw(name, forge) : null;
   const width = drawn?.advanceWidth ?? 0;
   return {
     name,
@@ -1558,7 +1597,19 @@ function cellsOf(names: string[], near: ReadonlySet<string>, forge: Forge): Cell
 
 /** Every glyph in the font, small, so a change can be seen spreading. */
 function Alphabet({ names, selected }: { names: string[]; selected: string }): React.JSX.Element {
-  const state = useForge();
+  /*
+   * A render behind the stage.
+   *
+   * A new base changes every letter, and the strip says so at once by dimming
+   * all four hundred and fifty-two of them until each is drawn again. Done in
+   * the render the click makes, that was most of the render, and the letter
+   * on the stage -- the one thing the click was about -- waited for it. Read
+   * a render late, the stage and the specimen go up first and the strip
+   * follows straight after, from the same font. The letter that is selected
+   * is not deferred: it comes from the view, so pressing a cell marks it at
+   * once.
+   */
+  const state = React.useDeferredValue(useForge());
   /*
    * Four hundred and fifty-two letters, so this is where a drag is won or lost.
    *
@@ -1792,7 +1843,12 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
     if (draftable) {
       const fresh = draft?.of === latest ? draft.cells : null;
       return names.map((name) => {
-        const cell = fresh?.get(name);
+        /*
+         * Or one made for this font already, which is the whole font when
+         * it is a base being gone back to. Shown at once rather than dimmed
+         * until the draft above has been round to say the same thing.
+         */
+        const cell = fresh?.get(name) ?? cellAtHand(name, near, latest);
         if (cell) return { cell, waiting: false };
         return { cell: shown.current.get(name) ?? cellOf(name, NOWHERE, latest), waiting: true };
       });
@@ -1806,7 +1862,7 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
       const was = shown.current.get(cell.name);
       return { cell: was?.d ? was : cell, waiting: true };
     });
-  }, [draftable, draft, latest, names, ripe, settled, plain]);
+  }, [draftable, draft, latest, names, near, ripe, settled, plain]);
   React.useEffect(() => {
     shown.current = new Map(cells.map(({ cell }) => [cell.name, cell]));
   }, [cells]);
@@ -1824,68 +1880,13 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
     () => (
       <div className="flex flex-wrap gap-1.5">
         {cells.map(({ cell, waiting: behind }) => (
-          <button
+          <Tile
             key={cell.name}
-            type="button"
-            onClick={() => forgeStore.select(cell.name)}
-            aria-pressed={cell.name === selected}
-            title={
-              cell.outside
-                ? `${cell.name}, your own drawing`
-                : cell.held
-                  ? `${cell.name}, holding its own version`
-                  : cell.name
-            }
-            data-forge-cell={cell.name}
-            data-forge-cell-waiting={behind ? "yes" : undefined}
-            ref={watch}
-            className={tile(
-              cell.name === selected,
-              cn(
-                "relative flex size-14 items-center justify-center rounded-md border",
-                behind && "opacity-40",
-              ),
-            )}
-          >
-            {/* A size larger than it was: the frame is the whole font's reach now,
-                accents and tails included, and a cell drawn at the old size
-                showed every letter a quarter smaller. */}
-            <svg viewBox={cell.frame} className="h-11 w-11" aria-hidden>
-              <g transform="scale(1,-1)">
-                <path d={cell.d} fill="var(--foreground)" fillRule="nonzero" />
-              </g>
-            </svg>
-            {/* A letter holding its own version of a part is marked, or the
-                only way to find one again would be to remember it. A letter
-                drawn from another skeleton is marked differently, because it is
-                a different kind of difference. */}
-            {cell.held && (
-              <span
-                className={cn(
-                  "absolute right-1 top-1 size-1.5 rounded-full",
-                  "bg-[color:var(--accent)]",
-                )}
-              />
-            )}
-            {cell.shaped && (
-              <span
-                className={cn(
-                  "absolute bottom-1 right-1 size-1.5 rounded-[1px]",
-                  "bg-[color:var(--accent)]",
-                )}
-              />
-            )}
-            {/* A letter that is no longer drawn at all is marked along the
-                foot rather than with a dot, because it is not a variation on
-                the family the way the other two are — it has left it, and no
-                edit made here will reach it again until it comes back. */}
-            {cell.outside && (
-              <span
-                className="absolute inset-x-1.5 bottom-0.5 h-0.5 rounded-full bg-[color:var(--muted-foreground)]"
-                data-forge-outside={cell.name}
-              />
-            )}
-          </button>
+            cell={cell}
+            behind={behind}
+            selected={cell.name === selected}
+            watch={watch}
+          />
         ))}
       </div>
     ),
@@ -1916,3 +1917,87 @@ function Alphabet({ names, selected }: { names: string[]; selected: string }): R
     </div>
   );
 }
+
+/**
+ * One cell of the strip, made again only when what it shows has changed.
+ *
+ * The strip hands over the letters it has drawn in batches, and every batch
+ * used to build all four hundred and fifty-two buttons over again, the four
+ * hundred that had not changed with the rest. Switching the base is a batch
+ * or two of new letters on top of the render that dims them all, so most of
+ * what the strip cost after a switch was building buttons it already had.
+ * A cell is a new object only when its letter was made again, so comparing
+ * the props is enough to know.
+ */
+const Tile = React.memo(function Tile({
+  cell,
+  behind,
+  selected,
+  watch,
+}: {
+  cell: Cell;
+  behind: boolean;
+  selected: boolean;
+  watch: (node: HTMLElement | null) => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      onClick={() => forgeStore.select(cell.name)}
+      aria-pressed={selected}
+      title={
+        cell.outside
+          ? `${cell.name}, your own drawing`
+          : cell.held
+            ? `${cell.name}, holding its own version`
+            : cell.name
+      }
+      data-forge-cell={cell.name}
+      data-forge-cell-waiting={behind ? "yes" : undefined}
+      ref={watch}
+      className={tile(
+        selected,
+        cn(
+          "relative flex size-14 items-center justify-center rounded-md border",
+          behind && "opacity-40",
+        ),
+      )}
+    >
+      {/* A size larger than it was: the frame is the whole font's reach now,
+          accents and tails included, and a cell drawn at the old size
+          showed every letter a quarter smaller. */}
+      <svg viewBox={cell.frame} className="h-11 w-11" aria-hidden>
+        <g transform="scale(1,-1)">
+          <path d={cell.d} fill="var(--foreground)" fillRule="nonzero" />
+        </g>
+      </svg>
+      {/* A letter holding its own version of a part is marked, or the
+          only way to find one again would be to remember it. A letter
+          drawn from another skeleton is marked differently, because it is
+          a different kind of difference. */}
+      {cell.held && (
+        <span
+          className={cn("absolute right-1 top-1 size-1.5 rounded-full", "bg-[color:var(--accent)]")}
+        />
+      )}
+      {cell.shaped && (
+        <span
+          className={cn(
+            "absolute bottom-1 right-1 size-1.5 rounded-[1px]",
+            "bg-[color:var(--accent)]",
+          )}
+        />
+      )}
+      {/* A letter that is no longer drawn at all is marked along the
+          foot rather than with a dot, because it is not a variation on
+          the family the way the other two are — it has left it, and no
+          edit made here will reach it again until it comes back. */}
+      {cell.outside && (
+        <span
+          className="absolute inset-x-1.5 bottom-0.5 h-0.5 rounded-full bg-[color:var(--muted-foreground)]"
+          data-forge-outside={cell.name}
+        />
+      )}
+    </button>
+  );
+});
