@@ -57,6 +57,8 @@ import {
   OVAL_CURVE,
   heaviness,
   inherit,
+  openedRing,
+  widthShare,
   ink,
   LEVEL,
   openVee,
@@ -169,6 +171,9 @@ const DOLLAR_BAR_LIGHTER = 0.35;
 /** In `ultra`s. */
 const A_BAR_DOWN = 3;
 const PERCENT_RING_LIGHTER = 0.2;
+
+/** The least a percent's ring keeps open across, against the stem: see `grotesquePercent`. */
+const PERCENT_OPEN = 0.4;
 
 /**
  * The style a letter that stacks its horizontals is drawn with past the
@@ -5893,7 +5898,14 @@ export function grotesquePercent(style: Style): Recipe {
   const halfH = up(f, held3(145, 133, 146));
   const oval = (x: number, y: number): Stroke => {
     const drawn = ink(f, ring({ ...f, half: ringPen.weight / 2 }, at(x, up(f, y)), halfW, halfH));
-    return inherit(drawn, { ...drawn, pen: ringPen });
+    /*
+     * And lighter again wherever that leaves under two fifths of a stem
+     * across (`PERCENT_OPEN`), on a Condensed of the width axis: narrowed by
+     * it at a heavy weight, the Sans's and the Typewriter's rings shut to
+     * slits a sixth of a stem wide.
+     */
+    const inked = inherit(drawn, { ...drawn, pen: ringPen });
+    return widthShare(f.style) < 1 ? openedRing(inked, stem * PERCENT_OPEN) : inked;
   };
   const slash = at(X(held3(112, 159, 34)) + past * 0.8, 0);
   const slope = held3(0.69, 0.648, 0.717);

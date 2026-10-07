@@ -20,7 +20,7 @@ import { draw, formOf, layOut, startFrom, useKit as onGrid, type Forge } from ".
 import { widthedStyle } from "./family";
 import { troubles } from "./health";
 import { readyToShape } from "./layers";
-import { BASES, GROTESQUE, type Style } from "./style";
+import { BASES, GROTESQUE, spacingOf, type Style } from "./style";
 
 const SLOW = longEnoughFor(60_000);
 
@@ -81,11 +81,171 @@ describe("the Grotesque's figures and its H", () => {
     }
   });
 
-  it("leaves the H of every other face as it was at the Normal width", () => {
+  it("asks for the stem-centred one only of the Grotesque", () => {
+    // Its superiors and fractions; every face's own figure is centred on its
+    // ink now (see "the figures of every face" below).
     for (const base of BASES) {
-      expect(base.metrics.counterWidthed ?? false, base.name).toBe(base.name === "Grotesque");
       expect(base.metrics.oneCentred ?? false, base.name).toBe(base.name === "Grotesque");
     }
+  });
+});
+
+describe("the letters measured off the counter", () => {
+  /*
+   * The H, the H-bar, the Pi and the Cyrillic letters on two and three posts
+   * read the face's counter and nothing else, so on every face but the
+   * Grotesque (and the Sans, whose H is its own) they stood as wide in the
+   * Condensed and the Expanded as in the Normal.
+   */
+  const NAMES = ["H", "Hbar", "Π", "И", "Ш", "Щ", "н", "ш"];
+  it("follow the width axis on every face", { timeout: SLOW }, () => {
+    const still: string[] = [];
+    for (const base of BASES) {
+      const forge = startFrom(base);
+      for (const name of NAMES) {
+        const ink = (width: number) => {
+          const style = widthedStyle(
+            { ...forge.style, pen: { ...forge.style.pen, weight: 87 } },
+            width,
+          );
+          const box = contoursBounds(drawLetter(name, style, formOf(forge, name))!.contours);
+          return box.xMax - box.xMin;
+        };
+        const normal = ink(100);
+        if (!(ink(75) < normal - 20 && ink(125) > normal + 20)) still.push(`${base.name} ${name}`);
+      }
+    }
+    expect(still).toEqual([]);
+  });
+});
+
+describe("the figures of every face", () => {
+  const FIGURES = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+  const plain = BASES.filter((base) => !(base.metrics.fit ?? 0) && !base.metrics.monospaced);
+
+  it("stand in the middle of one column, at every weight and width", { timeout: SLOW }, () => {
+    /*
+     * On the code before, a face that is not fitted set each figure where it
+     * was drawn: the one of every such face most of a stem left of the
+     * nought, and at a Black or an Expanded the whole set at the left of a
+     * column a third too wide (the Grotesque's nought 95 and 380 off its
+     * sides at 260).
+     */
+    const off: string[] = [];
+    for (const base of plain) {
+      for (const weight of [30, base.pen.weight, 194, 260]) {
+        for (const width of [75, 100, 125]) {
+          const forge = at(startFrom(base), weight, width);
+          const drawn = FIGURES.map((name) => draw(name, forge)!);
+          const column = drawn[0].advanceWidth;
+          drawn.forEach((one, index) => {
+            const box = contoursBounds(one.contours);
+            const where = `${base.name} ${FIGURES[index]} ${weight}/${width}`;
+            if (Math.abs(one.advanceWidth - column) > 0.01) off.push(`${where} column`);
+            if (Math.abs(box.xMin - (one.advanceWidth - box.xMax)) > 2) off.push(where);
+          });
+          // And no wider than the widest figure and its sides.
+          const widest = Math.max(
+            ...drawn.map((one) => {
+              const box = contoursBounds(one.contours);
+              return box.xMax - box.xMin;
+            }),
+          );
+          if (column - widest > spacingOf(forge.style) * 2 + 10) {
+            off.push(`${base.name} ${weight}/${width} wide`);
+          }
+        }
+      }
+    }
+    expect(off).toEqual([]);
+  });
+
+  it("does not widen an Expanded's six and nine twice", () => {
+    // Half as wide again as the nought at 125 on the Fairground before.
+    for (const base of plain) {
+      const forge = startFrom(base);
+      const ratio = (width: number) => {
+        const style = widthedStyle(
+          { ...forge.style, pen: { ...forge.style.pen, weight: 30 } },
+          width,
+        );
+        const ink = (name: string) => {
+          const box = contoursBounds(drawLetter(name, style, formOf(forge, name))!.contours);
+          return box.xMax - box.xMin;
+        };
+        return Math.max(ink("six"), ink("nine")) / ink("zero");
+      };
+      // Against the nought, an Expanded six grows by a few hundredths at most: the
+      // Grotesque's by a quarter, the Fairground's by a quarter, on the code before.
+      expect(ratio(125) / ratio(100), base.name).toBeLessThan(1.08);
+    }
+  });
+});
+
+describe("the counters a Condensed Black closed", () => {
+  /** The health check's own measure of a counter: see `narrowest` in `health.ts`. */
+  const narrowest = (counter: Contour): number => {
+    const room = Math.abs(contourArea(counter));
+    const box = contoursBounds([counter]);
+    const across = Math.min(box.xMax - box.xMin, box.yMax - box.yMin);
+    const along = Math.max(box.xMax - box.xMin, box.yMax - box.yMin);
+    return Math.min(across, along > 0 ? (room / along) * 1.6 : 0);
+  };
+
+  it("keep the yu, the oe, the percent and the per mille open", { timeout: SLOW }, () => {
+    /*
+     * At least the forty-five thousandths of an em the health check asks:
+     * on the code before the yu of the scripts at 142 and of the Flared and
+     * the Technical at 260 was 16 to 28 across, the Technical's oe 45, and
+     * the percent and per mille of the Sans, the Grotesque, the Slab and the
+     * Typewriter 29 to 47.
+     */
+    const shut: string[] = [];
+    for (const base of BASES) {
+      const forge = startFrom(base);
+      for (const weight of [142, 194, 260]) {
+        const drawnAt = at(forge, weight, 75);
+        for (const name of ["ю", "Ю", "oe", "percent", "perthousand"]) {
+          for (const contour of draw(name, drawnAt)!.contours) {
+            if (contourArea(contour) >= 0) continue;
+            const room = narrowest(contour);
+            if (room < base.metrics.unitsPerEm * 0.045) {
+              shut.push(`${base.name} ${name} at ${weight}: ${Math.round(room)}`);
+            }
+          }
+        }
+      }
+    }
+    expect(shut).toEqual([]);
+  });
+});
+
+describe("every warning the health check gave", () => {
+  it("is gone from every face, drawn and on the grid", { timeout: longEnoughFor(600_000) }, () => {
+    const said: string[] = [];
+    /*
+     * At the two ends of the width axis, where every one of them was found,
+     * and on the grid at the light weights, where its lines are nearest.
+     */
+    for (const base of BASES) {
+      const drawn = startFrom(base);
+      const grid = onGrid(layOut(startFrom(base)), true);
+      for (const weight of [30, 87, 142, 194, 260]) {
+        for (const width of [75, 125]) {
+          for (const [mode, start] of [
+            ["drawn", drawn],
+            ...(weight <= 142 ? [["grid", grid] as const] : []),
+          ] as const) {
+            for (const one of troubles(at(start, weight, width))) {
+              said.push(
+                `${base.name} ${mode} ${weight}/${width}: ${one.what} ${one.letters.join(" ")}`,
+              );
+            }
+          }
+        }
+      }
+    }
+    expect(said).toEqual([]);
   });
 });
 

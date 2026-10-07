@@ -50,14 +50,6 @@ export interface Metrics {
    * uprights is spaced by.
    */
   counterWidth: number;
-  /**
-   * Whether the capital H, which is measured off that counter rather than off
-   * `width`, takes the width axis's share of it too (`widthAxis`), as every
-   * other capital of the face does. Left out, its Condensed and its Expanded
-   * stood exactly as wide as its Normal, among capitals that had moved: the
-   * Grotesque's H did.
-   */
-  counterWidthed?: boolean;
   /** White space left either side of a letter. */
   sidebearing: number;
   /**
@@ -2278,7 +2270,6 @@ export const GROTESQUE: Style = {
     counterWidth: 318,
     heavyOpen: 0.2,
     oneCentred: true,
-    counterWidthed: true,
   },
   pen: { weight: 104, contrast: 0.06, angle: 0 },
   /*

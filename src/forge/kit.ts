@@ -697,6 +697,14 @@ export function spanOf(tiles: Tiles): { columns: number; rows: number[] } {
 // ---------------------------------------------------------------------------
 
 /**
+ * How far past the ascender or the descender a traced letter's cells may
+ * reach, in ems: half the least slack the health check gives a letter
+ * (`LINE_SLACK` in `health.ts`), so a stroke drawn to the edge of the last row
+ * still stands inside it with half a hairline pen to spare.
+ */
+const LINE_HELD = 0.03;
+
+/**
  * Where a letter's skeleton runs, read as cells.
  *
  * The step that makes a kit usable rather than a promise. A hundred and ninety
@@ -739,13 +747,41 @@ export function seedTiles(strokes: Stroke[], style: Style, kit: Kit): Tiles | nu
   const found = new Map<string, Map<Port, boolean>>();
   let widest = 0;
 
+  /*
+   * And held between the face's own lines, where the skeleton was.
+   *
+   * A cell's ink reaches its edges, so a point a little under the ascender
+   * that falls in the row over the cap height is drawn up to the top of that
+   * row -- a whole cell past the line on a face whose ascender is the cap
+   * height or near it. The quotes, the brackets, the eth and the superiors
+   * did it at the top, and every descender that reached the row two under
+   * the baseline did it at the bottom. A point inside the lines keeps to the
+   * rows whose edges stand within `LINE_HELD` of them, and so does a point
+   * no further past a line than a letter may reach (twice that); a point
+   * further out -- an accent over a capital -- goes where it falls.
+   */
+  const { ascender, descender, unitsPerEm } = style.metrics;
+  const held = unitsPerEm * LINE_HELD;
+  let top = highest;
+  while (top > 0 && (top + 1) * unit > ascender + held) top--;
+  let bottom = lowest;
+  while (bottom < 0 && bottom * unit < descender - held) bottom++;
+
   /** Which cell a point falls in, held inside the grid the font has. */
-  const cellOf = (point: Vec2): Where => ({
+  const cellOf = (point: Vec2): Where => {
     // Nudged, so a stroke running exactly along a grid line settles on one
     // side of it rather than flickering between the two as it is walked.
-    column: Math.max(0, Math.floor((point.x - left) / unit + 1e-6)),
-    row: Math.min(highest, Math.max(lowest, Math.floor(point.y / unit + 1e-6))),
-  });
+    const row = Math.min(highest, Math.max(lowest, Math.floor(point.y / unit + 1e-6)));
+    return {
+      column: Math.max(0, Math.floor((point.x - left) / unit + 1e-6)),
+      row:
+        point.y <= ascender + held * 2 && row > top
+          ? top
+          : point.y >= descender - held * 2 && row < bottom
+            ? bottom
+            : row,
+    };
+  };
 
   const add = (where: Where, port: Port, end: boolean): void => {
     const key = cellKey(where.column, where.row);

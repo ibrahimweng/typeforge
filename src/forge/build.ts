@@ -534,7 +534,21 @@ function drawnFresh(
    */
   let centring = 0;
   if (style.metrics.monospaced) {
+    /*
+     * The column is measured off the drawn letters, and a letter laid on the
+     * grid can be wider than any of them: the Condensed typewriter's Щ and
+     * щ, five cells across, stood past both sides of a column cut for the
+     * drawn m. Such a letter is given as much more as keeps it off both
+     * edges (`SIDE_CLEAR`); every other keeps the column.
+     */
     advanceWidth = monoAdvance(style);
+    if (laid && placedSolid.length > 0) {
+      const ink = contoursBounds(placedSolid);
+      advanceWidth = Math.max(
+        advanceWidth,
+        ink.xMax - ink.xMin + style.metrics.unitsPerEm * SIDE_CLEAR * 2 + 2e-6,
+      );
+    }
     if (placedSolid.length > 0) {
       const bounds = contoursBounds(placedSolid);
       centring = (advanceWidth - bounds.xMin - bounds.xMax) / 2;
@@ -550,6 +564,24 @@ function drawnFresh(
       fittedSides = true;
       centring = sides.shift;
       advanceWidth = sides.advance;
+    } else if (
+      FIGURES.includes(name) &&
+      built!.width === undefined &&
+      style.metrics.figures !== "proportional" &&
+      placedSolid.length > 0
+    ) {
+      /*
+       * A tabular figure on a face that is not fitted: in the middle of a
+       * column as wide as the widest figure's ink and a sidebearing either
+       * side, as a fitted face sets its own. Placed where each was drawn
+       * instead, in a column as wide as the furthest any of them reached, the
+       * one stood most of a stem left of the nought, and at a Black or an
+       * Expanded the whole set sat at the left of a column a third too wide.
+       */
+      const ink = contoursBounds(placedSolid);
+      // And never narrower than this figure, in whatever form it was chosen.
+      advanceWidth = Math.max(figureColumnInk(style), ink.xMax - ink.xMin) + spacingOf(style) * 2;
+      centring = (advanceWidth - ink.xMin - ink.xMax) / 2;
     } else {
       advanceWidth = advanceFor(name, built!, placedSolid, style);
     }
@@ -1213,17 +1245,36 @@ const figureInkCache = new WeakMap<Style, number>();
 
 /** The ink width of the widest figure, for a face fitted optically. */
 function figureInk(style: Style): number {
-  const known = figureInkCache.get(style);
+  return widestFigure(style, figureInkCache, false);
+}
+
+const figureColumnCache = new WeakMap<Style, number>();
+
+/**
+ * The same, of the figures in the forms the face draws them in, for the
+ * column a face that is not fitted sets each figure in the middle of: the
+ * Ribbon's grotesque six is wider than the construction's, and measured off
+ * the construction's its column was too narrow to hold it.
+ */
+function figureColumnInk(style: Style): number {
+  return widestFigure(style, figureColumnCache, true);
+}
+
+function widestFigure(style: Style, cache: WeakMap<Style, number>, formed: boolean): number {
+  const known = cache.get(style);
   if (known !== undefined) return known;
   let widest = 0;
   for (const name of FIGURES) {
-    const built = LETTERS[name](widthOf(style, name));
+    const recipe = formed
+      ? (recipeOf(name, style.forms?.[name] ?? "") ?? LETTERS[name])
+      : LETTERS[name];
+    const built = recipe(widthOf(style, name));
     const contours = leaning(inkAll(built.strokes, style, name).flat(), style);
     if (contours.length === 0) continue;
     const box = contoursBounds(contours);
     widest = Math.max(widest, box.xMax - box.xMin);
   }
-  figureInkCache.set(style, widest);
+  cache.set(style, widest);
   return widest;
 }
 

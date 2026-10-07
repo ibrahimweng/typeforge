@@ -25,6 +25,7 @@ import {
   crested,
   cup,
   deg,
+  counterOf,
   type Frame,
   finish,
   frame,
@@ -333,7 +334,7 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   "\u03a0": (style) => {
     const f = frame(style);
     const left = f.edge;
-    const right = left + f.style.metrics.counterWidth + f.style.pen.weight;
+    const right = left + counterOf(f) + f.style.pen.weight;
     return finish(f, [
       ink(f, straight(at(left, 0), at(left, f.cap)), f.end, BUTT),
       ink(f, straight(at(right, 0), at(right, f.cap)), f.end, BUTT),

@@ -14,7 +14,7 @@
  * finished loading.
  */
 
-import { contoursBounds } from "@/font/geometry";
+import { contourArea, contoursBounds } from "@/font/geometry";
 import type { Vec2 } from "@/font/types";
 import { wrapAngle } from "../angles";
 import { LETTERS, recipeOf } from "../letters";
@@ -220,6 +220,35 @@ export function inherit(from: Stroke, to: Stroke): Stroke {
   return to;
 }
 
+/**
+ * A closed ring drawn lighter, by as little as it takes, where its counter
+ * would be narrower than `least` across: never under `lightest` of its own
+ * pen. Measured off the ring as it sweeps, so whatever the pen's contrast and
+ * angle do to its sides is counted. A ring that already has the room comes
+ * back as it was.
+ */
+export function openedRing(stroke: Stroke, least: number, lightest = 0.5): Stroke {
+  const across = (weight: number): number => {
+    const contours = sweep({ ...stroke, pen: { ...stroke.pen, weight } });
+    if (contours.length < 2) return 0;
+    const inner = contours.reduce((one, other) =>
+      Math.abs(contourArea(other)) < Math.abs(contourArea(one)) ? other : one,
+    );
+    const box = contoursBounds([inner]);
+    return Math.min(box.xMax - box.xMin, box.yMax - box.yMin);
+  };
+  const own = stroke.pen.weight;
+  let weight = own;
+  for (let pass = 0; pass < 6; pass++) {
+    const room = across(weight);
+    if (room >= least) break;
+    const next = Math.max(own * lightest, weight - (least - room));
+    if (next === weight) break;
+    weight = next;
+  }
+  return weight === own ? stroke : inherit(stroke, { ...stroke, pen: { ...stroke.pen, weight } });
+}
+
 /** Draw something and report which parts it turned out to need. */
 export function recordPartsWhile(draw: () => unknown): Set<PartName> {
   const found = new Set<PartName>();
@@ -336,14 +365,23 @@ export function widthShare(style: Style): number {
 }
 
 /**
+ * The face's counter -- the white inside an n, which the letters built of
+ * two or three stems stand apart by -- at this member's share of the width
+ * axis (`widthAxis`). Read off `counterWidth` alone, the H, the Cyrillic
+ * letters on two and three posts and the Pi stood as wide in a Condensed and
+ * an Expanded as in the Normal, among letters that had moved.
+ */
+export function counterOf(f: Frame): number {
+  return f.style.metrics.counterWidth * widthShare(f.style);
+}
+
+/**
  * The white between the H's two stems: the face's counter at the letter's own
- * proportion, and at the width axis's share of it where the face says the H
- * follows the axis (`metrics.counterWidthed`). Shared by the H and the H-bar,
- * which stand on the same two stems.
+ * proportion. Shared by the H and the H-bar, which stand on the same two
+ * stems.
  */
 export function hCounter(f: Frame): number {
-  const { counterWidth, stretch, counterWidthed } = f.style.metrics;
-  return counterWidth * (stretch ?? 1) * (counterWidthed ? widthShare(f.style) : 1);
+  return counterOf(f) * (f.style.metrics.stretch ?? 1);
 }
 
 /**
@@ -3461,7 +3499,7 @@ export function cyrDrop(f: Frame, top: number): number {
 /** Two stems the width of a counter apart, which four of these are built on. */
 export function cyrPosts(f: Frame): [number, number] {
   const left = f.edge;
-  return [left, left + f.style.metrics.counterWidth + f.style.pen.weight];
+  return [left, left + counterOf(f) + f.style.pen.weight];
 }
 
 export function cyrBe(f: Frame, top: number): Stroke[] {
@@ -3736,7 +3774,7 @@ export function cyrChe(f: Frame, top: number): Stroke[] {
 }
 
 export function cyrSha(f: Frame, top: number): Stroke[] {
-  const gap = f.style.metrics.counterWidth + f.style.pen.weight;
+  const gap = counterOf(f) + f.style.pen.weight;
   const left = f.edge;
   return [
     ...[0, 1, 2].map((step) => standing(f, left + gap * step, top)),
@@ -3745,7 +3783,7 @@ export function cyrSha(f: Frame, top: number): Stroke[] {
 }
 
 export function cyrShcha(f: Frame, top: number): Stroke[] {
-  const gap = f.style.metrics.counterWidth + f.style.pen.weight;
+  const gap = counterOf(f) + f.style.pen.weight;
   const left = f.edge;
   const tail = tailPast(f, left + gap * 2);
   return [
@@ -3825,7 +3863,7 @@ export function cyrLje(f: Frame, top: number): Stroke[] {
    * stem is a slanted stroke the bowl cannot be hung on without folding.
    */
   if (f.style.parts.script.on) {
-    const stem = f.edge + width + f.style.metrics.counterWidth * 0.5 + f.style.pen.weight;
+    const stem = f.edge + width + counterOf(f) * 0.5 + f.style.pen.weight;
     const high = softHigh(f, top);
     return [
       ...cyrEl(f, top),
@@ -3926,7 +3964,7 @@ export function cyrHard(f: Frame, top: number): Stroke[] {
 export function cyrYeru(f: Frame, top: number): Stroke[] {
   const soft = cyrSoft(f, top);
   const reach = spineRight(soft[1].spine);
-  const apart = reach + stemSide(f) * 2 + f.style.metrics.counterWidth * 0.42;
+  const apart = reach + stemSide(f) * 2 + counterOf(f) * 0.42;
   return [...soft, ink(f, straight(at(apart, 0), at(apart, top)), f.end, f.end)];
 }
 
@@ -3956,6 +3994,9 @@ export function cyrE(f: Frame, top: number): Stroke[] {
 }
 
 /** A stem, a bar, and a ring beside it. */
+/** The least half-width of the yu's ring, in half-pens: see `cyrYu`. */
+const YU_LEAST = 1.4;
+
 export function cyrYu(f: Frame, top: number): Stroke[] {
   const radius = Math.max(top / 2, f.least);
   /*
@@ -3963,10 +4004,18 @@ export function cyrYu(f: Frame, top: number): Stroke[] {
    * stem of counter: bent to its narrow oval, the ring of a heavy yu closed
    * up into a disc.
    */
+  /*
+   * And on a Condensed never narrower than leaves two fifths of a stem
+   * across its counter (`YU_LEAST`): at a heavy weight the ring was bent to
+   * the narrow member's width alone and shut -- the Technical's and the
+   * Flared's at 260, the scripts' at 142. Only on the width axis, which
+   * draws a member nobody is watching: a drawing made narrow by hand is
+   * the health check's to speak up about.
+   */
   const wide =
     f.style.parts.script.on && f.style.pen.weight > SCRIPT_HELD_FROM
       ? Math.max(bendWidth(f, radius), f.half * 2)
-      : bendWidth(f, radius);
+      : Math.max(bendWidth(f, radius), widthShare(f.style) < 1 ? f.half * YU_LEAST : 0);
   const stem = f.edge;
   const centre = at(stem + f.half * 2.4 + wide, top / 2);
   return [
