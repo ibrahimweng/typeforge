@@ -325,6 +325,32 @@ export function ring(f: Frame, centre: Vec2, halfWidth: number, halfHeight = hal
  * decreasing runs the other way round, which is drawn and then walked backwards
  * so the ends stay where the recipe expects them.
  */
+/**
+ * How much wider than the drawing this member of the family is, as a share:
+ * the width axis's `wdth` over a hundred (`metrics.widthAxis`), and one on
+ * the drawing itself.
+ */
+export function widthShare(style: Style): number {
+  const share = style.metrics.widthAxis ?? 1;
+  return share > 0 ? share : 1;
+}
+
+/**
+ * The style drawn at its base's own width where it is drawn narrower: for
+ * the few shapes whose whole job is the white inside them and that a
+ * Condensed draws at its Normal's size -- a ring over a letter is no
+ * narrower for the letter being so. Drawn condensed, the Monoline Script's
+ * closed to a dot.
+ */
+export function unCondensed(style: Style): Style {
+  const share = widthShare(style);
+  if (!(share < 1) || share <= 0) return style;
+  return {
+    ...style,
+    metrics: { ...style.metrics, width: style.metrics.width / share, widthAxis: 1 },
+  };
+}
+
 export function bendWidth(f: Frame, radius: number): number {
   return Math.max(radius * f.wide, f.least);
 }
@@ -1797,6 +1823,15 @@ export function fatFace(style: Style): boolean {
   );
 }
 
+/** How much of what a stem gains past what a mark can carry the mark still takes: see `markFrame`. */
+const MARK_GROWS = 0.25;
+/**
+ * And never more than half as heavy again as the most: past that, at the
+ * heaviest pens a family can ask for, the caron's arms were shorter than its
+ * pen and its corner folded one way at one weight and the other at the next.
+ */
+const MARK_GROWS_TO = 0.5;
+
 export function markFrame(style: Style): Frame {
   const f = frame(style);
   const room = markRoom(f);
@@ -1816,14 +1851,38 @@ export function markFrame(style: Style): Frame {
    * are measured off Lora's.
    */
   const display = style.family === "display" && style.pen.contrast > 0.2;
+  /*
+   * And past that, heavier still at a share of the rate the stem goes on
+   * (`MARK_GROWS`, to `MARK_GROWS_TO`): held at the most, every weight from about the Regular up
+   * drew the one accent, so a Black's circumflex and tilde were its
+   * Regular's -- small, light marks over letters twice as heavy, and the
+   * spacing ones on their own tinier still.
+   */
   const pen = {
     ...style.pen,
-    weight: Math.min(style.pen.weight, most),
+    weight:
+      Math.min(style.pen.weight, most) +
+      Math.min(Math.max(0, style.pen.weight - most) * MARK_GROWS, most * MARK_GROWS_TO),
     contrast: display ? style.pen.contrast * 0.3 : style.pen.contrast,
     ...(display ? { own: style.pen.own ?? style.pen.contrast } : {}),
   };
   if (pen.weight === style.pen.weight && pen.contrast === style.pen.contrast) return f;
-  return frame({ ...style, pen });
+  const made = frame({ ...style, pen });
+  const grown = pen.weight - Math.min(style.pen.weight, most);
+  if (grown > 0) GROWN.set(made, grown);
+  return made;
+}
+
+/**
+ * How much heavier than the most a mark can carry its frame's pen is, for
+ * `markBox` to make room for: a heavier pen in the same box left a
+ * circumflex half a pen tall, a notch and two stubs.
+ */
+const GROWN = new WeakMap<Frame, number>();
+
+/** How much heavier than the most a mark can carry this mark's pen is: see `markFrame`. */
+export function markGrown(f: Frame): number {
+  return GROWN.get(f) ?? 0;
 }
 
 /**
@@ -1846,7 +1905,10 @@ export function shortEnd(f: Frame): Terminal {
 
 export function markBox(f: Frame): MarkBox {
   const room = markRoom(f);
-  const w = Math.max(f.bowl * 0.42, f.half * 1.1);
+  // Wider and taller by about what the pen gained past the most (see
+  // `markFrame`), so a heavier mark keeps its shape rather than filling in.
+  const grown = GROWN.get(f) ?? 0;
+  const w = Math.max(f.bowl * 0.42, f.half * 1.1) + grown;
   /*
    * Sized by the ink it leaves, not by where its spine runs.
    *
@@ -1858,7 +1920,7 @@ export function markBox(f: Frame): MarkBox {
    * the height that will actually be there, and it adapts: a heavy face has
    * chunky accents, and they are not also tall ones.
    */
-  const ink = room * 0.72;
+  const ink = room * 0.72 + grown;
   const height = Math.max(ink - f.half * 2, f.half * 0.55);
   const foot = f.x + room * 0.13;
   return { cx: f.edge + w, w, foot, top: foot + Math.min(height, w * 1.7) };
@@ -4160,10 +4222,24 @@ export function hook(style: Style, side: number): Recipe {
  * each other at that one width.
  */
 export function figureWidth(frame: Frame): number {
-  return Math.max(
-    frame.cap * 0.62 * frame.style.metrics.width + heavyFigure(frame),
-    frame.least * 2,
-  );
+  /*
+   * Narrower by the width axis in its counters rather than its strokes, as
+   * every letter is: condensed whole, the pen took the same share of less
+   * room, and a Condensed's 6, 8 and 9 closed up.
+   */
+  const wide = frame.cap * 0.62 * frame.style.metrics.width;
+  return Math.max(wide + penHeld(frame) * 2 + heavyFigure(frame), frame.least * 2);
+}
+
+/**
+ * How much wider either side a shape drawn narrower by the width axis is
+ * than its share of the width, so that only its counter is narrower and not
+ * its pen: the half of the pen the share would have taken. Nought at the
+ * face's own width and wider.
+ */
+export function penHeld(frame: Frame): number {
+  const share = widthShare(frame.style);
+  return share < 1 && share > 0 ? frame.half * (1 - share) : 0;
 }
 
 /**
@@ -4830,6 +4906,12 @@ export function chevrons(f: Frame, facing: 1 | -1): Recipe {
  *
  * A single guillemet is this and nothing else, so the two are drawn by one
  * function and cannot drift apart: a ‹ is exactly half of a «.
+ *
+ * Past the face's own weight its arms are never heavier than nine tenths of
+ * its reach: a heavy weight's arms grew heavier than the chevron was long
+ * and met inside it, a wedge with a nick in its back standing hard against
+ * its letter. Lightened rather than drawn longer, which moved its corners
+ * from one weight of a variable font to the next.
  */
 export function chevron(f: Frame, facing: 1 | -1, left: number): Stroke {
   const w = signWidth(f) * 0.42;
@@ -4837,8 +4919,12 @@ export function chevron(f: Frame, facing: 1 | -1, left: number): Stroke {
   const y = axis(f);
   const back = facing > 0 ? left : left + w;
   const tip = facing > 0 ? left + w : left;
+  const arm = f.style.pen.weight * f.bar;
+  const most = w * 0.9;
+  const light = arm > most ? arm + (most - arm) * Math.min(1, blackness(f.style) * 3) : arm;
+  const g = light < arm ? frame({ ...f.style, pen: { ...f.style.pen, weight: light / f.bar } }) : f;
   return bent(
-    f,
+    g,
     chain(straight(at(back, y + rise), at(tip, y)), straight(at(tip, y), at(back, y - rise))),
   );
 }

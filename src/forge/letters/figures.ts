@@ -16,6 +16,8 @@ import {
   at,
   bend,
   bendWidth,
+  penHeld,
+  widthShare,
   BUTT,
   chain,
   corner,
@@ -76,7 +78,13 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const grown = heavyFigure(f) / 2;
     // And at a heavy weight no more than three tenths of the height, so the
     // diagonal under it has the length to read as one.
-    const drawn = width / 2 - grown;
+    /*
+     * And no taller for a wider face: the bowl is already drawn wider by the
+     * face's width (see `bendWidth`), and sized off the wider figure as well
+     * it grew both ways, stood taller, and left an Expanded's diagonal lying
+     * nearly flat across its own foot.
+     */
+    const drawn = (width / 2 - grown) / Math.max(widthShare(f.style), 1);
     const low = Math.min(drawn, (f.crest(f.cap) - f.dip(0)) * 0.3);
     /*
      * And held there as well on a face whose regular already lays its
@@ -462,8 +470,10 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const waist = f.cap * 0.56;
     const upper = Math.max((f.crest(f.cap) - waist) / 2, f.least);
     const lower = Math.max((waist - f.dip(0)) / 2, f.least);
-    // Both rings wider at a heavy weight, or their counters are slits.
-    const grown = heavyFigure(f) / 2;
+    // Both rings wider at a heavy weight, or their counters are slits; and
+    // narrower in their counters only on a Condensed (`penHeld`), where the
+    // Ribbon's upper one shut.
+    const grown = heavyFigure(f) / 2 + penHeld(f) / 0.9;
     return finish(
       f,
       [

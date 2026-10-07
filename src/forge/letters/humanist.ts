@@ -18,7 +18,7 @@
 import { blackness, type Style } from "../style";
 import { LETTERS } from "../letters";
 import { bowl, bowlBetween, bowlPoint, spineEnd, spineStart } from "../shapes";
-import { penReach, reachAlong, sweep } from "../sweep";
+import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
 import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
@@ -1336,6 +1336,23 @@ export function splitVees(given: Stroke[]): Stroke[] {
         at(points[k].x + b.x, points[k].y + b.y),
         dirs[k],
       );
+      /*
+       * Or, past the miter limit, where the one run's ink stopped: the sweep
+       * gives up carrying a corner that sharp to its point and fills it with
+       * the pen, and the recipe stood the corner where that filled ink lands.
+       * Carried to where the outer edges meet, a Condensed's v and the middle
+       * of its W ran out a hundred and forty units past the line in a needle.
+       */
+      // As far out as `overhang` told the recipe it would: the arms' own
+      // reach off their spines, between the two.
+      const off = at(tips[k].x - points[k].x, tips[k].y - points[k].y);
+      const far = Math.hypot(off.x, off.y);
+      if (far > penReach(stroke.pen).across * MITER_LIMIT) {
+        const out = at(off.x / far, off.y / far);
+        const across = (e: Vec2, d: Vec2) => Math.abs(e.x * -d.y + e.y * d.x);
+        const lands = (across(a, dirs[k - 1]) + across(b, dirs[k])) / 2;
+        tips[k] = at(points[k].x + out.x * lands, points[k].y + out.y * lands);
+      }
     }
     // Each spine laid again so its outer edge runs through its corners' tips
     // at its own weight; the run's two ends stay where they were.
