@@ -32,6 +32,8 @@
 import { nearestTurn } from "./angles";
 import { contourArea, reverseContour } from "@/font/geometry";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
+import { endsShaped, softCorners } from "./ends";
+import { hefted } from "./heft";
 import { folded } from "./shapes";
 import type { JoinKind, Pen, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "./types";
 
@@ -86,14 +88,14 @@ export function strokeLimit(spine: Spine): number {
 // Offset curves
 // ---------------------------------------------------------------------------
 
-interface OffsetLine {
+export interface OffsetLine {
   kind: "line";
   from: Vec2;
   to: Vec2;
 }
 
 /** An ellipse arc, which a circular arc is the special case of. */
-interface OffsetEllipse {
+export interface OffsetEllipse {
   kind: "ellipse";
   centre: Vec2;
   rx: number;
@@ -122,7 +124,7 @@ interface OffsetEllipse {
   pieces?: number;
 }
 
-type OffsetSegment = OffsetLine | OffsetEllipse;
+export type OffsetSegment = OffsetLine | OffsetEllipse;
 
 const rotate = (point: Vec2, angle: number): Vec2 => ({
   x: point.x * Math.cos(angle) - point.y * Math.sin(angle),
@@ -153,7 +155,7 @@ function tangents(segment: SpineSegment): { start: Vec2; end: Vec2 } {
 }
 
 /** A quarter turn anticlockwise: the left of the direction travelled. */
-const leftOf = (direction: Vec2): Vec2 => ({ x: -direction.y, y: direction.x });
+export const leftOf = (direction: Vec2): Vec2 => ({ x: -direction.y, y: direction.x });
 const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
 
 function pointOnArc(arc: SpineArc, angle: number): Vec2 {
@@ -163,11 +165,11 @@ function pointOnArc(arc: SpineArc, angle: number): Vec2 {
   };
 }
 
-function segmentStart(segment: SpineSegment): Vec2 {
+export function segmentStart(segment: SpineSegment): Vec2 {
   return segment.kind === "line" ? segment.from : pointOnArc(segment, segment.startAngle);
 }
 
-function segmentEnd(segment: SpineSegment): Vec2 {
+export function segmentEnd(segment: SpineSegment): Vec2 {
   return segment.kind === "line" ? segment.to : pointOnArc(segment, segment.endAngle);
 }
 
@@ -262,14 +264,14 @@ function offsetSegment(one: Headed, side: number, reach: PenReach): OffsetSegmen
 // ---------------------------------------------------------------------------
 
 /** Where an ellipse arc's parametric angle puts a point, in world coordinates. */
-function ellipseAt(arc: OffsetEllipse, t: number): Vec2 {
+export function ellipseAt(arc: OffsetEllipse, t: number): Vec2 {
   const local = { x: arc.rx * Math.cos(t), y: arc.ry * Math.sin(t) };
   const turned = rotate(local, arc.rotation);
   return { x: arc.centre.x + turned.x, y: arc.centre.y + turned.y };
 }
 
 /** The derivative there, which the handle lengths are built from. */
-function ellipseSlope(arc: OffsetEllipse, t: number): Vec2 {
+export function ellipseSlope(arc: OffsetEllipse, t: number): Vec2 {
   const local = { x: -arc.rx * Math.sin(t), y: arc.ry * Math.cos(t) };
   return rotate(local, arc.rotation);
 }
@@ -299,6 +301,16 @@ function ellipseSlope(arc: OffsetEllipse, t: number): Vec2 {
 const A_QUARTER = 1e-9;
 
 /**
+ * How many quarter-turn pieces an arc sweeping `sweep` radians is cut into
+ * when nothing pins its count: the one expression `ellipseNodes` and
+ * `cutAlong` both use, so that anything pinning an arc it has made or moved
+ * can pin it to exactly what the sweep would have given it.
+ */
+export function piecesFor(sweep: number): number {
+  return Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - A_QUARTER));
+}
+
+/**
  * Split an ellipse arc into cubic pieces.
  *
  * Quarter turns at most, with the handles set to the length that best fits an
@@ -314,7 +326,7 @@ const A_QUARTER = 1e-9;
  */
 function ellipseNodes(arc: OffsetEllipse): GlyphNode[] {
   const sweep = arc.to - arc.from;
-  const pieces = arc.pieces ?? Math.max(1, Math.ceil(Math.abs(sweep) / (Math.PI / 2) - A_QUARTER));
+  const pieces = arc.pieces ?? piecesFor(sweep);
   const step = sweep / pieces;
   const factor = (4 / 3) * Math.tan(step / 4);
 
@@ -390,7 +402,7 @@ function stitch(segments: OffsetSegment[], reach?: PenReach): GlyphNode[] {
  * Whether an offset piece travels: not a corner's stall, a wedge of no size,
  * nor a straight run of no length.
  */
-function moving(segment: OffsetSegment | null): segment is OffsetSegment {
+export function moving(segment: OffsetSegment | null): segment is OffsetSegment {
   if (!segment) return false;
   if (segment.kind === "line") {
     return Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-6;
@@ -402,7 +414,7 @@ function moving(segment: OffsetSegment | null): segment is OffsetSegment {
 }
 
 /** The unit direction an offset piece leaves its start or arrives at its end. */
-function offsetHeading(segment: OffsetSegment, atEnd: boolean): Vec2 | null {
+export function offsetHeading(segment: OffsetSegment, atEnd: boolean): Vec2 | null {
   let d: Vec2;
   if (segment.kind === "line") {
     d = { x: segment.to.x - segment.from.x, y: segment.to.y - segment.from.y };
@@ -686,11 +698,11 @@ function curveCrossing(
   return best ? { point: best.point, t: best.t } : null;
 }
 
-function offsetStart(segment: OffsetSegment): Vec2 {
+export function offsetStart(segment: OffsetSegment): Vec2 {
   return segment.kind === "line" ? segment.from : ellipseAt(segment, segment.from);
 }
 
-function offsetEnd(segment: OffsetSegment): Vec2 {
+export function offsetEnd(segment: OffsetSegment): Vec2 {
   return segment.kind === "line" ? segment.to : ellipseAt(segment, segment.to);
 }
 
@@ -824,6 +836,11 @@ export const MITER_LIMIT = 4;
  * travelling and turning anticlockwise, the left of the direction of travel is
  * the inside of the turn. So one call handles both sides and neither has to
  * know which one it is.
+ *
+ * `_inside` is the radius the inside of a corner is to be rounded by, in font
+ * units (`Stroke.inside` times the pen's weight), or nothing. Not read yet:
+ * until the rounding is built every corner resolves as below whatever is
+ * passed.
  */
 function sideRun(
   headed: Headed[],
@@ -831,6 +848,7 @@ function sideRun(
   reach: PenReach,
   join: JoinKind,
   closed: boolean,
+  _inside?: number,
 ): OffsetSegment[] {
   const offsets = headed.map((one) => ({ ...offsetSegment(one, side, reach) }));
   const filling = new Map<number, OffsetSegment[]>();
@@ -1112,9 +1130,7 @@ function cutAlong(
     const one = run[index];
     let tip: Vec2;
     if (one.kind === "ellipse") {
-      const pieces =
-        one.pieces ??
-        Math.max(1, Math.ceil(Math.abs(one.to - one.from) / (Math.PI / 2) - A_QUARTER));
+      const pieces = one.pieces ?? piecesFor(one.to - one.from);
       const moved: OffsetEllipse = atEnd
         ? { ...one, to: root, pieces }
         : { ...one, from: root, pieces };
@@ -1139,9 +1155,69 @@ function cutAlong(
 }
 
 /** How long one side piece is, near enough: an ellipse's by its mean radius. */
-function lengthOf(one: OffsetSegment): number {
+export function lengthOf(one: OffsetSegment): number {
   if (one.kind === "line") return Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y);
   return ((one.rx + one.ry) / 2) * Math.abs(one.to - one.from);
+}
+
+/** Where one side of a stroke stops, and the unit direction it is travelling there, outward. */
+export interface SideEnd {
+  at: Vec2;
+  dir: Vec2;
+}
+
+/**
+ * Both sides of a stroke at one of its ends, named in that end's own frame:
+ * `left` is the left of the outward heading `terminalNodes` is given -- at
+ * the far end the stroke's own left side, at the near end its right.
+ */
+export interface EndSides {
+  left: SideEnd;
+  right: SideEnd;
+}
+
+/**
+ * The pen's round cap on a straight end, carried onto corners that are not
+ * where the pen put them.
+ *
+ * The one affine map that takes the end's middle to the middle of the corners
+ * given, the pen's reach across the end (`shift`) to the half of it from
+ * there to the left corner, and the pen's reach along the heading (`outward`)
+ * to that grown as the end has grown. An affine map takes a cubic to a cubic
+ * exactly, so the cap is the same half ellipse on conjugate diameters, in the
+ * same pieces with the same handles present -- and on the corners the pen
+ * puts there the map is the identity, and the cap is the pen's own.
+ */
+function carriedCap(
+  nodes: GlyphNode[],
+  at: Vec2,
+  shift: Vec2,
+  outward: Vec2,
+  left: Vec2,
+  right: Vec2,
+  scale: number,
+): GlyphNode[] {
+  const centre = { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
+  const half = { x: left.x - centre.x, y: left.y - centre.y };
+  const out = { x: outward.x * scale, y: outward.y * scale };
+  const det = shift.x * outward.y - shift.y * outward.x;
+  const map = (point: Vec2): Vec2 => {
+    const d = { x: point.x - at.x, y: point.y - at.y };
+    if (Math.abs(det) < 1e-12) return { x: centre.x + d.x, y: centre.y + d.y };
+    // How much of `shift` and how much of `outward` make up d, laid on the new pair.
+    const across = (d.x * outward.y - d.y * outward.x) / det;
+    const along = (shift.x * d.y - shift.y * d.x) / det;
+    return {
+      x: centre.x + half.x * across + out.x * along,
+      y: centre.y + half.y * across + out.y * along,
+    };
+  };
+  return nodes.map((node) => ({
+    ...node,
+    point: map(node.point),
+    handleIn: node.handleIn && map(node.handleIn),
+    handleOut: node.handleOut && map(node.handleOut),
+  }));
 }
 
 /**
@@ -1153,18 +1229,49 @@ function lengthOf(one: OffsetSegment): number {
  * one is drawn by hand. Trying to work it into the sweep would mean the sweep
  * had to know about brackets, and the join between bar and stem would have to
  * be solved twice.
+ *
+ * `sides`, where it is given, is where the two sides actually stop and which
+ * way each is going there -- for an end whose sides are not where the pen
+ * alone puts them: a bowl's inner side moved by its heft, an arm swelled
+ * toward its beak, a curved end tapered. Every branch then takes its corners
+ * from there, a slid corner slides the way its side's `dir` says (see
+ * `sidesAt`), and what the pen's reach sets -- a round cap's depth, an angled
+ * cut's slide -- grows with the end's width. Which branch is taken is still
+ * decided by the terminal and the heading alone, so the end has the same
+ * nodes either way. Left out, nothing here is drawn any differently from how
+ * it always was.
  */
-function terminalNodes(
+export function terminalNodes(
   terminal: Terminal,
   at: Vec2,
   direction: Vec2,
   reach: PenReach,
   straight = true,
+  sides?: EndSides,
 ): GlyphNode[] {
   const normal = leftOf(direction);
   const shift = reachAlong(normal, reach);
-  const left = { x: at.x + shift.x, y: at.y + shift.y };
-  const right = { x: at.x - shift.x, y: at.y - shift.y };
+  const left = sides ? sides.left.at : { x: at.x + shift.x, y: at.y + shift.y };
+  const right = sides ? sides.right.at : { x: at.x - shift.x, y: at.y - shift.y };
+  // Which way each corner slides: its own side's way where the sides are given.
+  const leftWay = sides ? sides.left.dir : direction;
+  const rightWay = sides ? sides.right.dir : direction;
+  // And how much wider the end is than the pen alone makes it.
+  const wide = sides ? Math.hypot(shift.x, shift.y) * 2 : 0;
+  const scale = wide > 1e-12 ? Math.hypot(left.x - right.x, left.y - right.y) / wide : 1;
+
+  if (terminal.kind === "round" && straight && sides) {
+    // The pen's own half turn, drawn below, carried onto the corners given.
+    return carriedCap(
+      terminalNodes(terminal, at, direction, reach, true),
+      at,
+      shift,
+      reachAlong(direction, reach),
+      left,
+      right,
+      scale,
+    );
+  }
 
   if (terminal.kind === "round" && straight) {
     /*
@@ -1224,19 +1331,22 @@ function terminalNodes(
      * circle the pen's was.
      */
     const k = 0.5523;
+    // Laid on the middle of the two corners where the sides are given: see `sides`.
+    const centre = sides ? { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 } : at;
+    const half = sides ? { x: left.x - centre.x, y: left.y - centre.y } : shift;
     const across = {
-      x: shift.x - direction.x * dot(shift, direction),
-      y: shift.y - direction.y * dot(shift, direction),
+      x: half.x - direction.x * dot(half, direction),
+      y: half.y - direction.y * dot(half, direction),
     };
-    const lean = Math.abs(dot(shift, direction));
+    const lean = Math.abs(dot(half, direction));
     const outward = reachAlong(direction, reach);
     const depth = Math.max(
-      Math.hypot(outward.x, outward.y),
+      Math.hypot(outward.x, outward.y) * scale,
       lean + Math.hypot(across.x, across.y) * 0.25,
     );
-    const tip = { x: at.x + direction.x * depth, y: at.y + direction.y * depth };
+    const tip = { x: centre.x + direction.x * depth, y: centre.y + direction.y * depth };
     const outFrom = (point: Vec2): number =>
-      depth - dot({ x: point.x - at.x, y: point.y - at.y }, direction);
+      depth - dot({ x: point.x - centre.x, y: point.y - centre.y }, direction);
     return [
       {
         point: left,
@@ -1277,9 +1387,10 @@ function terminalNodes(
      * then retraced, and a stroke that doubles over itself is a stroke that
      * has crossed itself as far as anything measuring it can tell.
      */
-    const onLine = (point: Vec2): Vec2 => {
-      const back = (point.y - at.y) / direction.y;
-      return { x: point.x - direction.x * back, y: at.y };
+    const onLine = (point: Vec2, along: Vec2): Vec2 => {
+      const way = Math.abs(along.y) > 1e-9 ? along : direction;
+      const back = (point.y - at.y) / way.y;
+      return { x: point.x - way.x * back, y: at.y };
     };
     /*
      * And the left corner carried on back down the stroke where the cut is to
@@ -1288,12 +1399,12 @@ function terminalNodes(
      */
     const sink = terminal.sink ?? 0;
     const sunk = (point: Vec2): Vec2 => ({
-      x: point.x - direction.x * sink,
-      y: point.y - direction.y * sink,
+      x: point.x - leftWay.x * sink,
+      y: point.y - leftWay.y * sink,
     });
     return [
-      { point: sunk(onLine(left)), handleIn: null, handleOut: null, type: "corner" },
-      { point: onLine(right), handleIn: null, handleOut: null, type: "corner" },
+      { point: sunk(onLine(left, leftWay)), handleIn: null, handleOut: null, type: "corner" },
+      { point: onLine(right, rightWay), handleIn: null, handleOut: null, type: "corner" },
     ];
   }
 
@@ -1305,13 +1416,14 @@ function terminalNodes(
      * laid there -- whose outside is upright -- stood a step proud of one
      * corner of it.
      */
-    const plumb = (point: Vec2): Vec2 => {
-      const back = (point.x - at.x) / direction.x;
-      return { x: at.x, y: point.y - direction.y * back };
+    const plumb = (point: Vec2, along: Vec2): Vec2 => {
+      const way = Math.abs(along.x) > 1e-9 ? along : direction;
+      const back = (point.x - at.x) / way.x;
+      return { x: at.x, y: point.y - way.y * back };
     };
     return [
-      { point: plumb(left), handleIn: null, handleOut: null, type: "corner" },
-      { point: plumb(right), handleIn: null, handleOut: null, type: "corner" },
+      { point: plumb(left, leftWay), handleIn: null, handleOut: null, type: "corner" },
+      { point: plumb(right, rightWay), handleIn: null, handleOut: null, type: "corner" },
     ];
   }
 
@@ -1327,17 +1439,17 @@ function terminalNodes(
      * carries one corner on by the whole slide and leaves the other where the
      * side stops -- the same angle, and nothing the side drew is moved.
      */
-    const slide = Math.tan((terminal.angle * Math.PI) / 180) * reach.across;
-    const move = (point: Vec2, by: number): Vec2 => ({
-      x: point.x + direction.x * by,
-      y: point.y + direction.y * by,
+    const slide = Math.tan((terminal.angle * Math.PI) / 180) * reach.across * scale;
+    const move = (point: Vec2, by: number, way: Vec2): Vec2 => ({
+      x: point.x + way.x * by,
+      y: point.y + way.y * by,
     });
     const [on, back] = straight
       ? [slide, -slide]
       : [Math.max(0, 2 * slide), Math.max(0, -2 * slide)];
     return [
-      { point: move(left, on), handleIn: null, handleOut: null, type: "corner" },
-      { point: move(right, back), handleIn: null, handleOut: null, type: "corner" },
+      { point: move(left, on, leftWay), handleIn: null, handleOut: null, type: "corner" },
+      { point: move(right, back, rightWay), handleIn: null, handleOut: null, type: "corner" },
     ];
   }
 
@@ -1382,7 +1494,7 @@ function terminalNodes(
  * Only a segment with no neighbour to ask is dropped, which leaves a spine
  * that goes nowhere at all as nothing, which is what it is.
  */
-interface Headed {
+export interface Headed {
   segment: SpineSegment;
   start: Vec2;
   end: Vec2;
@@ -1450,8 +1562,21 @@ export function sweep(stroke: Stroke): Contour[] {
   const reach = penReach(pen);
 
   const join = stroke.join ?? "miter";
-  const left = sideRun(headed, 1, reach, join, spine.closed);
-  const right = sideRun(headed, -1, reach, join, spine.closed);
+  const inside = stroke.inside ? stroke.inside * pen.weight : undefined;
+  let left = sideRun(headed, 1, reach, join, spine.closed, inside);
+  let right = sideRun(headed, -1, reach, join, spine.closed, inside);
+  /*
+   * The soft finishes that move a side, each only where its field asked for
+   * it and nothing at all otherwise: a bowl's inner side first, then an end
+   * swelled or tapered. In that order, so an end is shaped on the side as it
+   * finally lies. Each hands back new runs and leaves the ones it was given
+   * as they were, which are kept to say how far a side's end was turned.
+   */
+  const plainLeft = left;
+  const plainRight = right;
+  if (stroke.heft) [left, right] = hefted(stroke, headed, left, right, reach);
+  const shaped = endsShaped(stroke, headed, left, right, reach);
+  if (shaped) ({ left, right } = shaped);
   if (!spine.closed) {
     for (const [terminal, atEnd] of [
       [stroke.start, false],
@@ -1511,12 +1636,15 @@ export function sweep(stroke: Stroke): Contour[] {
   };
   const endStraight = arrives(headed.length - 1, -1);
   const startStraight = arrives(0, 1);
+  // The ends built on where the sides really stop, where something moved them.
+  const sided = stroke.heft !== undefined || shaped !== null;
   const endNodes = terminalNodes(
     stroke.end,
     segmentEnd(last.segment),
     last.end,
     reach,
     endStraight,
+    sided ? sidesAt(plainLeft, plainRight, left, right, true, last.end) : undefined,
   );
   const startNodes = terminalNodes(
     stroke.start,
@@ -1524,6 +1652,9 @@ export function sweep(stroke: Stroke): Contour[] {
     { x: -first.start.x, y: -first.start.y },
     reach,
     startStraight,
+    sided
+      ? sidesAt(plainLeft, plainRight, left, right, false, { x: -first.start.x, y: -first.start.y })
+      : undefined,
   );
 
   /*
@@ -1587,11 +1718,69 @@ export function sweep(stroke: Stroke): Contour[] {
     }
   }
 
-  const outline = facing(
-    { nodes: joinedAtSeams([leftNodes, endNodes, rightNodes, startNodes]), closed: true },
-    1,
-  );
+  const runs = [leftNodes, endNodes, rightNodes, startNodes];
+  /*
+   * An end with softened corners has them rounded once the four runs are one
+   * outline, found by where each run landed rather than by looking for them.
+   */
+  let nodes: GlyphNode[];
+  if (stroke.start.soft !== undefined || stroke.end.soft !== undefined) {
+    const marks: SeamMark[] = [];
+    nodes = softCorners(joinedAtSeams(runs, marks), marks, stroke);
+  } else {
+    nodes = joinedAtSeams(runs);
+  }
+  const outline = facing({ nodes, closed: true }, 1);
   return [crowded(spine, pen) ? withoutBackLoops(outline, pen.weight) : outline];
+}
+
+/**
+ * Where the two sides stop at one end, for `terminalNodes`.
+ *
+ * Each side's own end point, and the way a corner there slides: the stroke's
+ * heading at the end, turned as far as whatever moved the side turned its
+ * last travelling piece -- the side as the pen drew it against the side as it
+ * now lies. A straight side swelled toward its end slides along itself; a side
+ * only moved, as heft moves one, is not turned at all and slides as the plain
+ * end does, so a corner does not jump the moment a finish is switched on.
+ *
+ * At the far end, the stroke's left side is the end's left; at the near end,
+ * walked the other way, its right side is.
+ */
+function sidesAt(
+  plainLeft: OffsetSegment[],
+  plainRight: OffsetSegment[],
+  left: OffsetSegment[],
+  right: OffsetSegment[],
+  atEnd: boolean,
+  outward: Vec2,
+): EndSides {
+  // The way a side travels as it reaches this end, from its last piece that goes anywhere.
+  const travel = (run: OffsetSegment[]): Vec2 | null => {
+    for (const one of atEnd ? [...run].reverse() : run) {
+      if (moving(one)) return offsetHeading(one, atEnd);
+    }
+    return null;
+  };
+  const sideOf = (plain: OffsetSegment[], run: OffsetSegment[]): SideEnd => {
+    const point = atEnd ? offsetEnd(run[run.length - 1]) : offsetStart(run[0]);
+    const was = travel(plain);
+    const now = travel(run);
+    if (!was || !now) return { at: { x: point.x, y: point.y }, dir: outward };
+    const cos = was.x * now.x + was.y * now.y;
+    const sin = was.x * now.y - was.y * now.x;
+    const length = Math.hypot(cos, sin) || 1;
+    return {
+      at: { x: point.x, y: point.y },
+      dir: {
+        x: (outward.x * cos - outward.y * sin) / length,
+        y: (outward.x * sin + outward.y * cos) / length,
+      },
+    };
+  };
+  return atEnd
+    ? { left: sideOf(plainLeft, left), right: sideOf(plainRight, right) }
+    : { left: sideOf(plainRight, right), right: sideOf(plainLeft, left) };
 }
 
 /**
@@ -2133,11 +2322,19 @@ function closeRing(nodes: GlyphNode[]): GlyphNode[] {
  * for a shape that is the same shape all the way along. That is invisible in
  * one font and fatal in a varying one, where the movement between two weights
  * is a list of points that moved and both sides have to have the same list.
+ *
+ * Handed `marks`, it also says where each run landed: for every run, in order,
+ * the index in the joined outline of the node its first node became -- itself,
+ * or the node it was welded into -- and of its last. A run with no nodes is
+ * marked -1 at both. Nothing else about the joining changes.
  */
-function joinedAtSeams(runs: GlyphNode[][]): GlyphNode[] {
+export function joinedAtSeams(runs: GlyphNode[][], marks?: SeamMark[]): GlyphNode[] {
   const nodes: GlyphNode[] = [];
   for (const run of runs) {
-    if (run.length === 0) continue;
+    if (run.length === 0) {
+      marks?.push({ first: -1, last: -1 });
+      continue;
+    }
     const previous = nodes[nodes.length - 1];
     const joining = run[0];
     if (
@@ -2145,10 +2342,14 @@ function joinedAtSeams(runs: GlyphNode[][]): GlyphNode[] {
       Math.hypot(previous.point.x - joining.point.x, previous.point.y - joining.point.y) < 1e-6
     ) {
       previous.handleOut = joining.handleOut ?? previous.handleOut;
+      const first = nodes.length - 1;
       nodes.push(...run.slice(1));
+      marks?.push({ first, last: nodes.length - 1 });
       continue;
     }
+    const first = nodes.length;
     nodes.push(...run);
+    marks?.push({ first, last: nodes.length - 1 });
   }
   // And where the last run meets the first, which is the same seam once round.
   if (nodes.length > 1) {
@@ -2157,7 +2358,21 @@ function joinedAtSeams(runs: GlyphNode[][]): GlyphNode[] {
     if (Math.hypot(first.point.x - last.point.x, first.point.y - last.point.y) < 1e-6) {
       first.handleIn = last.handleIn ?? first.handleIn;
       nodes.pop();
+      // The node that went is the first one now.
+      if (marks) {
+        const gone = nodes.length;
+        for (const mark of marks) {
+          if (mark.first === gone) mark.first = 0;
+          if (mark.last === gone) mark.last = 0;
+        }
+      }
     }
   }
   return nodes;
+}
+
+/** Where one run landed in a joined outline: see `joinedAtSeams`. */
+export interface SeamMark {
+  first: number;
+  last: number;
 }

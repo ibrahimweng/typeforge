@@ -11,6 +11,7 @@ import { alongSpine, bowlPoint, spineEnd } from "../shapes";
 import { blackness, type Style } from "../style";
 import { sweep } from "../sweep";
 import type { Stroke } from "../types";
+import { buried } from "./hints";
 import {
   apexRounded,
   veeStroke,
@@ -213,11 +214,12 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     const reach = f.capBowl * 1.15;
+    // Each arm's join with the stem rounded on the side its hollow is: see `buried`.
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-      arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
-      arm(f, stem, stem + reach, f.sits(0, f.bar)),
+      arm(f, stem, stem + reach, f.hangs(f.cap, f.bar), buried(f, { right: 1 })),
+      arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap), buried(f, { left: 1, right: 1 })),
+      arm(f, stem, stem + reach, f.sits(0, f.bar), buried(f, { left: 1 })),
     ]);
   },
 
@@ -227,8 +229,8 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const reach = f.capBowl * 1.15;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-      arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
+      arm(f, stem, stem + reach, f.hangs(f.cap, f.bar), buried(f, { right: 1 })),
+      arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap), buried(f, { left: 1, right: 1 })),
     ]);
   },
 
@@ -363,7 +365,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const reach = f.capBowl * 1.05;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      arm(f, stem, stem + reach, f.sits(0, f.bar)),
+      arm(f, stem, stem + reach, f.sits(0, f.bar), buried(f, { left: 1 })),
     ]);
   },
 
@@ -542,7 +544,11 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           f.cap,
         )
       : f.cap;
-    return finish(f, [ink(f, straight(at(middle, 0), at(middle, top)), f.end, BUTT), arm]);
+    // The stem's top buried in the arm, its join rounded both sides: see `buried`.
+    return finish(f, [
+      ink(f, straight(at(middle, 0), at(middle, top)), f.end, buried(f, { left: 1, right: 1 })),
+      arm,
+    ]);
   },
 
   U: (style) => {

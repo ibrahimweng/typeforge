@@ -44,6 +44,7 @@ import {
 import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
 import { contoursIntersect } from "@/font/outline";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
+import { buried, seen } from "./hints";
 
 /**
  * A letter, as strokes plus how it should be spaced.
@@ -2641,7 +2642,8 @@ export function shoulderRadius(frame: Frame, height: number): number {
 }
 
 export function arch(frame: Frame, fromX: number, height: number): Stroke {
-  return ink(frame, archSpine(frame, fromX, height), BUTT, frame.end);
+  // Begun buried in the stem, its outer side rounded where it leaves it: see `buried`.
+  return ink(frame, archSpine(frame, fromX, height), buried(frame, { left: 0.6 }), frame.end);
 }
 
 /**
@@ -4403,7 +4405,8 @@ export function crossbar(f: Frame, from: number, to: number): Stroke {
    */
   const end: Terminal =
     f.plain.kind === "angled" || f.plain.kind === "round" ? f.plain : { ...f.plain, level: true };
-  return thin(f, straight(at(from, height), at(to, height)), end, end);
+  // Both ends seen, though neither is open: see `seen`.
+  return thin(f, straight(at(from, height), at(to, height)), seen(f, end), seen(f, end));
 }
 
 /**
@@ -4423,10 +4426,11 @@ export function arms(f: Frame, line: number): [number, number] {
  * An arm off a stem: the three of an E, the two of an F, the foot of an L.
  *
  * Square where it leaves the stem, because it is buried in ink that is already
- * there, and finished with the face's own terminal at the far end.
+ * there, and finished with the face's own terminal at the far end. `start`
+ * is that buried end, for a letter that says how its join is rounded.
  */
-export function arm(f: Frame, from: number, to: number, height: number): Stroke {
-  return thin(f, straight(at(from, height), at(to, height)), BUTT, f.end);
+export function arm(f: Frame, from: number, to: number, height: number, start = BUTT): Stroke {
+  return thin(f, straight(at(from, height), at(to, height)), start, f.end);
 }
 
 /** The same, cut square, for a bowl that runs into a stem rather than stopping. */

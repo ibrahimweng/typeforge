@@ -155,6 +155,11 @@ export interface Metrics {
    */
   dotAspect?: { thin: number; black: number; at: number };
   /**
+   * How large the dot of an i and a j is drawn against what the face would
+   * give it, 0.7 to 1.5, still held under the ascender. Left out, one.
+   */
+  dotScale?: number;
+  /**
    * How much faster the counters close midway to the Black than the straight
    * line `heavyCounter` gives, as a share of it at its most: see `narrowed`.
    */
@@ -460,6 +465,20 @@ export interface Parts {
      */
     hold?: number;
     past?: number;
+    /*
+     * The soft finishes on a serif, each left out on every base so the old
+     * drawing stands: nought, or left out, is the plain one.
+     */
+    /**
+     * How much of the tip's depth is rounded, nought to one: the corner where
+     * the bar stops turned on a radius of `tip` times half the tip's depth.
+     */
+    tip?: number;
+    /**
+     * How much wider an arm grows toward its beak, nought to 0.6: the end of
+     * the arm is `1 + swell` times as wide as its root.
+     */
+    swell?: number;
   };
   shoulder: {
     /**
@@ -474,6 +493,12 @@ export interface Parts {
      * waist; less stops short of it, which is what a running hand does.
      */
     crest: number;
+    /**
+     * How much lower the arch leaves the stem, nought to 0.8: the turn up out
+     * of the stem grows by this share and the turn down gives up the same.
+     * Left out, the arch is drawn as it always was.
+     */
+    rise?: number;
   };
   bowl: {
     /**
@@ -512,6 +537,23 @@ export interface Parts {
      * `Frame.curve`. Only read where the superness is nought.
      */
     oval?: boolean;
+    /**
+     * How flat the tail of a c and an e runs, nought to 1.5: its foot laid
+     * again on a circle `1 + tail` times as large, tangent where it leaves
+     * the bottom. Left out, the tail is the bowl's own.
+     */
+    tail?: number;
+    /**
+     * How far a bowl's inner side is moved off its centre-line, nought to
+     * 0.5, as a share of the stroke's width that way: thinner at the top and
+     * heavier at the foot. Left out, a bowl is the pen's alone.
+     */
+    heft?: number;
+    /**
+     * Which way that inner side is moved, in degrees from straight up and
+     * positive to the right, -45 to 45. Read only where `heft` is above nought.
+     */
+    heftTilt?: number;
   };
   corner: {
     /**
@@ -522,11 +564,45 @@ export interface Parts {
     radius: number;
     /** How the outside of a corner that is not rounded off is finished. */
     join: JoinKind;
+    /**
+     * How far the inside of a join is rounded, nought to one, in stems: where
+     * a stroke leaves another it is buried in, and inside a corner a stroke
+     * turns. Left out, the inside of a join is the point the two edges make.
+     */
+    fillet?: number;
   };
   terminal: {
     kind: TerminalKind;
     /** Degrees off square, for the angled cut a broad nib leaves. */
     angle: number;
+    /*
+     * The soft finishes on an end, each left out on every base so the old
+     * drawing stands: nought, or left out, is the plain one.
+     */
+    /**
+     * How round the corners of a seen cut are, nought to 0.5, as a share of
+     * the end's full width: a half makes the end a half circle.
+     */
+    soft?: number;
+    /**
+     * How much of a seen curved end's width is taken away, nought to 0.85: the
+     * inner side drawn in toward the outer so the stroke thins as it stops.
+     */
+    taper?: number;
+    /** The drop's size, -0.3 to 0.6: its radius times one more than this. */
+    dropSize?: number;
+    /** How far the ball of a drop is carried along its axis, nought to 1.5, in its own radii. */
+    dropHang?: number;
+    /**
+     * How far a drop hanging from a curve above it turns from the end's
+     * heading toward plumb, nought to one, at most sixty degrees.
+     */
+    dropCurl?: number;
+    /**
+     * How smoothly a drop's neck leaves the stroke, nought to one: at one it
+     * departs with the stroke's own curvature, and its closing edge is curved.
+     */
+    dropNeck?: number;
   };
   crossbar: {
     /** Height as a fraction of the letter it crosses. */

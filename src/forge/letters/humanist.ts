@@ -23,6 +23,7 @@ import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
+import { heftable, seen } from "./hints";
 import {
   arm,
   bendWidth,
@@ -243,7 +244,7 @@ function eyed(
       ...drawn,
       strokes: [
         drawnBar,
-        inherit(belt, { ...belt, spine: tail, start: bowlStart, end: foot }),
+        heftable(f, inherit(belt, { ...belt, spine: tail, start: bowlStart, end: foot })),
         ...rest,
       ],
     },
@@ -343,8 +344,9 @@ export function humanistT(style: Style): Recipe {
   const stemLeft = stem - stemHalf;
   const stemRight = stem + stemHalf;
   // The flag's pen, and how far across it reaches from its spine along a row.
+  // Its end at the head seen, though nothing marks it open: see `seen`.
   const flagOf = (share: number) =>
-    lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, LEVEL), share);
+    lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, seen(f, LEVEL)), share);
   /*
    * The arc leaves the bar flatter than its chord and reaches the head
    * steeper, each by the angle its sag turns it through, and a pen crosses a
@@ -438,7 +440,7 @@ export function humanistT(style: Style): Recipe {
         // Round the foot and on up into the tail, as Lora's is.
         inPieces(turn(at(stem + radius, f.dip(0) + radius), radius, 180, 305), 2),
       ),
-      { ...LEVEL, sink },
+      seen(f, { ...LEVEL, sink }),
       f.end,
     ),
     wedge,
@@ -656,7 +658,7 @@ export function humanistC(style: Style): Recipe {
   const closer = -C_CLOSE * Math.min(1, heaviness(f));
   return swollen(
     style,
-    finish(f, [openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, closer)], true),
+    finish(f, [heftable(f, openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, closer))], true),
   );
 }
 

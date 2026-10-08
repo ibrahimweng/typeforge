@@ -10,6 +10,7 @@ import type { Vec2 } from "@/font/types";
 import { spineStart } from "../shapes";
 import { blackness, type Style } from "../style";
 import type { Terminal } from "../types";
+import { buried, heftable } from "./hints";
 import {
   veeStroke,
   type Frame,
@@ -111,7 +112,11 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   c: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    return finish(f, [openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, blackGap(f))], true);
+    return finish(
+      f,
+      [heftable(f, openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, blackGap(f)))],
+      true,
+    );
   },
 
   d: (style) => {
@@ -276,13 +281,17 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
               eye,
             ),
           ),
-          BUTT,
+          // Buried in the bowl's wall, its join rounded both sides: see `buried`.
+          buried(f, { left: 1, right: 1 }),
           { kind: "butt", level: true },
         ),
         // Cut level along the foot of the bar, on a pen turned on its side.
-        lighter(
-          ink(f, belt, onSide ? { kind: "butt", level: true } : BUTT, f.end),
-          1 - 0.14 * light,
+        heftable(
+          f,
+          lighter(
+            ink(f, belt, onSide ? { kind: "butt", level: true } : BUTT, f.end),
+            1 - 0.14 * light,
+          ),
         ),
       ],
       true,
@@ -522,7 +531,8 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           // stopping dead level, which is what tells an r from a bracket.
           turn(at(landing - radius, crest - radius), radius, 90, 55),
         ),
-        BUTT,
+        // Begun buried in the stem, as the n's arch is: see `arch`.
+        buried(f, { left: 0.6 }),
         f.end,
       ),
     ]);

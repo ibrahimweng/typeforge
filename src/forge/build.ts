@@ -42,6 +42,8 @@ import {
 } from "./accents";
 import { reachesCast, type Cast } from "./cast";
 import { effectInk, reachesEffects, type Effects } from "./effects";
+import { filletsFor } from "./fillet";
+import { prepared } from "./prepare";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
@@ -1375,8 +1377,9 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
     ...beaksFor(stroke),
     ...ballsFor(stroke, style, swept, others),
     ...flaresFor(stroke, style),
-    ...teardropsFor(stroke, swept),
+    ...teardropsFor(stroke, swept, style),
     ...serifsFor(stroke, style, others),
+    ...filletsFor(stroke, style, swept, others),
   ];
 }
 
@@ -1447,17 +1450,21 @@ function dressedAll(given: Stroke[], style: Style, name: string): Stroke[] {
    * text face's figures read as a sans's with serifs on their feet.
    */
   const anyDrop = figure || decidedBy(name) === "question";
+  // And made ready for the soft finishes, which on every base is the stroke as dressed.
   return strokes.map((stroke) =>
-    dress(
-      stroke,
+    prepared(
+      dress(
+        stroke,
+        style,
+        small,
+        capital,
+        lettered ? (figure ? "figure" : "letter") : "other",
+        footBeak,
+        capitalDrop,
+        anyDrop,
+        tallS,
+      ),
       style,
-      small,
-      capital,
-      lettered ? (figure ? "figure" : "letter") : "other",
-      footBeak,
-      capitalDrop,
-      anyDrop,
-      tallS,
     ),
   );
 }
@@ -1737,7 +1744,7 @@ function dress(
               dropOvershoot(stroke, outward, side, radius) -
                 (at.y - (style.metrics.descender - style.metrics.overshoot)),
             )
-          : TEAR_PULL * Math.max(0, radius - halfWidthAcross(stroke, outward));
+          : TEAR_PULL * Math.max(0, radius - endHalfAcross(stroke, end, outward));
       if (index === 0) pullStart = pull;
       else pullEnd = pull;
       return { ...end, drop: { radius, bend, side } };
@@ -1765,7 +1772,9 @@ function dress(
             (end.kind === "slab" &&
               end.shape === "wedge" &&
               Math.abs(outward.y) <= 0.35 &&
-              lines.some((line) => Math.abs(at.y - line) <= halfWidthAcross(stroke, outward) + 1)));
+              lines.some(
+                (line) => Math.abs(at.y - line) <= endHalfAcross(stroke, end, outward) + 1,
+              )));
     /*
      * Refused a serif, a straight end is still cut the way it would have been
      * with one: level on the line it stops on, or square across an arm. Cut
@@ -1797,7 +1806,7 @@ function dress(
       outward.y > 0 &&
       [metrics.xHeight, metrics.ascender].some((line) => Math.abs(at.y - line) < 1)
     ) {
-      const inner = levelHalfWidth(stroke, outward);
+      const inner = endLevelHalf(stroke, end, outward);
       return { ...end, level: true, sink: headSlope(style) * 2 * inner };
     }
     /*
@@ -2051,8 +2060,10 @@ const TEAR_PULL = 0.6;
  * Always the same five nodes. Where there is no room for the drop -- a heavy
  * pen in a tight aperture -- it shrinks to the stroke's own width rather than
  * going, so the letter is drawn with the same shapes at every weight.
+ *
+ * Handed the style for the pear drop's fields, which nothing reads yet.
  */
-function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
+function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[] {
   if (stroke.spine.closed || swept.length === 0) return [];
   const out: Contour[] = [];
   const band = contoursBounds(swept);
@@ -3161,7 +3172,9 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
      */
     const level = terminal.level === true && Math.abs(outward.y) > 1e-3;
     const facing = level ? { x: 0, y: Math.sign(outward.y) } : outward;
-    const inner = level ? levelHalfWidth(stroke, outward) : halfWidthAcross(stroke, outward);
+    const inner = level
+      ? endLevelHalf(stroke, terminal, outward)
+      : endHalfAcross(stroke, terminal, outward);
     // The font's own stem, or this stroke's edge if that is further out, and
     // the projection beyond it. Measured from the stem so that every serif in
     // the face is the same size, and from the stroke where the stroke is the
@@ -3359,7 +3372,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
       // And no longer than the stroke is wide where it is put, which on a
       // curve with contrast is not how wide it is at the end.
       const tip = refused
-        ? Math.min(inner, halfWidthAcross(stroke, buried.heading)) * 0.6
+        ? Math.min(inner, endHalfAcross(stroke, terminal, buried.heading)) * 0.6
         : Math.min(full, room);
       /*
        * A wing cut short by a neighbour is made shallower with it, so it
@@ -3770,6 +3783,22 @@ function halfWidthAcross(stroke: Stroke, outward: Vec2): number {
 function levelHalfWidth(stroke: Stroke, outward: Vec2): number {
   const shift = reachAlong({ x: -outward.y, y: outward.x }, penReach(stroke.pen));
   return Math.abs(shift.x - (outward.x * shift.y) / outward.y);
+}
+
+/**
+ * `halfWidthAcross` at an end, as wide as the end really is: an arm swelled
+ * toward its beak (`Terminal.swell`) is that much wider there. The plain
+ * helper's own answer, untouched, on an end that is not swelled.
+ */
+function endHalfAcross(stroke: Stroke, terminal: Terminal, outward: Vec2): number {
+  const half = halfWidthAcross(stroke, outward);
+  return terminal.swell === undefined ? half : half * terminal.swell;
+}
+
+/** `levelHalfWidth` at an end, swelled as `endHalfAcross` is. */
+function endLevelHalf(stroke: Stroke, terminal: Terminal, outward: Vec2): number {
+  const half = levelHalfWidth(stroke, outward);
+  return terminal.swell === undefined ? half : half * terminal.swell;
 }
 
 /**
