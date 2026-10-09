@@ -1443,7 +1443,10 @@ function metHairline(stroke: Stroke, hairlines: Stroke[]): Stroke {
     const angle = (Math.atan(slide / pen.across) * 180) / Math.PI;
     return inherit(stroke, {
       ...stroke,
-      end: { kind: "angled", angle },
+      // Still buried, so a join the recipe asked to have rounded still is: see `buried`.
+      end: stroke.end.fillet
+        ? { kind: "angled", angle, fillet: stroke.end.fillet }
+        : { kind: "angled", angle },
     });
   }
   return stroke;

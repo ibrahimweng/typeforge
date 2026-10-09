@@ -727,6 +727,63 @@ function crossingOf(a: OffsetLine, b: OffsetLine): { point: Vec2; at: number } |
 }
 
 /**
+ * The inside of a corner between two straight offsets turned on a circle
+ * rather than brought to a point: `before` and `after` are cut back from
+ * where they cross, `at`, by the circle's tangent length, and the arc that
+ * touches both there is handed back to stand between them.
+ *
+ * The radius asked for is `radius`, and the tangent length that takes is
+ * radius·tan(τ/2) for a corner turning τ. It is held to under half of either
+ * offset's run up to the crossing, so a short leg is never eaten past its
+ * start, and the radius comes down with it: a smaller circle, never a
+ * different shape. Two pieces whatever the radius, as the stall it stands in
+ * for is, so the corner has the same nodes with the same handles at every
+ * weight; a circle of no radius is the stall again.
+ */
+function roundedInside(
+  before: OffsetLine,
+  after: OffsetLine,
+  at: Vec2,
+  radius: number,
+): OffsetEllipse {
+  const unit = (line: OffsetLine): Vec2 => {
+    const d = { x: line.to.x - line.from.x, y: line.to.y - line.from.y };
+    const length = Math.hypot(d.x, d.y) || 1;
+    return { x: d.x / length, y: d.y / length };
+  };
+  const into = unit(before);
+  const outOf = unit(after);
+  const cross = into.x * outOf.y - into.y * outOf.x;
+  const turn = Math.atan2(Math.abs(cross), dot(into, outOf));
+  const way = cross >= 0 ? 1 : -1;
+  const slope = Math.tan(turn / 2);
+  const room =
+    0.45 *
+    Math.min(
+      Math.hypot(at.x - before.from.x, at.y - before.from.y),
+      Math.hypot(after.to.x - at.x, after.to.y - at.y),
+    );
+  const tangent = Math.max(0, Math.min(radius * slope, room));
+  const r = slope > 1e-12 ? tangent / slope : 0;
+  before.to = { x: at.x - into.x * tangent, y: at.y - into.y * tangent };
+  after.from = { x: at.x + outOf.x * tangent, y: at.y + outOf.y * tangent };
+  // On the inside of the turn, a radius off the cut-back end of `before`.
+  const inward = leftOf(into);
+  const centre = { x: before.to.x + inward.x * way * r, y: before.to.y + inward.y * way * r };
+  const from = Math.atan2(before.to.y - centre.y, before.to.x - centre.x);
+  return {
+    kind: "ellipse",
+    centre,
+    rx: r,
+    ry: r,
+    rotation: 0,
+    from,
+    to: from + way * turn,
+    pieces: WEDGE_PIECES,
+  };
+}
+
+/**
  * The outside of a corner: the wedge the two offsets left between them.
  *
  * A round join needs no limit and cannot overshoot, because it is the pen
@@ -837,10 +894,11 @@ export const MITER_LIMIT = 4;
  * the inside of the turn. So one call handles both sides and neither has to
  * know which one it is.
  *
- * `_inside` is the radius the inside of a corner is to be rounded by, in font
- * units (`Stroke.inside` times the pen's weight), or nothing. Not read yet:
- * until the rounding is built every corner resolves as below whatever is
- * passed.
+ * `inside` is the radius the inside of a corner is to be rounded by, in font
+ * units (`Stroke.inside` times the pen's weight), or nothing. Given, the
+ * inside of a corner between two straight pieces is turned on a circle of
+ * that radius instead of being cut back to a point: see `roundedInside`.
+ * Left out, every corner resolves as it always has.
  */
 function sideRun(
   headed: Headed[],
@@ -848,7 +906,7 @@ function sideRun(
   reach: PenReach,
   join: JoinKind,
   closed: boolean,
-  _inside?: number,
+  inside?: number,
 ): OffsetSegment[] {
   const offsets = headed.map((one) => ({ ...offsetSegment(one, side, reach) }));
   const filling = new Map<number, OffsetSegment[]>();
@@ -941,6 +999,21 @@ function sideRun(
       // any of these are true.
       const point = swallowed && before.kind === "line" ? before.from : crossing?.point;
       if (point && (overlapping || swallowed || within)) {
+        /*
+         * The inside of the turn rounded, where the stroke asks for it: the
+         * two offsets cut back short of where they cross and a circle run
+         * between them in place of the stall -- the same two pieces, so the
+         * same nodes with the same handles, wherever the pen puts them.
+         */
+        if (
+          inside !== undefined &&
+          overlapping &&
+          before.kind === "line" &&
+          after.kind === "line"
+        ) {
+          filling.set(kink.before, [roundedInside(before, after, point, inside)]);
+          continue;
+        }
         before.to = point;
         after.from = point;
         filling.set(kink.before, stall(point));

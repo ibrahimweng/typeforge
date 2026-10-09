@@ -4855,11 +4855,20 @@ export function turnSpine(spine: Spine, about: Vec2): Spine {
 
 /** A stroke moved, keeping its pen, its ends and what it was built from. */
 export function shovedStroke(stroke: Stroke, dx: number, dy: number): Stroke {
-  const { setAs } = stroke;
+  const { setAs, crossFillets } = stroke;
   return inherit(stroke, {
     ...stroke,
     spine: shoveSpine(stroke.spine, dx, dy),
     ...(setAs ? { setAs: { ...setAs, dx: setAs.dx + dx, dy: setAs.dy + dy } } : {}),
+    // The crossings it names for rounding move with it: see `Stroke.crossFillets`.
+    ...(crossFillets
+      ? {
+          crossFillets: crossFillets.map((one) => ({
+            ...one,
+            near: at(one.near.x + dx, one.near.y + dy),
+          })),
+        }
+      : {}),
   });
 }
 
@@ -4882,7 +4891,19 @@ export function dressedAs(strokes: Stroke[], name: LetterName, style: Style): St
 }
 
 export function turnedStroke(stroke: Stroke, about: Vec2): Stroke {
-  return inherit(stroke, { ...stroke, spine: turnSpine(stroke.spine, about) });
+  const { crossFillets } = stroke;
+  return inherit(stroke, {
+    ...stroke,
+    spine: turnSpine(stroke.spine, about),
+    ...(crossFillets
+      ? {
+          crossFillets: crossFillets.map((one) => ({
+            ...one,
+            near: at(about.x * 2 - one.near.x, about.y * 2 - one.near.y),
+          })),
+        }
+      : {}),
+  });
 }
 
 /**
