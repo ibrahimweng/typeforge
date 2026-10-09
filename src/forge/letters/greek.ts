@@ -13,6 +13,7 @@ import type { Spine, Stroke } from "../types";
 import {
   veeStroke,
   archSpine,
+  arched,
   arm,
   at,
   belly,
@@ -611,7 +612,7 @@ export const GREEK_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const stem = f.edge;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-      ink(f, archSpine(f, stem, f.x, f.dip(f.desc)), BUTT, f.end),
+      arched(f, ink(f, archSpine(f, stem, f.x, f.dip(f.desc)), BUTT, f.end)),
     ]);
   },
 

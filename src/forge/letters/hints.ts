@@ -1,7 +1,8 @@
 /**
  * What a recipe says about an end or a stroke for the soft finishes: an end
  * buried in another stroke whose join is to be rounded, a cut that is seen
- * though it is not open, an open bowl that takes the heft.
+ * though it is not open, an open bowl that takes the heft, the end of an open
+ * bowl that stands blunt.
  *
  * Each says so only while the style's own field is on. Off -- on every base --
  * each hands back the very object it was given, `BUTT` itself or the
@@ -40,4 +41,26 @@ export function seen(f: Frame, terminal: Terminal): Terminal {
 export function heftable(f: Frame, stroke: Stroke): Stroke {
   if (!((f.style.parts.bowl.heft ?? 0) > 0)) return stroke;
   return inherit(stroke, { ...stroke, heftable: true });
+}
+
+/**
+ * An end of an open bowl, which gives back the style's `bowl.blunt` of the
+ * taper, where that is on; the end as it was everywhere else.
+ */
+export function bowlEnd(f: Frame, terminal: Terminal): Terminal {
+  if (!((f.style.parts.bowl.blunt ?? 0) > 0)) return terminal;
+  // No longer the face's own terminal by identity, which is how `ink` hears of it.
+  if (terminal === f.end) uses("terminal");
+  return { ...terminal, blunt: true };
+}
+
+/**
+ * A bowl standing against a stem on `side` (minus one for its left), whose
+ * heft fades toward that stem (`bowl.heftFade`), where that and the heft are
+ * both on; it keeps its run.
+ */
+export function stemmed(f: Frame, stroke: Stroke, side: 1 | -1): Stroke {
+  const { heft, heftFade } = f.style.parts.bowl;
+  if (!((heft ?? 0) > 0) || !((heftFade ?? 0) > 0)) return stroke;
+  return inherit(stroke, { ...stroke, stemSide: side });
 }

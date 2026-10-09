@@ -1616,7 +1616,7 @@ function bookSpine(
    * slope took so little of the pen across it that the bowls outweighed it.
    * A Bodoni's spine is the heaviest stroke in its S.
    */
-  const didone = Math.max(0, f.style.pen.contrast - 0.6) / 0.2;
+  const didone = sDidone(f);
   const roundest = half * (1.05 + 0.45 * Math.min(1, didone));
   /*
    * A text serif's spine lies flatter, and is held to it: Lora's crosses its
@@ -1721,6 +1721,35 @@ function bookSpine(
     straight(at(lowerX, bottom), at(footX, bottom)),
     turn(at(footX, bottom + end), end, -90, fromAngle - 180),
   );
+}
+
+/**
+ * How far toward a didone's the s and the S are drawn: nought at a contrast
+ * of 0.6 and one at 0.8, and past it as far again (see `bookSpine`, which
+ * holds what it reads to one where it must).
+ *
+ * On a text serif, the contrast is read across the pen as it is held -- its
+ * level runs against its uprights -- rather than off the pen's own. A
+ * didone's pen stands upright, and all of its contrast lies between the two;
+ * a broad nib held at an angle carries some of its thin into the uprights and
+ * some of its weight into the level runs, and draws a text face's s at the
+ * same number. Read off the pen's own, the Soft Serif's -- 0.7, held at
+ * eighteen degrees, which is 0.61 across -- was half a didone's: its s and S
+ * were let off the widening a text serif's take past the Bold and their
+ * spines left to lie as flat as they would, and at 194 and 260 both leaned
+ * like an italic, the S's upper counter cut to a notch. Upright, the two are
+ * one number; at the Serif's own eight degrees, never past the 0.6 where
+ * either begins to count. Any other face reads the pen's own, as it did.
+ */
+function sDidone(f: ReturnType<typeof frame>): number {
+  const { contrast, angle } = f.style.pen;
+  if (!textSerif(f)) return Math.max(0, contrast - 0.6) / 0.2;
+  const thin = 1 - Math.min(Math.max(contrast, 0), 0.95);
+  const turned = (angle * Math.PI) / 180;
+  const sin2 = Math.sin(turned) ** 2;
+  const cos2 = Math.cos(turned) ** 2;
+  const across = 1 - (sin2 + thin * cos2) / (cos2 + thin * sin2);
+  return Math.max(0, across - 0.6) / 0.2;
 }
 
 /**
@@ -1837,7 +1866,7 @@ function bookS(style: Style, capital: boolean): Recipe {
    */
   // And eased out as the contrast rises into a didone's, as the rest of the
   // s is: held on there, the s at 260 jumped wider step by step.
-  const toDidone = Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
+  const toDidone = Math.min(1, sDidone(f));
   const past = textSerif(f) ? Math.min(1, Math.max(0, heaviness(f) - 0.5)) * (1 - toDidone) : 0;
   // The capital a little narrower on its height, as Lora's S is.
   const width =
@@ -1874,9 +1903,7 @@ function bookS(style: Style, capital: boolean): Recipe {
   const level = 1 - S_LIGHTER * heavy * beyond;
   // A didone's s as it was: see `S_UPRIGHT`.
   const upright =
-    S_UPRIGHT +
-    (capital ? 0 : past * S_HEAVY_UPRIGHT) +
-    (S_DIDONE_UPRIGHT - S_UPRIGHT) * Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
+    S_UPRIGHT + (capital ? 0 : past * S_HEAVY_UPRIGHT) + (S_DIDONE_UPRIGHT - S_UPRIGHT) * toDidone;
   return finish(
     f,
     [

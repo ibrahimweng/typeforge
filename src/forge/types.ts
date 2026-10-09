@@ -319,6 +319,12 @@ export interface Terminal {
    */
   taper?: number;
   /**
+   * An end of an open bowl -- the c's, the C's, the G's -- hinted by the
+   * recipe, which gives back `bowl.blunt` of the taper. Only ever set where
+   * that field is on.
+   */
+  blunt?: true;
+  /**
    * On a butt end buried in another stroke: how much of an inside rounding
    * each side gets where it leaves that stroke, as a share of the style's
    * `corner.fillet`. Only ever set where that field is on.
@@ -424,7 +430,21 @@ export interface Stroke {
    * stroke's width, toward `tilt` degrees from straight up (positive to the
    * right): thinner at the top, heavier at the foot. Set by `withHeft`.
    */
-  heft?: { share: number; tilt: number };
+  heft?: {
+    share: number;
+    tilt: number;
+    /**
+     * Faded toward the stem the bowl stands against (`stemSide`), by `share`
+     * of it at that side: see `bowl.heftFade`. Left out, the heft is even.
+     */
+    fade?: { side: 1 | -1; share: number };
+  };
+  /**
+   * Which side of a bowl its stem stands on -- minus one for the left, as a
+   * b's and a p's do, one for the right, as a d's and a q's -- hinted by the
+   * recipe. Only ever set where `bowl.heft` and `bowl.heftFade` are both on.
+   */
+  stemSide?: 1 | -1;
   /**
    * The radius the inside of a corner within this stroke is rounded by, as a
    * share of `pen.weight`. Set by `withInside`.
