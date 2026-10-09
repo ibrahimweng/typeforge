@@ -54,6 +54,7 @@ import {
   type PartName,
 } from "@/forge/parts";
 import { BASES, FAMILIES } from "@/forge/style";
+import { STARTS } from "@/forge/starts";
 import { forgeStore, useForge, type Phase } from "@/state/useForge";
 import { store } from "@/state/useStore";
 import { SliderControl as Slider } from "@/ui/components/controls/slider";
@@ -133,6 +134,30 @@ export function ForgePanel({ onEdit }: { onEdit: () => Promise<void> }): React.J
                       )}
                     >
                       {base.name}
+                    </button>
+                  ))}
+                  {/*
+                    And the faces drawn on these bases, after them. Never
+                    shown as pressed: a face is somewhere to start, and once
+                    started the drawing is its base's, which says so.
+                  */}
+                  {STARTS.filter((start) => start.family === family.id).map((start) => (
+                    <button
+                      key={start.id}
+                      type="button"
+                      onClick={() =>
+                        forgeStore.startFromStyle(
+                          structuredClone(start.style),
+                          start.base,
+                          start.label,
+                        )
+                      }
+                      aria-pressed={false}
+                      title={start.style.blurb}
+                      data-forge-start={start.id}
+                      className="rounded-md border border-dashed border-border px-2 py-1.5 text-left text-2xs text-muted-foreground transition-colors hover:border-muted-foreground hover:bg-card"
+                    >
+                      {start.label}
                     </button>
                   ))}
                 </div>

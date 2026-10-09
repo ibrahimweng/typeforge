@@ -14,6 +14,7 @@
  */
 
 import { castFor, castOf, cutsFor, cutsOf } from "@/forge/read";
+import { startNamed } from "@/forge/starts";
 import { forgeStore } from "@/state/useForge";
 
 import type { CastName } from "@/forge/cast";
@@ -63,6 +64,10 @@ export function forgeControls(): ForgeShell {
     setCast: (cast, key, value, done) =>
       forgeStore.changeCast(cast, { [key]: value } as never, done ? "end" : "during"),
     startFromBase: (name) => forgeStore.startFromBase(name),
+    startFromFace: (id) => {
+      const start = startNamed(id);
+      if (start) forgeStore.startFromStyle(structuredClone(start.style), start.base, start.label);
+    },
     chooseAlternate: (letter, form) => {
       forgeStore.select(letter);
       forgeStore.chooseAlternate(form);

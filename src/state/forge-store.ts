@@ -57,6 +57,7 @@ import type { Contour, Glyph, GlyphNode, VerticalMetrics } from "@/font/types";
 import type { PartName } from "@/forge/parts";
 import { baseNamed } from "@/forge/document";
 import { SANS, type Metrics, type Parts, type Style } from "@/forge/style";
+import { STARTS } from "@/forge/starts";
 import { readyToShape } from "@/forge/layers";
 import { drawingChanged, drawingIs, drawingReadableBy, drawingRedrawn } from "./drawn";
 import type { Pen } from "@/forge/types";
@@ -502,10 +503,22 @@ class ForgeStore {
     if (written !== JSON.stringify(this.state.forge)) this.commit(fresh);
     // A name the tool gave follows the base; a name somebody typed stays.
     const { familyName } = this.state;
-    const given =
+    this.set({ familyName: this.nameGiven() ? `My ${name}` : familyName });
+  }
+
+  /**
+   * Whether the family's name is one the tool gave rather than one somebody
+   * typed: the name a new drawing has, the one starting from a base gives it,
+   * and the one starting from a face gives it (`STARTS`). A given name follows
+   * the next base or face started from; a typed one stays.
+   */
+  private nameGiven(): boolean {
+    const { familyName } = this.state;
+    return (
       familyName === "Untitled" ||
-      (familyName.startsWith("My ") && baseNamed(familyName.slice(3)) !== undefined);
-    this.set({ familyName: given ? `My ${name}` : familyName });
+      (familyName.startsWith("My ") && baseNamed(familyName.slice(3)) !== undefined) ||
+      STARTS.some((start) => start.label === familyName)
+    );
   }
 
   /**
@@ -514,10 +527,30 @@ class ForgeStore {
    * The library uses this: it measures a font, builds a style from the
    * measurements, and hands it over. Undoable like starting from a base,
    * because it is the same kind of act and can lose the same work.
+   *
+   * And so does starting from a face (`STARTS`), which says what the drawing
+   * is to be called. Given a name, it is the same act as picking a base
+   * beside it, and behaves as one: the same document is handed back when it
+   * is still exactly what was started (see `startFromBase` for why), picking
+   * the face the drawing already is writes nothing to undo, and the name
+   * replaces one the tool gave but not one somebody typed. Without a name,
+   * the library's way, it is as it always was.
    */
-  startFromStyle(style: Style, base: string): void {
-    this.commit({ ...startFrom(style), base });
-    this.set({ familyName: style.name || this.state.familyName });
+  startFromStyle(style: Style, base: string, familyName?: string): void {
+    if (familyName === undefined) {
+      this.commit({ ...startFrom(style), base });
+      this.set({ familyName: style.name || this.state.familyName });
+      return;
+    }
+    const made: Forge = { ...startFrom(style), base };
+    const written = JSON.stringify(made);
+    // Kept beside the bases' own, under a key no base name can be.
+    const key = `\u0000${familyName}`;
+    const kept = this.started.get(key);
+    const fresh = kept !== undefined && JSON.stringify(kept) === written ? kept : made;
+    this.started.set(key, fresh);
+    if (written !== JSON.stringify(this.state.forge)) this.commit(fresh);
+    this.set({ familyName: this.nameGiven() ? familyName : this.state.familyName });
   }
 
   /**
