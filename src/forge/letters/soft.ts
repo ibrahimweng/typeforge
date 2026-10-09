@@ -1,8 +1,8 @@
 /**
  * The soft text serif's own letters: the a whose bowl leans and whose foot
  * curls up instead of standing on a serif, the y whose tail swings out wide
- * and level under the line into a long pear, and the f whose bar barely
- * reaches back past its stem.
+ * and level under the line into a long pear, and the f whose bar is a little
+ * heavier than the face's crossbars and hangs a little under the line.
  *
  * Offered on every face, like the humanist forms, and drawn there with the
  * face's own pen, parts and finishes: the curl and the swing are skeletons,
@@ -39,7 +39,6 @@ import {
   rippled,
   roundHalf,
   straight,
-  thin,
   turn,
   uses,
 } from "./common";
@@ -339,27 +338,43 @@ export function swungY(style: Style): Recipe {
 // The tucked f
 // ---------------------------------------------------------------------------
 
-/** How far the tucked f's bar reaches back past its stem, against the plain f's. */
+/*
+ * The tucked f's bar, set against the reference's f: its bar reaches back
+ * past the stem about as far as a plain f's does and a little further out
+ * to the right, is a quarter heavier than the face's other crossbars, and
+ * hangs its top a third of its own weight under the x-height. Drawn as first
+ * planned -- a stub half as long on the left, as light as a crossbar, its
+ * top on the line -- it matched the reference worse than the plain f it was
+ * meant to improve on: the stub left the bar's left half missing, and the
+ * whole bar stood half its weight too high and was a fifth too thin.
+ */
+
+/**
+ * How far the tucked f's bar reaches back past its stem, against the plain
+ * f's: a little short of it, so the side that stops in the stem's ink, its
+ * join rounded, is still the shorter one.
+ */
 export const TUCKED_LEFT = 0.95;
 
 /** How far the tucked f's bar reaches out to the right of its stem, against the plain f's. */
-export const TUCKED_RIGHT = 1;
+export const TUCKED_RIGHT = 1.1;
 
 /** How much heavier the tucked f's bar is than the face's crossbars. */
-export const TUCKED_BAR = 1;
+export const TUCKED_BAR = 1.25;
 
 /**
- * How far under the x-height the tucked f's bar hangs, in its own weights:
- * none hangs its top on the line, as the plain f's does.
+ * How far under the x-height the tucked f's bar hangs its top, in its own
+ * weights: none would hang it on the line, as the plain f's is.
  */
-export const TUCKED_SINK = 0;
+export const TUCKED_SINK = 0.3;
 
 /**
  * The f of a soft text face: the plain f's stem and hook, and its bar in two
- * pieces leaving the stem's middle -- a stub tucked back to the left, its
- * join with the stem rounded above it, and the full bar out to the right.
+ * pieces leaving the stem's middle -- the left one stopping in the stem with
+ * its join rounded above it, the right one running out from inside it --
+ * a little heavier than the face's crossbars and hung a little under the line.
  *
- * Two strokes and not one, so the short side can say how its join is
+ * Two strokes and not one, so the left side can say how its join is
  * rounded; both far ends are the crossbar's own seen cuts. The hook is the
  * plain f's, so the letter still reads as an f and not a t.
  */
@@ -370,8 +385,8 @@ export function tuckedF(style: Style): Recipe {
   const left = Math.max(roundHalf(f) * 0.36, f.least, f.half * 1.5);
   const stem = f.edge + left;
   const top = f.crest(f.asc) - radius;
-  const weight = f.bar * TUCKED_BAR;
-  const height = f.hangs(f.x, weight * (1 + 2 * TUCKED_SINK));
+  const share = f.bar * TUCKED_BAR;
+  const height = f.hangs(f.x, share * (1 + 2 * TUCKED_SINK));
   // The crossbar's cut: see `crossbar`.
   const cut: Terminal =
     f.plain.kind === "angled" || f.plain.kind === "round" ? f.plain : { ...f.plain, level: true };
@@ -385,14 +400,14 @@ export function tuckedF(style: Style): Recipe {
     // Travelling left, so its top is on its right.
     bar(
       f,
-      weight,
+      share,
       straight(at(stem, height), at(stem - left * TUCKED_LEFT, height)),
       buried(f, { right: 1 }),
       seen(f, cut),
     ),
     bar(
       f,
-      weight,
+      share,
       straight(at(stem, height), at(stem + roundHalf(f) * 0.57 * TUCKED_RIGHT, height)),
       BUTT,
       seen(f, cut),
@@ -401,8 +416,9 @@ export function tuckedF(style: Style): Recipe {
 }
 
 /**
- * A bar drawn as `thin` draws one, `share` of the face's stem heavy rather
- * than the crossbar's own share: the same pen, waved against its own width.
+ * A bar drawn as `thin` draws one, but `share` of the face's stem heavy
+ * rather than the crossbar's own share: the same pen, waved against its own
+ * width.
  */
 function bar(
   f: ReturnType<typeof frame>,
@@ -411,7 +427,6 @@ function bar(
   start: Terminal,
   end: Terminal,
 ): Stroke {
-  if (share === f.bar) return thin(f, spine, start, end);
   uses("crossbar");
   const { pen } = f.style;
   const weight = pen.weight * share;

@@ -2663,10 +2663,11 @@ export function shoulderRadius(frame: Frame, height: number): number {
  *
  * And the turn down never tighter than any shoulder is let be (see
  * `shoulderRadius`): half the arch's reach, or the pen's least where that is
- * more, with the turn up growing only as far as that leaves it. Let give up
- * all the way to the pen's least, a light pen's turn down came to a fifth of
- * the arch: the m's first arch fell into its middle stem round what read as
- * a corner, and the letter read as an r beside an n.
+ * more, with the turn up growing only as far as that leaves it. Left to give
+ * up everything down to the pen's least, a light pen's turn down came to a
+ * fifth of the arch at the top of the range: the m's first arch fell into its
+ * middle stem round what read as a corner, and the letter read as an r
+ * beside an n.
  */
 export function risenTurns(
   frame: Frame,

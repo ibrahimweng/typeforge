@@ -2,12 +2,13 @@
  * The soft finishes at the far ends of what they are offered at: the curled a
  * at a Black, the inside rounding turned all the way up, a bowl as heavy at
  * its foot as the panel lets it be, a shoulder risen as far as it goes, and
- * two inside corners of one stroke a short run apart.
+ * two inside corners of one stroke a short run apart; and the tucked f's bar.
  *
  * Each of these drew something wrong that nothing measured -- a slot for a
  * counter, a horn above an arch, a cusp in a counter, an m that read as rn,
- * an edge cut back past the next corner -- and each test here is written
- * against the drawing, so it fails if the fault comes back by any road.
+ * an edge cut back past the next corner, a bar too short, too light and too
+ * high -- and each test here is written against the drawing, so it fails if
+ * the fault comes back by any road.
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
@@ -16,7 +17,9 @@ import { ready } from "@/font/boolean";
 import { contoursIntersect } from "@/font/outline";
 import type { Contour, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
+import { startFrom } from "./document";
 import { widthedStyle } from "./family";
+import { troubles } from "./health";
 import { LETTERS, recipeOf } from "./letters";
 import { BUTT, frame } from "./letters/common";
 import { type Flat, flatten, pointAt, windingAt } from "./soft";
@@ -74,7 +77,10 @@ function distanceTo(flat: Flat, point: Vec2): number {
         length > 0
           ? Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length))
           : 0;
-      nearest = Math.min(nearest, Math.hypot(point.x - (a.x + dx * share), point.y - (a.y + dy * share)));
+      nearest = Math.min(
+        nearest,
+        Math.hypot(point.x - (a.x + dx * share), point.y - (a.y + dy * share)),
+      );
     }
   }
   return nearest;
@@ -84,13 +90,18 @@ function distanceTo(flat: Flat, point: Vec2): number {
 const inked = (flat: Flat, point: Vec2): boolean =>
   windingAt(flat, point) !== 0 || distanceTo(flat, point) < 0.5;
 
-/** The contours drawn with `on` that are not in the same letter drawn with `off`. */
+/**
+ * The roundings drawn with `on` and not in the same letter drawn with `off`:
+ * the three-node contours it adds, and everything else it draws.
+ */
 function added(name: string, on: Style, off: Style): { fillets: Contour[]; rest: Contour[] } {
   const was = new Set(
     drawLetter(name, off, off.forms?.[name])!.contours.map((contour) => JSON.stringify(contour)),
   );
   const now = drawLetter(name, on, on.forms?.[name])!.contours;
-  const fillets = now.filter((contour) => !was.has(JSON.stringify(contour)));
+  const fillets = now.filter(
+    (contour) => contour.nodes.length === 3 && !was.has(JSON.stringify(contour)),
+  );
   return { fillets, rest: now.filter((contour) => !fillets.includes(contour)) };
 }
 
@@ -138,8 +149,14 @@ describe("the curled a at a heavy weight", () => {
         const t = step / 64;
         const u = 1 - t;
         const d1 = {
-          x: 3 * u * u * (p[1].x - p[0].x) + 6 * u * t * (p[2].x - p[1].x) + 3 * t * t * (p[3].x - p[2].x),
-          y: 3 * u * u * (p[1].y - p[0].y) + 6 * u * t * (p[2].y - p[1].y) + 3 * t * t * (p[3].y - p[2].y),
+          x:
+            3 * u * u * (p[1].x - p[0].x) +
+            6 * u * t * (p[2].x - p[1].x) +
+            3 * t * t * (p[3].x - p[2].x),
+          y:
+            3 * u * u * (p[1].y - p[0].y) +
+            6 * u * t * (p[2].y - p[1].y) +
+            3 * t * t * (p[3].y - p[2].y),
         };
         const d2 = {
           x: 6 * u * (p[2].x - 2 * p[1].x + p[0].x) + 6 * t * (p[3].x - 2 * p[2].x + p[1].x),
@@ -184,8 +201,30 @@ describe("the curled a at a heavy weight", () => {
           const drawn = drawLetter("a", atPen(face, pen, width), "curled")!;
           const { turn, spread } = shapeOf(counterContour(drawn.contours));
           if (turn < 0.1 || spread < 0.4) {
-            wrong.push(`${label} at ${pen}/${width}: turns ${turn.toFixed(3)}, spread ${spread.toFixed(2)}`);
+            wrong.push(
+              `${label} at ${pen}/${width}: turns ${turn.toFixed(3)}, spread ${spread.toFixed(2)}`,
+            );
           }
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  /*
+   * The same bowl sunk to the least the pen goes round, chosen on a face
+   * that draws its ordinals with the face's own a: a Bold's ª was a slot,
+   * and the health check said its counter was closing up.
+   */
+  it("leaves no counter closing up where a face draws its ordinals with it", () => {
+    const wrong: string[] = [];
+    for (const name of ["Sans", "Slab", "Geometric"]) {
+      const base = BASES.find((one) => one.name === name)!;
+      const curled = { ...base, forms: { ...(base.forms ?? {}), a: "curled" } };
+      for (const pen of [120, 170]) {
+        for (const trouble of troubles(startFrom(atPen(curled, pen)))) {
+          const said = trouble.letters.filter((letter) => /^(a|aacute|ordfeminine)$/.test(letter));
+          if (said.length > 0) wrong.push(`${name} at ${pen}: ${trouble.what} (${said.join(" ")})`);
         }
       }
     }
@@ -210,17 +249,24 @@ describe("the curled a at a heavy weight", () => {
         const polygons = drawn.map((contour) => polygonOf(contour));
         // The bowl's outside: the smallest outline around the counter.
         const around = polygons
-          .filter((points) => points !== counter && Math.sign(areaOf(points)) !== Math.sign(areaOf(counter)))
+          .filter(
+            (points) =>
+              points !== counter && Math.sign(areaOf(points)) !== Math.sign(areaOf(counter)),
+          )
           .filter((points) => windingAt(flatten([closedOf(points)]), middle) !== 0)
           .sort((one, other) => Math.abs(areaOf(one)) - Math.abs(areaOf(other)));
         expect(around.length, `${label} at ${pen}`).toBeGreaterThan(0);
         const bowl = flatten([closedOf(around[0])]);
+        // The arch's drop: the five-node contour that reaches up into the head.
         const drops = drawn.filter(
-          (contour) => contour.nodes.length === 5 && Math.min(...contour.nodes.map((n) => n.point.y)) > f.x / 3,
+          (contour) =>
+            contour.nodes.length === 5 &&
+            Math.max(...contour.nodes.map((n) => n.point.y)) > f.x * 0.6,
         );
         expect(drops.length, `${label} at ${pen}`).toBe(1);
         const touching = polygonOf(drops[0]).filter((point) => windingAt(bowl, point) !== 0);
-        if (touching.length > 0) wrong.push(`${label} at ${pen}: ${touching.length} points of the drop on the bowl`);
+        if (touching.length > 0)
+          wrong.push(`${label} at ${pen}: ${touching.length} points of the drop on the bowl`);
       }
     }
     expect(wrong).toEqual([]);
@@ -231,7 +277,12 @@ describe("the curled a at a heavy weight", () => {
 function closedOf(points: Vec2[]): Contour {
   return {
     closed: true,
-    nodes: points.map((point) => ({ point, handleIn: null, handleOut: null, type: "corner" as const })),
+    nodes: points.map((point) => ({
+      point,
+      handleIn: null,
+      handleOut: null,
+      type: "corner" as const,
+    })),
   };
 }
 
@@ -244,7 +295,7 @@ describe("an inside rounding turned all the way up", () => {
    * beside it read as a horn: at 87 on the h and the n, worse with the
    * shoulder risen.
    */
-  it("lays both straight edges of every rounding at an arch's join in ink", () => {
+  it("lays both straight edges of every rounding in ink, at an arch and at an arm", () => {
     const wrong: string[] = [];
     const faces: Array<[string, Style]> = [
       ["Soft Serif", SOFT_SERIF],
@@ -256,7 +307,7 @@ describe("an inside rounding turned all the way up", () => {
           const off = withField(withField(face, "shoulder.rise", rise), "corner.fillet", 0);
           const on = withField(off, "corner.fillet", fillet);
           for (const pen of [30, 87, 142, 260]) {
-            for (const name of ["n", "h", "m", "r"]) {
+            for (const name of ["n", "h", "m", "r", "E", "F", "L", "T"]) {
               const { fillets, rest } = added(name, atPen(on, pen), atPen(off, pen));
               expect(fillets.length, `${label} ${name} at ${pen}`).toBeGreaterThan(0);
               const ink = flatten(rest, 24);
@@ -267,9 +318,14 @@ describe("an inside rounding turned all the way up", () => {
                   [tuck, a],
                 ]) {
                   for (let k = 1; k < 16; k++) {
-                    const p = { x: from.x + ((to.x - from.x) * k) / 16, y: from.y + ((to.y - from.y) * k) / 16 };
+                    const p = {
+                      x: from.x + ((to.x - from.x) * k) / 16,
+                      y: from.y + ((to.y - from.y) * k) / 16,
+                    };
                     if (!inked(ink, p)) {
-                      wrong.push(`${label} ${name} at ${pen}, rounding ${fillet}, rise ${rise}: ${p.x.toFixed(1)},${p.y.toFixed(1)}`);
+                      wrong.push(
+                        `${label} ${name} at ${pen}, rounding ${fillet}, rise ${rise}: ${p.x.toFixed(1)},${p.y.toFixed(1)}`,
+                      );
                       break;
                     }
                   }
@@ -347,7 +403,9 @@ describe("a drop on a bowl heavy at its foot", () => {
             for (let k = 1; k < until; k++) {
               const p = edge(k / 16);
               if (!inked(ink, p)) {
-                wrong.push(`${at}: the closing edge leaves the stroke at ${p.x.toFixed(1)},${p.y.toFixed(1)}`);
+                wrong.push(
+                  `${at}: the closing edge leaves the stroke at ${p.x.toFixed(1)},${p.y.toFixed(1)}`,
+                );
                 break;
               }
             }
@@ -387,7 +445,9 @@ describe("a shoulder risen as far as it goes", () => {
                 // The shoulder's turn down, from the crest to the leg.
                 if (from !== 90 || to !== 0) continue;
                 if (segment.radius < least - 1e-9) {
-                  wrong.push(`${label} ${name} at ${pen}/${width}: ${segment.radius.toFixed(1)} < ${least.toFixed(1)}`);
+                  wrong.push(
+                    `${label} ${name} at ${pen}/${width}: ${segment.radius.toFixed(1)} < ${least.toFixed(1)}`,
+                  );
                 }
               }
             }
@@ -410,6 +470,76 @@ describe("a shoulder risen as far as it goes", () => {
       };
       expect(lowest(0.8), `n at ${pen}`).toBeLessThan(lowest(0) - frame(style).x * 0.1);
     }
+  });
+});
+
+describe("the tucked f's bar", () => {
+  /** The inked run up a vertical line at `x` that holds `y`, or nothing where `y` is paper. */
+  function runAt(ink: Flat, x: number, y: number): { bottom: number; top: number } | null {
+    if (windingAt(ink, { x, y }) === 0) return null;
+    let bottom = y;
+    let top = y;
+    while (windingAt(ink, { x, y: bottom - 0.25 }) !== 0) bottom -= 0.25;
+    while (windingAt(ink, { x, y: top + 0.25 }) !== 0) top += 0.25;
+    return { bottom, top };
+  }
+
+  /** The inked run along a level line at `y`, from `x` back to the left, as far as it goes. */
+  function leftmostAt(ink: Flat, x: number, y: number): number {
+    let left = x;
+    while (windingAt(ink, { x: left - 0.25, y }) !== 0) left -= 0.25;
+    return left;
+  }
+
+  /*
+   * Measured against the reference's f, the bar as first drawn was wrong
+   * three ways at once: its left side a stub half the plain f's, the whole
+   * bar as light as a crossbar where the reference's is a quarter heavier,
+   * and its top on the x-height where the reference's hangs under it. It
+   * matched the reference worse than the plain f did.
+   */
+  it("reaches back nearly as far as the plain f's, a little heavier, and hung under the line", () => {
+    const wrong: string[] = [];
+    for (const pen of [60, 84, 87, 142]) {
+      for (const width of WIDTHS) {
+        const style = atPen(SOFT_SERIF, pen, width);
+        const at = `${pen}/${width}`;
+        const stem = recipeOf("f", "tucked")!(heavier(style)).strokes[0].spine.segments[0];
+        if (stem.kind !== "line") throw new Error("the f starts with its stem");
+        const x = stem.from.x;
+        const right = recipeOf("f", "tucked")!(heavier(style)).strokes[2].spine.segments[0];
+        if (right.kind !== "line") throw new Error("the f's right bar is straight");
+        const plainStrokes = LETTERS.f(heavier(style)).strokes;
+        // Halfway out along the right bar, clear of the stem and of the hook.
+        const probe = (x + right.to.x) / 2;
+        const tucked = flatten(drawLetter("f", style, "tucked")!.contours, 48);
+        const plain = flatten(drawLetter("f", style, undefined)!.contours, 48);
+        const middle = right.from.y;
+        const bar = runAt(tucked, probe, middle);
+        // The plain f's bar: its own spine's height, wherever its crossbar runs.
+        const plainBar = plainStrokes
+          .flatMap((stroke) => stroke.spine.segments)
+          .find((segment) => segment.kind === "line" && segment.from.y === segment.to.y);
+        if (!bar || !plainBar || plainBar.kind !== "line") throw new Error(`no bar at ${at}`);
+        const plainRun = runAt(plain, probe, plainBar.from.y);
+        if (!plainRun) throw new Error(`no plain bar at ${at}`);
+        const thick = bar.top - bar.bottom;
+        const plainThick = plainRun.top - plainRun.bottom;
+        if (thick < plainThick * 1.15) {
+          wrong.push(`${at}: ${thick} thick against the plain ${plainThick}`);
+        }
+        const under = plainRun.top - bar.top;
+        if (under < thick * 0.2 || under > thick * 0.45) {
+          wrong.push(`${at}: its top ${under} under the plain f's, for a bar ${thick} thick`);
+        }
+        const reach = x - leftmostAt(tucked, x, middle);
+        const plainReach = x - leftmostAt(plain, x, plainBar.from.y);
+        if (reach < plainReach * 0.85 || reach > plainReach) {
+          wrong.push(`${at}: reaches ${reach} left against the plain ${plainReach}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
   });
 });
 
@@ -445,7 +575,8 @@ describe("two inside corners a short run apart", () => {
     const points = rounded.nodes.map((node) => node.point);
     // Nothing standing out into either leg's ink: the inside of each upright.
     const astray = points.filter(
-      (p) => p.y > 0.5 && p.y < 499.5 && ((p.x > 60.5 && p.x < 139.5) || (p.x > -39.5 && p.x < 39.5)),
+      (p) =>
+        p.y > 0.5 && p.y < 499.5 && ((p.x > 60.5 && p.x < 139.5) || (p.x > -39.5 && p.x < 39.5)),
     );
     expect(astray).toEqual([]);
     // The inside of each leg upright, from the top down to where its rounding begins.

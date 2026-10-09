@@ -844,7 +844,9 @@ function behindChords(tuck: Vec2, x: Vec2, a: Vec2, h: Vec2, meet: Vec2, bite: n
     const depth = behind(x, along, hollow);
     const wanted = 0.5 * depth(deep);
     const now = depth(tuck);
-    if (now < wanted && depth(deep) > now) share = Math.max(share, (wanted - now) / (depth(deep) - now));
+    if (now < wanted && depth(deep) > now) {
+      share = Math.max(share, (wanted - now) / (depth(deep) - now));
+    }
   }
   if (!(share > 0)) return tuck;
   // Never so far that the meeting of the tangent lines leaves the contour.
