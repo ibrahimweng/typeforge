@@ -1730,6 +1730,26 @@ function headings(segments: SpineSegment[], closed: boolean): Headed[] {
 }
 
 /**
+ * Whether sweeping this stroke makes any of the soft finishes: the inside of
+ * its corners rounded (`Stroke.inside`), its bowl's foot made heavy
+ * (`Stroke.heft`), or an end swelled, tapered or softened. No base asks for
+ * any of them, so on every base this is false.
+ */
+export function sweptSoftly(stroke: Stroke): boolean {
+  const { start, end } = stroke;
+  return (
+    !!stroke.inside ||
+    !!stroke.heft ||
+    start.swell !== undefined ||
+    start.taper !== undefined ||
+    start.soft !== undefined ||
+    end.swell !== undefined ||
+    end.taper !== undefined ||
+    end.soft !== undefined
+  );
+}
+
+/**
  * Draw a stroke.
  *
  * An open stroke comes back as one contour: up the left side, across the far

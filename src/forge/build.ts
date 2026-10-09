@@ -45,7 +45,7 @@ import { effectInk, reachesEffects, type Effects } from "./effects";
 import { filletsFor } from "./fillet";
 import { prepared } from "./prepare";
 import { heftShift, innerSide } from "./heft";
-import { type Flat, flatten, kappa, lineIntersection, pointAt, windingAt } from "./soft";
+import { type Flat, flatten, kappa, lineIntersection, pointAt } from "./soft";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
@@ -71,7 +71,7 @@ import {
 } from "./shapes";
 import { enclosing, recording as partsRecording, shiftingVees } from "./letters/common";
 import { seamsOf, wobbleOf } from "./script";
-import { penReach, reachAlong, sweep } from "./sweep";
+import { penReach, reachAlong, sweep, sweptSoftly } from "./sweep";
 import {
   BASES,
   blackness,
@@ -1373,8 +1373,13 @@ function widestFigure(style: Style, cache: WeakMap<Style, number>, formed: boole
  * flares. A four with a ball on its diagonal reached twenty units past the
  * advance every figure had been given.
  */
-function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] {
-  const swept = sweep(stroke);
+function inkOf(
+  stroke: Stroke,
+  style: Style,
+  others: Contour[] = [],
+  // The stroke already swept, where the caller may hand that on: see `inkAll`.
+  swept: Contour[] = sweep(stroke),
+): Contour[] {
   return [
     ...swept,
     ...beaksFor(stroke),
@@ -1403,10 +1408,23 @@ function inkAll(given: Stroke[], style: Style, name = ""): Contour[][] {
     ? dressedSmall(given, style, name)
     : dressedAll(given, style, name);
   const swept = dressed.map((stroke) => sweep(stroke));
+  /*
+   * A stroke's own ink starts from its outline, which it was just swept for:
+   * a sweep is the stroke's alone, so sweeping it again draws the very same
+   * outline. Where the sweep makes soft finishes (`sweptSoftly`), the dearest
+   * part of it, the outline already swept is handed on rather than drawn
+   * twice; every other stroke is swept again as it always was. Not while a
+   * wave book is open: each sweep asks the book about its corners in turn
+   * (see `folded`), and the book was written with both sweeps asking.
+   */
+  const book = bookInUse();
   return dressed.map((stroke, index) => {
     const others = swept.flatMap((one, other) => (other === index ? [] : one));
     const as = stroke.setAs;
-    if (!as) return inkOf(stroke, style, others);
+    if (!as) {
+      const kept = book === null && sweptSoftly(stroke) ? swept[index] : undefined;
+      return inkOf(stroke, style, others, kept);
+    }
     // A letter drawn small is inked where it was drawn, on its own lines,
     // with what stands beside it moved there too: see `dressedSmall`.
     return inkOf(
@@ -2441,7 +2459,7 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
     const lift = pear ? null : heftLift(stroke, index === 1 ? side : -side, reach);
     // A pear is drawn carried on `hang` radii and turned `turn` toward plumb;
     // a plain drop has neither, and is drawn as it always was.
-    const make = (size: number, pull?: number, close?: boolean, hang = 0, turn = 0) =>
+    const drawn = (size: number, pull?: number, close?: boolean, hang = 0, turn = 0) =>
       tear(
         stroke,
         spine,
@@ -2456,6 +2474,8 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
         pear && { ...pear, hang, turn },
         lift,
       );
+    // A pear asked for again is the one already made: see `madeOnce`.
+    const make = pear ? madeOnce(drawn) : drawn;
     /*
      * Made as large as the drop wants, then smaller until it keeps to the
      * stroke's band, and never smaller than the least that covers the end. A
@@ -2492,7 +2512,7 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
     const kept = settled.radius;
     // Asked of the drop as it will be stored, on the unit grid: a crossing
     // too slight to see in the drawing is still one once rounded.
-    const folds = (drop: Contour) =>
+    const crosses = (drop: Contour) =>
       contoursIntersect([
         {
           ...drop,
@@ -2510,6 +2530,7 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
           })),
         },
       ]) || contoursIntersect([drop]);
+    const folds = pear ? askedOnce(crosses) : crosses;
     const again: Array<[number, boolean]> = [
       // The tail left the stroke less steeply, then closed back onto its own
       // foot, whose edge it cannot then rise over.
@@ -2545,7 +2566,7 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
        * ladder where it dips into the stroke's own ink on the way: a neck that
        * runs under the edge and out again leaves a notch in the letter.
        */
-      const dips = pear.ink ? dipsInto(pear.ink) : () => false;
+      const dips = pear.ink ? askedOnce(dipsInto(pear.ink)) : () => false;
       if (folds(shape) || dips(shape)) {
         /*
          * Drawn again from the most pear down to the least: the plain drop's
@@ -2601,8 +2622,10 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
         let strays = Infinity;
         for (const attempt of tries) {
           const next = attempt();
-          if (folds(next)) continue;
           if (within(next, band)) {
+            // One that dips once another already has is passed over whether it folds or not.
+            if (dipping !== null && dips(next)) continue;
+            if (folds(next)) continue;
             if (!dips(next)) {
               shape = next;
               found = true;
@@ -2611,9 +2634,10 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
             dipping ??= next;
             continue;
           }
+          // Only one that would stray less than any so far need be asked whether it folds.
           const bounds = contoursBounds([next]);
           const past = Math.max(bounds.yMax - band.yMax, band.yMin - bounds.yMin);
-          if (past < strays) {
+          if (past < strays && !folds(next)) {
             strays = past;
             straying = next;
           }
@@ -2624,6 +2648,51 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
     out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
   }
   return out;
+}
+
+/**
+ * A pear's drawing kept for whatever asks for it again with the same size,
+ * pull, close, hang and turn. Settling a pear that has no room asks for its
+ * least size over and over, and the ladder in `teardropsFor` asks for that
+ * again when it takes the pear "smaller" than the least: the same five
+ * numbers draw the same nodes, so each pear is drawn once.
+ */
+function madeOnce(
+  drawn: (size: number, pull?: number, close?: boolean, hang?: number, turn?: number) => Contour,
+): (size: number, pull?: number, close?: boolean, hang?: number, turn?: number) => Contour {
+  type Asked = [
+    number,
+    number | undefined,
+    boolean | undefined,
+    number | undefined,
+    number | undefined,
+  ];
+  const made: Array<{ asked: Asked; drop: Contour }> = [];
+  return (size, pull, close, hang, turn) => {
+    const asked: Asked = [size, pull, close, hang, turn];
+    // The same five to the last bit, nought kept apart from less than nought.
+    const kept = made.find((one) => one.asked.every((value, at) => Object.is(value, asked[at])));
+    if (kept) return kept.drop;
+    const drop = drawn(size, pull, close, hang, turn);
+    made.push({ asked, drop });
+    return drop;
+  };
+}
+
+/**
+ * A question about a drop answered once for each drop, however often the same
+ * one is handed back: see `madeOnce`. Nothing changes a drop once made.
+ */
+function askedOnce(ask: (drop: Contour) => boolean): (drop: Contour) => boolean {
+  const answers = new Map<Contour, boolean>();
+  return (drop) => {
+    let answer = answers.get(drop);
+    if (answer === undefined) {
+      answer = ask(drop);
+      answers.set(drop, answer);
+    }
+    return answer;
+  };
 }
 
 /** A drop made to keep to its stroke's band: see `settle` in `teardropsFor`. */
@@ -2702,17 +2771,158 @@ const DIP_DEPTH = 0.5;
  * Whether a drop's neck -- the edge from its top to where it meets the stroke,
  * the third and fourth of the nodes `tear` lays out -- runs into the stroke's
  * own ink deeper than `DIP_DEPTH` anywhere along it, asked at sixteen points.
+ *
+ * A point is in the ink where the ink winds round it, and deeper than
+ * `DIP_DEPTH` where no edge of the ink comes that near it. Both are asked of
+ * the edges that could answer for some point of the neck (`edgesNear`), not
+ * of the whole stroke: the neck is short and the stroke long.
  */
 function dipsInto(ink: Flat): (drop: Contour) => boolean {
   return (drop) => {
     const top = drop.nodes[2];
     const meets = drop.nodes[3];
-    for (let step = 1; step <= 16; step++) {
-      const point = pointAt(top, meets, step / 17);
-      if (windingAt(ink, point) !== 0 && depthIn(ink, point) > DIP_DEPTH) return true;
-    }
-    return false;
+    const points: Vec2[] = [];
+    for (let step = 1; step <= 16; step++) points.push(pointAt(top, meets, step / 17));
+    const near = edgesNear(ink, points, DIP_DEPTH);
+    return points.some(
+      (point) => windingAmong(near.round, point) !== 0 && deeperThan(near.deep, point, DIP_DEPTH),
+    );
   };
+}
+
+/**
+ * The edges of a flattened outline that can answer for a few points: see
+ * `edgesNear`. Each edge is four numbers in a row -- the x and y of the point
+ * it leaves, then of the point it reaches -- the very numbers of the outline.
+ */
+interface Near {
+  /** Each polygon's box, as `windingAt` reads it, and its edges level with any of the points. */
+  round: Array<{ edges: number[]; xMin: number; yMin: number; xMax: number; yMax: number }>;
+  /** The edges that come within `depth` of the box round the points, and a hair more. */
+  deep: number[];
+}
+
+/**
+ * The edges of a flattened outline that can answer either question `dipsInto`
+ * asks of these points. An edge wholly above or below every point winds round
+ * none of them, as `windingAt` counts winding; and one further than `depth`
+ * from the box round them all is further than that from each, by more than
+ * any rounding in finding the nearest point on it. Every other edge is kept,
+ * and one that is no number is never "wholly" anywhere, so it is kept too.
+ */
+function edgesNear(ink: Flat, points: Vec2[], depth: number): Near {
+  let xMin = Infinity;
+  let yMin = Infinity;
+  let xMax = -Infinity;
+  let yMax = -Infinity;
+  for (const point of points) {
+    xMin = Math.min(xMin, point.x);
+    yMin = Math.min(yMin, point.y);
+    xMax = Math.max(xMax, point.x);
+    yMax = Math.max(yMax, point.y);
+  }
+  const reach =
+    depth + 1e-6 * (1 + Math.max(Math.abs(xMin), Math.abs(xMax), Math.abs(yMin), Math.abs(yMax)));
+  const round: Near["round"] = [];
+  const deep: number[] = [];
+  for (const polygon of ink.polygons) {
+    const { points: ring } = polygon;
+    const edges: number[] = [];
+    for (let k = 0; k < ring.length; k++) {
+      const a = ring[k];
+      const b = ring[(k + 1) % ring.length];
+      const low = Math.min(a.y, b.y);
+      const high = Math.max(a.y, b.y);
+      if (!(high < yMin || low > yMax)) edges.push(a.x, a.y, b.x, b.y);
+      if (
+        !(
+          high < yMin - reach ||
+          low > yMax + reach ||
+          Math.max(a.x, b.x) < xMin - reach ||
+          Math.min(a.x, b.x) > xMax + reach
+        )
+      ) {
+        deep.push(a.x, a.y, b.x, b.y);
+      }
+    }
+    round.push({
+      edges,
+      xMin: polygon.xMin,
+      yMin: polygon.yMin,
+      xMax: polygon.xMax,
+      yMax: polygon.yMax,
+    });
+  }
+  return { round, deep };
+}
+
+/**
+ * How many times the edges wind round a point: `windingAt`, edge for edge,
+ * of the edges `edgesNear` kept, each polygon passed over where its box does
+ * not hold the point.
+ */
+function windingAmong(round: Near["round"], point: Vec2): number {
+  let winding = 0;
+  for (const polygon of round) {
+    if (
+      point.x < polygon.xMin ||
+      point.x > polygon.xMax ||
+      point.y < polygon.yMin ||
+      point.y > polygon.yMax
+    ) {
+      continue;
+    }
+    const { edges } = polygon;
+    for (let at = 0; at < edges.length; at += 4) {
+      const ax = edges[at];
+      const ay = edges[at + 1];
+      const bx = edges[at + 2];
+      const by = edges[at + 3];
+      if (ay <= point.y) {
+        if (by > point.y && (bx - ax) * (point.y - ay) - (point.x - ax) * (by - ay) > 0) {
+          winding += 1;
+        }
+      } else if (by <= point.y && (bx - ax) * (point.y - ay) - (point.x - ax) * (by - ay) < 0) {
+        winding -= 1;
+      }
+    }
+  }
+  return winding;
+}
+
+/**
+ * A little over one. A point whose squared distance is this much more than
+ * the square of another distance is further off than it, however `Math.hypot`
+ * rounds either: so it can be passed over by its square alone, which costs
+ * far less than measuring it.
+ */
+const SQUARED_SLACK = 1 + 1e-9;
+
+/**
+ * Whether a point is further than `depth` from every one of these edges (as
+ * `edgesNear` lays them out), each measured from the nearest point on it --
+ * answered no at the first that comes that near, rather than after measuring
+ * every one.
+ */
+function deeperThan(edges: number[], point: Vec2, depth: number): boolean {
+  const near = depth * depth * SQUARED_SLACK;
+  for (let at = 0; at < edges.length; at += 4) {
+    const ax = edges[at];
+    const ay = edges[at + 1];
+    const dx = edges[at + 2] - ax;
+    const dy = edges[at + 3] - ay;
+    const length = dx * dx + dy * dy;
+    const share =
+      length > 0
+        ? Math.min(1, Math.max(0, ((point.x - ax) * dx + (point.y - ay) * dy) / length))
+        : 0;
+    const offX = point.x - (ax + dx * share);
+    const offY = point.y - (ay + dy * share);
+    if (offX * offX + offY * offY > near) continue;
+    // Measured exactly; one that is no number answers no, as the least of them then was not one.
+    if (!(Math.hypot(offX, offY) > depth)) return false;
+  }
+  return true;
 }
 
 /**
@@ -2732,13 +2942,20 @@ const BEND_REACH = 6;
  */
 function bendOf(ink: Flat, point: Vec2, inside: Vec2): number {
   let best = Infinity;
+  // The square of the nearest so far, with `SQUARED_SLACK`: a corner past it cannot be nearer.
+  let past = Infinity;
   let polygon: Vec2[] = [];
   let at = 0;
   for (const { points } of ink.polygons) {
     for (let k = 0; k < points.length; k++) {
-      const far = Math.hypot(points[k].x - point.x, points[k].y - point.y);
+      const dx = points[k].x - point.x;
+      const dy = points[k].y - point.y;
+      if (dx * dx + dy * dy > past) continue;
+      const far = Math.hypot(dx, dy);
       if (far < best) {
         best = far;
+        // Not for a distance so small its square is lost: every corner is then measured.
+        past = far > 1e-100 ? far * far * SQUARED_SLACK : Infinity;
         polygon = points;
         at = k;
       }
@@ -2771,29 +2988,6 @@ function bendOf(ink: Flat, point: Vec2, inside: Vec2): number {
   // A left turn bends round to the left of the way walked.
   const left = { x: -(after.y - before.y), y: after.x - before.x };
   return turning * Math.sign(left.x * inside.x + left.y * inside.y);
-}
-
-/** How far a point is from the nearest edge of a flattened outline. */
-function depthIn(ink: Flat, point: Vec2): number {
-  let nearest = Infinity;
-  for (const { points } of ink.polygons) {
-    for (let k = 0; k < points.length; k++) {
-      const a = points[k];
-      const b = points[(k + 1) % points.length];
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const length = dx * dx + dy * dy;
-      const share =
-        length > 0
-          ? Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length))
-          : 0;
-      nearest = Math.min(
-        nearest,
-        Math.hypot(point.x - (a.x + dx * share), point.y - (a.y + dy * share)),
-      );
-    }
-  }
-  return nearest;
 }
 
 /**

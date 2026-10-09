@@ -347,13 +347,15 @@ export function windingAt(flat: Flat, point: Vec2): number {
       continue;
     }
     const { points } = polygon;
+    // Which side of an edge the point is on, asked only of an edge that crosses its level.
+    const side = (a: Vec2, b: Vec2) =>
+      (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
     for (let k = 0; k < points.length; k++) {
       const a = points[k];
       const b = points[(k + 1) % points.length];
-      const side = (b.x - a.x) * (point.y - a.y) - (point.x - a.x) * (b.y - a.y);
       if (a.y <= point.y) {
-        if (b.y > point.y && side > 0) winding += 1;
-      } else if (b.y <= point.y && side < 0) {
+        if (b.y > point.y && side(a, b) > 0) winding += 1;
+      } else if (b.y <= point.y && side(a, b) < 0) {
         winding -= 1;
       }
     }
