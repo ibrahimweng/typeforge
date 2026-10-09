@@ -6,6 +6,7 @@ import { penReach, reachAlong } from "../sweep";
 import { blackness, scriptUnit, type Style } from "../style";
 import type { Spine, Stroke } from "../types";
 import { buried } from "./hints";
+import { curledA, swungY, tuckedF } from "./soft";
 import {
   grotesqueA,
   grotesqueAt,
@@ -2108,4 +2109,44 @@ for (const name of WRITTEN_CAPITALS) {
       return { ...plain, strokes: [...plain.strokes, swash] };
     },
   });
+}
+
+/*
+ * The soft text serif's own letters, offered on every face: see `soft.ts`.
+ *
+ * Drawn plain where a humanist form would be -- on a joined face, or with a
+ * pen held near the upright -- for the same reason: a leaning bowl and a
+ * swinging tail are a broad nib's shapes, and a joined face's letters are
+ * written to hand on to each other at their edges.
+ */
+const SOFT: Array<[LetterName, string, string, string, (style: Style) => Recipe]> = [
+  [
+    "a",
+    "curled",
+    "Curled foot",
+    "The bowl leaning back into the stem, and the stem's foot curling up where a serif would stand.",
+    curledA,
+  ],
+  [
+    "y",
+    "swung",
+    "Swung tail",
+    "The tail turning wide under the line and running out level to the left.",
+    swungY,
+  ],
+  [
+    "f",
+    "tucked",
+    "Tucked bar",
+    "The bar barely reaching back past the stem, and running out to the right.",
+    tuckedF,
+  ],
+];
+for (const [name, id, label, hint, build] of SOFT) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build(style);
+  ALTERNATES[name].push({ id, label, hint, build: drawn });
 }
