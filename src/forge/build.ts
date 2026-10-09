@@ -44,6 +44,8 @@ import { reachesCast, type Cast } from "./cast";
 import { effectInk, reachesEffects, type Effects } from "./effects";
 import { filletsFor } from "./fillet";
 import { prepared } from "./prepare";
+import { heftShift, innerSide } from "./heft";
+import { type Flat, flatten, kappa, lineIntersection, pointAt, windingAt } from "./soft";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
@@ -1651,7 +1653,15 @@ function dress(
        * refuses on a curve and draws as a sliver buried in the stroke: the same
        * drawing, and the same shapes every weight has always been drawn with.
        */
-      if (curved.kind !== "butt") end = { kind: curved.kind, angle: curved.angle, open: end.open };
+      // Carrying the end's own pear across, which the face's terminal does not know.
+      if (curved.kind !== "butt") {
+        end = {
+          kind: curved.kind,
+          angle: curved.angle,
+          open: end.open,
+          ...(end.pear ? { pear: end.pear } : {}),
+        };
+      }
     }
     /*
      * A capital's curved end on a face with text serifs wears a beak: the top
@@ -1729,9 +1739,12 @@ function dress(
       // for: on a serif face, the serif refused on a curve.
       if (!decided(hangs)) return terminal.kind === "slab" ? terminal : { ...end, kind: "butt" };
       const bend = curve?.radius ?? 0;
-      const radius = dropRadius(stroke, style, outward, bend);
+      const radius = dropRadius(stroke, style, outward, bend, end.pear);
       const toward = curve?.toward ?? { x: -outward.y, y: outward.x };
       const side = outward.x * toward.y - outward.y * toward.x > 0 ? 1 : -1;
+      // The face's pear, where it asks for one: how far the ball hangs on, how
+      // far it turns toward plumb, and how its neck leaves the stroke.
+      const pear = pearOf(style, end, curve, outward, side);
       // Pulled back by a share of what the drop adds beyond the stroke's own
       // width, so a drop with no room to swell is not a shorter stroke.
       /*
@@ -1740,17 +1753,23 @@ function dress(
        * by as much of the drop as would reach past the descender's overshoot.
        * At a heavy weight it hung twenty-seven units below the descender.
        */
+      /*
+       * A pear is pulled back by what its ball adds as well: carried `hang`
+       * radii on along its axis, it reaches that much further past the end
+       * along the way the stroke was going, less as the axis turns away.
+       */
+      const swell = pear ? radius * (1 + pear.hang * Math.cos(pear.turn)) : radius;
       const pull =
         outward.y < -0.7
           ? Math.max(
               0,
-              dropOvershoot(stroke, outward, side, radius) -
+              dropOvershoot(stroke, outward, side, radius, pear ?? undefined) -
                 (at.y - (style.metrics.descender - style.metrics.overshoot)),
             )
-          : TEAR_PULL * Math.max(0, radius - endHalfAcross(stroke, end, outward));
+          : TEAR_PULL * Math.max(0, swell - endHalfAcross(stroke, end, outward));
       if (index === 0) pullStart = pull;
       else pullEnd = pull;
-      return { ...end, drop: { radius, bend, side } };
+      return { ...end, drop: pear ? { radius, bend, side, ...pear } : { radius, bend, side } };
     }
     const { metrics } = style;
     const lines = [0, metrics.xHeight, metrics.capHeight, metrics.ascender, metrics.descender];
@@ -2235,10 +2254,29 @@ function characterOf(name: string): string | null {
  * And never more than the curve it finishes has room for: the drop hangs into
  * the inside of that curve, and past about half of what is left of the
  * counter across it, it meets whatever is on the other side.
+ *
+ * A face that sizes its drops (`terminal.dropSize`, times the end's own
+ * `pear.size`) grows the drop it wants by that share, and lets a bigger one
+ * take more of that room: three tenths more of it for every whole size, up to
+ * three quarters. Without one, the drop is the size it always was.
  */
-function dropRadius(stroke: Stroke, style: Style, outward: Vec2, curve: number): number {
+function dropRadius(
+  stroke: Stroke,
+  style: Style,
+  outward: Vec2,
+  curve: number,
+  pear?: Terminal["pear"],
+): number {
   const stem = style.pen.weight;
   const h = halfWidthAcross(stroke, outward);
+  const size = style.parts.terminal.dropSize;
+  if (size !== undefined && size !== 0) {
+    const grown = size * (pear?.size ?? 1);
+    const wanted = TEAR_SIZE * (1 + grown) * Math.sqrt(stem * style.metrics.unitsPerEm * 0.1);
+    const share = Math.min(0.75, 0.45 + 0.3 * Math.max(0, grown));
+    const room = curve > 0 ? h + share * Math.max(0, curve - 2 * h) : wanted;
+    return Math.max(h, Math.min(wanted, room));
+  }
   const wanted = TEAR_SIZE * Math.sqrt(stem * style.metrics.unitsPerEm * 0.1);
   const room = curve > 0 ? h + 0.45 * Math.max(0, curve - 2 * h) : wanted;
   return Math.max(h, Math.min(wanted, room));
@@ -2267,8 +2305,19 @@ function headSlope(style: Style): number {
  * How far past the end of its stroke a drop reaches, along the way the stroke
  * is going: the same arithmetic `teardropsFor` lays the drop out with, asked
  * before the stroke is pulled back to make room for it.
+ *
+ * A pear's ball is carried `hang` of its radii on along its axis, which turns
+ * `turn` away from the way the stroke is going: that much further past the
+ * end. Reckoned at the hang the face asks for, which `teardropsFor` only ever
+ * takes in, so a pear heading down is never pulled back too little.
  */
-function dropOvershoot(stroke: Stroke, u: Vec2, side: number, radius: number): number {
+function dropOvershoot(
+  stroke: Stroke,
+  u: Vec2,
+  side: number,
+  radius: number,
+  pear?: { hang: number; turn: number },
+): number {
   const n = { x: -u.y * side, y: u.x * side };
   const shift = reachAlong({ x: -u.y, y: u.x }, penReach(stroke.pen));
   const lean = shift.x * n.x + shift.y * n.y;
@@ -2281,7 +2330,46 @@ function dropOvershoot(stroke: Stroke, u: Vec2, side: number, radius: number): n
    * on, so `teardropsFor` shrinks it to the least that holds the end's two
    * corners -- and that is what it reaches past the end by.
    */
-  return Math.max(0, t + (u.y < -0.7 ? least : Math.max(radius, least)));
+  if (!pear) return Math.max(0, t + (u.y < -0.7 ? least : Math.max(radius, least)));
+  const ball = u.y < -0.7 ? least : Math.max(radius, least);
+  return Math.max(0, t + ball * (1 + pear.hang * Math.cos(pear.turn)));
+}
+
+/**
+ * The pear a face asks of one drop, or nothing where it asks for none: how
+ * many of its radii the ball is carried on along its axis (`hang`), how far
+ * that axis turns from the end's heading toward plumb (`turn`, radians), and
+ * how far its neck blends toward leaving the stroke as curved as the stroke is
+ * (`neck`).
+ *
+ * The turn is only for a drop hanging from a curve above it, the top of a c or
+ * an a, the hook of an f, the arm of an r, and only toward the side the drop
+ * hangs on, where down is: a share of the way from the end's heading round to
+ * plumb, never more than sixty degrees. A tail -- the y's, the j's -- curls
+ * the other way and keeps its pear level with the way it was going.
+ *
+ * Read off the style, the end's recipe and the skeleton, never the pen, and
+ * only ever settling numbers: a pear has the same nodes as any other drop.
+ */
+function pearOf(
+  style: Style,
+  terminal: Terminal,
+  curve: { toward: Vec2; radius: number } | null,
+  outward: Vec2,
+  side: number,
+): { hang: number; turn: number; neck: number } | null {
+  const { dropHang = 0, dropCurl = 0, dropNeck = 0 } = style.parts.terminal;
+  if (!(dropHang > 0) && !(dropCurl > 0) && !(dropNeck > 0)) return null;
+  const hang = dropHang > 0 ? Math.max(0, dropHang * (terminal.pear?.hang ?? 1)) : 0;
+  let turn = 0;
+  // Down is on the drop's side of the way the end is going: the drop's side is
+  // `side` times the left of `outward`, and down along that is -outward.x.
+  if (dropCurl > 0 && curve !== null && curve.toward.y < -0.25 && -outward.x * side > 0) {
+    const plumb = Math.acos(Math.min(1, Math.max(-1, -outward.y)));
+    const share = Math.max(0, dropCurl * (terminal.pear?.curl ?? 1));
+    turn = Math.min(Math.PI / 3, share * plumb);
+  }
+  return { hang, turn, neck: dropNeck > 0 ? Math.min(1, dropNeck) : 0 };
 }
 
 /** A teardrop's radius, in stems. */
@@ -2310,7 +2398,13 @@ const TEAR_PULL = 0.6;
  * pen in a tight aperture -- it shrinks to the stroke's own width rather than
  * going, so the letter is drawn with the same shapes at every weight.
  *
- * Handed the style for the pear drop's fields, which nothing reads yet.
+ * A face with a pear (see `pearOf`) has each drop carried on and turned as
+ * the end settled when it was dressed. Where its band has no room for the
+ * pear, the ball is brought back in toward the end before it is made any
+ * smaller; and a neck asked to leave the stroke smoothly is held to it, drawn
+ * again as a drop that folds is wherever it dips into the stroke's own ink.
+ * A pear that folds gives up its turn and then its hang, each settled into
+ * the band afresh, and is never kept folded where one that does not is found.
  */
 function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[] {
   if (stroke.spine.closed || swept.length === 0) return [];
@@ -2337,16 +2431,48 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
     // Round enough to take both corners of the end inside it.
     const least = (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
     const bend = drop.bend > 0 ? drop.bend : drop.radius * 4;
-    let radius = Math.max(drop.radius, least);
-    let shape = tear(stroke, spine, at, u, n, outer, radius, bend);
-    for (let tries = 0; tries < 8 && !within(shape, band); tries++) {
-      radius = Math.max(least, radius * 0.82);
-      shape = tear(stroke, spine, at, u, n, outer, radius, bend);
-    }
-    if (!within(shape, band)) {
-      radius = least;
-      shape = tear(stroke, spine, at, u, n, outer, least, bend);
-    }
+    const pear = pearAt(stroke, swept, drop, index === 1 ? side : -side, reach);
+    // A pear is drawn carried on `hang` radii and turned `turn` toward plumb;
+    // a plain drop has neither, and is drawn as it always was.
+    const make = (size: number, pull?: number, close?: boolean, hang = 0, turn = 0) =>
+      tear(
+        stroke,
+        spine,
+        at,
+        u,
+        n,
+        outer,
+        size,
+        bend,
+        pull,
+        close,
+        pear && { ...pear, hang, turn },
+      );
+    /*
+     * Made as large as the drop wants, then smaller until it keeps to the
+     * stroke's band, and never smaller than the least that covers the end. A
+     * pear with no room brings its ball back in toward the end, giving up its
+     * hang, before it is made any smaller.
+     */
+    const settle = (hang: number, turn: number): Settled => {
+      let radius = Math.max(drop.radius, least);
+      let shape = make(radius, undefined, undefined, hang, turn);
+      for (let tries = 0; pear && hang > 0 && tries < 8 && !within(shape, band); tries++) {
+        hang *= 0.82;
+        shape = make(radius, undefined, undefined, hang, turn);
+      }
+      for (let tries = 0; tries < 8 && !within(shape, band); tries++) {
+        radius = Math.max(least, radius * 0.82);
+        shape = make(radius, undefined, undefined, hang, turn);
+      }
+      if (!within(shape, band)) {
+        radius = least;
+        shape = make(least, undefined, undefined, hang, turn);
+      }
+      return { shape, radius, hang, turn };
+    };
+    const settled = settle(pear?.hang ?? 0, pear?.turn ?? 0);
+    let shape = settled.shape;
     /*
      * And never one that crosses itself: on a hairline of a very high
      * contrast, the neck the drop leaves the stroke by is so narrow that the
@@ -2355,7 +2481,7 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
      * only taken again where it does not and still keeps to the stroke's
      * band; a drop that already did not is left as it was.
      */
-    const kept = radius;
+    const kept = settled.radius;
     // Asked of the drop as it will be stored, on the unit grid: a crossing
     // too slight to see in the drawing is still one once rounded.
     const folds = (drop: Contour) =>
@@ -2385,30 +2511,271 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
       [0.3, true],
       [0, true],
     ];
-    const clean = (drop: Contour) => !folds(drop) && within(drop, band);
-    if (folds(shape)) {
-      const tries = [
-        ...again.map(
-          ([pull, close]) =>
-            () =>
-              tear(stroke, spine, at, u, n, outer, kept, bend, pull, close),
-        ),
-        // And failing both, taken smaller.
-        ...[1, 2, 3, 4, 5, 6].map(
-          (k) => () => tear(stroke, spine, at, u, n, outer, Math.max(least, kept * 0.9 ** k), bend),
-        ),
-      ];
-      for (const attempt of tries) {
-        const next = attempt();
-        if (clean(next)) {
-          shape = next;
-          break;
+    if (!pear) {
+      const clean = (drop: Contour) => !folds(drop) && within(drop, band);
+      if (folds(shape)) {
+        const tries = [
+          ...again.map(
+            ([pull, close]) =>
+              () =>
+                make(kept, pull, close),
+          ),
+          // And failing both, taken smaller.
+          ...[1, 2, 3, 4, 5, 6].map((k) => () => make(Math.max(least, kept * 0.9 ** k))),
+        ];
+        for (const attempt of tries) {
+          const next = attempt();
+          if (clean(next)) {
+            shape = next;
+            break;
+          }
         }
+      }
+    } else {
+      /*
+       * A pear's neck, asked to leave the stroke smoothly, is held to the same
+       * ladder where it dips into the stroke's own ink on the way: a neck that
+       * runs under the edge and out again leaves a notch in the letter.
+       */
+      const dips = pear.ink ? dipsInto(pear.ink) : () => false;
+      if (folds(shape) || dips(shape)) {
+        /*
+         * Drawn again from the most pear down to the least: the plain drop's
+         * ladder at the pear as it settled; then the pear turned half as far
+         * toward plumb, and not at all; then all three again with its ball not
+         * carried on; and failing every one, the last of them taken smaller.
+         * Each pear but the first is settled into the band afresh, from the
+         * full size and the hang it asks for: a ball turned toward plumb sits
+         * back over the stroke, and the hang and size it settled at are not
+         * the ones an unturned ball has room for.
+         */
+        const turns = pear.turn > 0 ? [pear.turn, pear.turn * 0.5, 0] : [0];
+        const hangs = pear.hang > 0 ? [pear.hang, 0] : [0];
+        const stages = hangs.flatMap((hang) => turns.map((turn) => [hang, turn] as const));
+        let stage = settled;
+        const tries: Array<() => Contour> = [];
+        stages.forEach(([hang, turn], step) => {
+          if (step > 0) {
+            tries.push(() => {
+              stage = settle(hang, turn);
+              return stage.shape;
+            });
+          }
+          for (const [pull, close] of again) {
+            tries.push(() => make(stage.radius, pull, close, stage.hang, stage.turn));
+          }
+        });
+        // And failing both, taken smaller.
+        for (const k of [1, 2, 3, 4, 5, 6]) {
+          tries.push(() =>
+            make(
+              Math.max(least, stage.radius * 0.9 ** k),
+              undefined,
+              undefined,
+              stage.hang,
+              stage.turn,
+            ),
+          );
+        }
+        /*
+         * The first that neither folds, nor leaves the band, nor dips. Where
+         * none is clean, a pear that folds is still never kept: it gives way
+         * to the first that keeps to the band though its neck dips, and
+         * failing that to the one that strays least past the band -- at a
+         * weight where even the least drop that covers the end does not fit
+         * the band, the pear it settled at did not either. A pear that only
+         * dips is kept as it was. Every try is the same five nodes with the
+         * same handles: only where they lie changes.
+         */
+        let found = false;
+        let dipping: Contour | null = null;
+        let straying: Contour | null = null;
+        let strays = Infinity;
+        for (const attempt of tries) {
+          const next = attempt();
+          if (folds(next)) continue;
+          if (within(next, band)) {
+            if (!dips(next)) {
+              shape = next;
+              found = true;
+              break;
+            }
+            dipping ??= next;
+            continue;
+          }
+          const bounds = contoursBounds([next]);
+          const past = Math.max(bounds.yMax - band.yMax, band.yMin - bounds.yMin);
+          if (past < strays) {
+            strays = past;
+            straying = next;
+          }
+        }
+        if (!found && folds(shape)) shape = dipping ?? straying ?? shape;
       }
     }
     out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
   }
   return out;
+}
+
+/** A drop made to keep to its stroke's band: see `settle` in `teardropsFor`. */
+interface Settled {
+  shape: Contour;
+  radius: number;
+  /** How far a pear's ball is carried on, once it has given up what it had no room for. */
+  hang: number;
+  turn: number;
+}
+
+/** What `tear` is told of a pear: see `pearOf`, and `lift` in `pearAt`. */
+interface Pear {
+  hang: number;
+  turn: number;
+  neck: number;
+  /** How far the stroke's inner side was moved by its heft, where the drop hangs on that side. */
+  lift: Vec2 | null;
+  /**
+   * The stroke's own ink, flattened, where the pear has a neck: what the neck
+   * leaves the stroke along and must not dip into.
+   */
+  ink: Flat | null;
+}
+
+/**
+ * The pear a drop was dressed with, or nothing for a drop dressed without one.
+ *
+ * On a bottom-heavy bowl (`Stroke.heft`) the stroke's whole inner side is
+ * moved by one vector, so a drop hanging on that side meets the stroke moved
+ * by as much: `lift`. `side` is the drop's side against the stroke's own
+ * direction of travel, as `innerSide` names sides.
+ */
+function pearAt(
+  stroke: Stroke,
+  swept: Contour[],
+  drop: NonNullable<Terminal["drop"]>,
+  side: number,
+  reach: ReturnType<typeof penReach>,
+): Pear | undefined {
+  if (drop.hang === undefined && drop.turn === undefined && drop.neck === undefined) {
+    return undefined;
+  }
+  let lift: Vec2 | null = null;
+  if (stroke.heft) {
+    // The pieces the sweep walks (see `headings` in sweep.ts), of which
+    // `innerSide` reads only the arcs' sweeps.
+    const still = { x: 0, y: 0 };
+    const turning = stroke.spine.segments
+      .filter((segment) => segment.kind !== "arc" || segment.radius > 1e-9)
+      .map((segment) => ({ segment, start: still, end: still }));
+    if (innerSide(turning) === side) lift = heftShift(stroke, reach);
+  }
+  const neck = drop.neck ?? 0;
+  const ink = neck > 0 ? flatten(swept, DIP_CHORDS) : null;
+  return { hang: drop.hang ?? 0, turn: drop.turn ?? 0, neck, lift, ink };
+}
+
+/** How many chords each curve of a stroke is flattened into, to ask whether a neck dips. */
+const DIP_CHORDS = 48;
+
+/** How far under the stroke's edge a neck may run before it is a dip, in units. */
+const DIP_DEPTH = 0.5;
+
+/**
+ * Whether a drop's neck -- the edge from its top to where it meets the stroke,
+ * the third and fourth of the nodes `tear` lays out -- runs into the stroke's
+ * own ink deeper than `DIP_DEPTH` anywhere along it, asked at sixteen points.
+ */
+function dipsInto(ink: Flat): (drop: Contour) => boolean {
+  return (drop) => {
+    const top = drop.nodes[2];
+    const meets = drop.nodes[3];
+    for (let step = 1; step <= 16; step++) {
+      const point = pointAt(top, meets, step / 17);
+      if (windingAt(ink, point) !== 0 && depthIn(ink, point) > DIP_DEPTH) return true;
+    }
+    return false;
+  };
+}
+
+/**
+ * How much more bent than the stroke's edge a pear's neck arrives on it: see
+ * `pearShape`.
+ */
+const NECK_ARRIVAL = 1.3;
+
+/** How far either way along the stroke's edge its bend is read, in units: see `bendOf`. */
+const BEND_REACH = 6;
+
+/**
+ * How sharply a flattened outline bends where it passes nearest a point:
+ * one over the radius of the circle through that nearest corner of it and
+ * the two `BEND_REACH` units either way along it -- positive where it bends
+ * round toward `inside`, negative where away.
+ */
+function bendOf(ink: Flat, point: Vec2, inside: Vec2): number {
+  let best = Infinity;
+  let polygon: Vec2[] = [];
+  let at = 0;
+  for (const { points } of ink.polygons) {
+    for (let k = 0; k < points.length; k++) {
+      const far = Math.hypot(points[k].x - point.x, points[k].y - point.y);
+      if (far < best) {
+        best = far;
+        polygon = points;
+        at = k;
+      }
+    }
+  }
+  const count = polygon.length;
+  if (count < 3) return 0;
+  // Walked a fixed way round, never past the whole outline.
+  const walk = (way: number): Vec2 => {
+    let k = at;
+    let gone = 0;
+    for (let step = 0; step < count - 1 && gone < BEND_REACH; step++) {
+      const next = (k + way + count) % count;
+      gone += Math.hypot(polygon[next].x - polygon[k].x, polygon[next].y - polygon[k].y);
+      k = next;
+    }
+    return polygon[k];
+  };
+  const before = walk(-1);
+  const here = polygon[at];
+  const after = walk(1);
+  const one = { x: here.x - before.x, y: here.y - before.y };
+  const two = { x: after.x - here.x, y: after.y - here.y };
+  const lengths =
+    Math.hypot(one.x, one.y) *
+    Math.hypot(two.x, two.y) *
+    Math.hypot(after.x - before.x, after.y - before.y);
+  if (lengths < 1e-12) return 0;
+  const turning = (2 * (one.x * two.y - one.y * two.x)) / lengths;
+  // A left turn bends round to the left of the way walked.
+  const left = { x: -(after.y - before.y), y: after.x - before.x };
+  return turning * Math.sign(left.x * inside.x + left.y * inside.y);
+}
+
+/** How far a point is from the nearest edge of a flattened outline. */
+function depthIn(ink: Flat, point: Vec2): number {
+  let nearest = Infinity;
+  for (const { points } of ink.polygons) {
+    for (let k = 0; k < points.length; k++) {
+      const a = points[k];
+      const b = points[(k + 1) % points.length];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const length = dx * dx + dy * dy;
+      const share =
+        length > 0
+          ? Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length))
+          : 0;
+      nearest = Math.min(
+        nearest,
+        Math.hypot(point.x - (a.x + dx * share), point.y - (a.y + dy * share)),
+      );
+    }
+  }
+  return nearest;
 }
 
 /**
@@ -2647,7 +3014,10 @@ function tear(
   // Whether the drop closes back onto the tail's own foot rather than onto
   // the spine: see `teardropsFor`.
   close = false,
+  // The face's pear, drawn by `pearShape`; without one, the drop as it always was.
+  pear?: Pear,
 ): Contour {
+  if (pear) return pearShape(stroke, spine, at, u, n, outer, radius, bend, pull, close, pear);
   const k = 0.5523 * radius;
   const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });
   const corner = { x: at.x + outer.x, y: at.y + outer.y };
@@ -2712,6 +3082,161 @@ function tear(
         type: "corner",
       },
       node(behind),
+    ],
+    closed: true,
+  };
+}
+
+/**
+ * One pear: the teardrop of `tear`, its ball carried on along an axis turned
+ * toward plumb, and its neck leaving the stroke as smoothly as the face asks.
+ * The same five nodes in the same order, from the same outer corner.
+ *
+ * - The axis `e` is the way the stroke was going turned `turn` toward the
+ *   inside of its curve, and `m` is square to it on that side. The ball's
+ *   centre stands a radius in from the outer corner and `hang` radii on along
+ *   `e`; its front is a radius further along `e`, its top a radius along `m`,
+ *   and the quarter between them is a circle.
+ * - The outer side, from the corner to the front, leaves along the stroke's
+ *   own outside edge and arrives square to the axis, each handle the length
+ *   that turning through ninety degrees and `turn` more asks of the distance
+ *   to where the two tangents cross -- in front of both, for any hang and any
+ *   turn up to sixty degrees. Unturned and not carried on, it is the circle.
+ * - The neck, from the top back to the stroke's inner edge, meets that edge a
+ *   way back that grows with the neck and the hang, and arrives with a handle
+ *   that blends toward the length at which the neck's curvature there is the
+ *   edge's own (`neck`, nought to one), so the neck leaves the stroke with no
+ *   kink in how it bends.
+ * - With any neck at all the closing edge, buried in the stroke, runs along
+ *   the stroke rather than straight across it: both its handles are there
+ *   whenever `neck` is, of no length where the drop is closed off short, so
+ *   which edges are curves is the face's question alone.
+ * - On a bowl whose inner side was moved by its heft, the neck meets that
+ *   side where it was moved to (`lift`).
+ */
+function pearShape(
+  stroke: Stroke,
+  spine: Spine,
+  at: Vec2,
+  u: Vec2,
+  n: Vec2,
+  outer: Vec2,
+  radius: number,
+  bend: number,
+  pull: number,
+  close: boolean,
+  pear: Pear,
+): Contour {
+  const { hang, turn, neck } = pear;
+  const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });
+  const dot = (a: Vec2, b: Vec2): number => a.x * b.x + a.y * b.y;
+  const blend = (from: number, to: number, share: number): number => from + (to - from) * share;
+  const cos = Math.cos(turn);
+  const sin = Math.sin(turn);
+  const e = { x: cos * u.x + sin * n.x, y: cos * u.y + sin * n.y };
+  const m = { x: cos * n.x - sin * u.x, y: cos * n.y - sin * u.y };
+  const corner = { x: at.x + outer.x, y: at.y + outer.y };
+  const centre = add(add(corner, n, radius), e, hang * radius);
+  const front = add(centre, e, radius);
+  const top = add(centre, m, radius);
+  const quarter = kappa(Math.PI / 2) * radius;
+  // The outer side's two tangents, and where they cross.
+  const crossing = lineIntersection(corner, u, front, m);
+  const bow = kappa(Math.PI / 2 + turn);
+  const fromCorner = crossing
+    ? bow * Math.hypot(crossing.point.x - corner.x, crossing.point.y - corner.y)
+    : quarter;
+  const intoFront = crossing
+    ? bow * Math.hypot(crossing.point.x - front.x, crossing.point.y - front.y)
+    : quarter;
+  // Where the neck comes back onto the stroke: as `tear` finds it, further back.
+  const total = spine.segments.reduce(
+    (sum, segment) =>
+      sum +
+      (segment.kind === "line"
+        ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y)
+        : segment.radius * Math.abs(segment.endAngle - segment.startAngle)),
+    0,
+  );
+  const distance = Math.min((2.5 + neck) * radius * (1 + 0.5 * hang), total * 0.8, bend * 1.1);
+  const back = backFromEnd(spine, distance);
+  const shift = reachAlong({ x: -back.heading.y, y: back.heading.x }, penReach(stroke.pen));
+  // The inside of the curve there, as `tear` takes it.
+  const way = u.x * n.y - u.y * n.x;
+  const local = { x: -back.heading.y * way, y: back.heading.x * way };
+  const toward = dot(shift, local) >= 0 ? shift : { x: -shift.x, y: -shift.y };
+  const lift = pear.lift ?? { x: 0, y: 0 };
+  let meets = { x: back.point.x + toward.x + lift.x, y: back.point.y + toward.y + lift.y };
+  let behind = back.point;
+  // Whether the closing edge runs back along the stroke, or is closed off short.
+  let along = true;
+  if (Math.hypot(meets.x - centre.x, meets.y - centre.y) < radius * 1.1) {
+    meets = top;
+    behind = centre;
+    along = false;
+  }
+  const span = Math.hypot(top.x - meets.x, top.y - meets.y);
+  if (close) {
+    behind = add(meets, { x: corner.x - meets.x, y: corner.y - meets.y }, 0.01);
+    along = false;
+  }
+  const topOut = add(top, e, -span * blend(0.6, 0.45, neck));
+  /*
+   * The neck's arrival. A cubic arriving along a handle `a` long, with the
+   * handle before it `d` off that line, bends there by 2d / 3a²: bent as the
+   * edge it arrives on, κ, that is `a` = √(2d / 3κ). Blended toward from the
+   * plain drop's handle by `neck`, and shortened with it as the ladder in
+   * `teardropsFor` shortens the plain one.
+   *
+   * κ is read off the stroke's own drawn edge where the neck meets it (see
+   * `bendOf`) rather than off the arc the end is on: a bowl drawn in several
+   * arcs, as Lora's c is, meets the neck on a tighter one, and an angled
+   * pen's edge is not round. Never tighter than the stroke's inner half
+   * width, as the curve the end is on less that half width is never taken
+   * tighter. And the neck arrives a little more bent than the edge it meets
+   * (`NECK_ARRIVAL`): bent exactly as much, the least change further along it
+   * ran the neck back under the edge it had just left, a unit or two deep.
+   */
+  const inner = Math.abs(dot(toward, local));
+  const bending = pear.ink ? bendOf(pear.ink, meets, local) : 0;
+  const curving = NECK_ARRIVAL * Math.min(1 / Math.max(inner, 1e-6), Math.max(bending, 1e-9));
+  const off = dot({ x: topOut.x - meets.x, y: topOut.y - meets.y }, local);
+  const matched =
+    off > 0
+      ? Math.min(span * 0.75, Math.max(span * 0.15, Math.sqrt((2 * off) / (3 * curving))))
+      : span * 0.75;
+  const arrive = (pull / 0.3) * blend(span * 0.3, matched, neck);
+  /*
+   * The closing edge along the stroke, its handles a third of the way back
+   * each, and no longer than a chord that far round the curve could bow by
+   * half the end's half width.
+   */
+  let behindOut: Vec2 | null = null;
+  let cornerIn: Vec2 | null = null;
+  if (neck > 0) {
+    const half = Math.abs(dot(outer, n));
+    const run = Math.min(distance, 2 * Math.sqrt(Math.max(0, bend * half)));
+    const by = along ? (run / 3) * neck : 0;
+    behindOut = add(behind, back.heading, by);
+    cornerIn = add(corner, u, -by);
+  }
+  return {
+    nodes: [
+      { point: corner, handleIn: cornerIn, handleOut: add(corner, u, fromCorner), type: "corner" },
+      {
+        point: front,
+        handleIn: add(front, m, -intoFront),
+        handleOut: add(front, m, quarter),
+        type: "smooth",
+      },
+      { point: top, handleIn: add(top, e, quarter), handleOut: topOut, type: "smooth" },
+      {
+        point: meets,
+        handleIn: add(meets, back.heading, arrive),
+        handleOut: null,
+        type: "corner",
+      },
+      { point: behind, handleIn: null, handleOut: behindOut, type: "corner" },
     ],
     closed: true,
   };
