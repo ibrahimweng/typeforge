@@ -77,6 +77,40 @@ const HAIRLINE_Y = 0.7;
 /** Just past level, where a bowl's loop is walked from: see the e. */
 const SEAM = 0.01;
 
+/**
+ * Where a stem an arch springs from stops: where the arch reaches (`crown`),
+ * or on the x-height where the face keeps its head there (`slab.headKeep`).
+ *
+ * An arch that stops short of the x-height (`shoulder.crest`) takes its stem
+ * down with it, or the stem would poke up past its own arch -- right for a
+ * face whose stems stop plain. But a serif's head is laid on a line, and a
+ * stem stopped short of one wears none: on a face that asks for both, the n
+ * and the m went bare beside an i, an r and a p wearing theirs.
+ */
+function archStem(f: Frame): number {
+  const { slab } = f.style.parts;
+  return slab.on && slab.headKeep === true ? f.x : f.crown;
+}
+
+/** The most an r's arm is set down, as a share of the x-height: see `armCrest`. */
+const ARM_RISE_MOST = 0.1;
+
+/**
+ * Where an r's arm runs across the top: the n's crest, or set down under it
+ * by as much as the face asks (`shoulder.armRise`, a share of the x-height,
+ * held to a tenth), so the arm leaves its stem that much lower and droops
+ * from under the x-height rather than from over it.
+ *
+ * Set down whole rather than turned up out of the stem on a wider turn, as an
+ * arch rises (`risenTurns`): an r's arm has no stem to land on, and the turn
+ * up already takes all the width there is but the turn down's least, so a
+ * wider one could only carry the arm further out or bend it back over itself.
+ */
+function armCrest(f: Frame): number {
+  const rise = f.style.parts.shoulder.armRise ?? 0;
+  return rise > 0 ? f.crest(f.x) - Math.min(ARM_RISE_MOST, rise) * f.x : f.crest(f.x);
+}
+
 export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // --- lowercase ---------------------------------------------------------
 
@@ -463,7 +497,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     return finish(f, [
-      ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end),
+      ink(f, straight(at(stem, 0), at(stem, archStem(f))), f.end, f.end),
       arch(f, stem, f.x),
       arch(f, stem + f.arch * 2, f.x),
     ]);
@@ -473,7 +507,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const f = frame(style);
     const stem = f.edge;
     return finish(f, [
-      ink(f, straight(at(stem, 0), at(stem, f.crown)), f.end, f.end),
+      ink(f, straight(at(stem, 0), at(stem, archStem(f))), f.end, f.end),
       arch(f, stem, f.x),
     ]);
   },
@@ -523,7 +557,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     const reach = f.arch;
     const radius = shoulderRadius(f, f.x);
-    const crest = Math.max(f.crest(f.x), radius);
+    const crest = Math.max(armCrest(f), radius);
     const landing = stem + Math.max(reach, radius * 2);
     // Leaving the stem lower where the face's shoulders rise, as the n's arch
     // does: see `risenTurns`. Each turn then in the pieces its sweep gives it.

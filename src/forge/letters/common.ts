@@ -4528,6 +4528,24 @@ export function middleBar(f: Frame, top: number): number {
 }
 
 /**
+ * How far the middle arm of an E reaches against the arms above and below
+ * it: a little short, as every roman E's is, or as far as the face says
+ * (`metrics.middleArm`), held between half of theirs and all of it. The F's,
+ * the Æ's and the Œ's with it.
+ *
+ * Short of half, the middle arm of an E is a spur on the stem and the letter
+ * reads as an L with something caught on it; past the arms either side of
+ * it, as an E with its stem drawn to the wrong side of a bar.
+ */
+export function middleArm(f: Frame): number {
+  const asked = f.style.metrics.middleArm;
+  return asked === undefined ? MIDDLE_ARM : Math.min(1, Math.max(0.5, asked));
+}
+
+/** The middle arm of an E against its others, where the face says nothing: see `middleArm`. */
+const MIDDLE_ARM = 0.86;
+
+/**
  * The height of the eye of an e, in a bowl round `centre`.
  *
  * Held clear of the inside of the bowl above and below by the same rule as

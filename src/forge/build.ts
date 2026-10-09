@@ -71,7 +71,7 @@ import {
 } from "./shapes";
 import { enclosing, recording as partsRecording, shiftingVees } from "./letters/common";
 import { seamsOf, wobbleOf } from "./script";
-import { penReach, reachAlong, sweep, sweptSoftly } from "./sweep";
+import { leftOf, penReach, reachAlong, sweep, sweptSoftly } from "./sweep";
 import {
   BASES,
   blackness,
@@ -1386,7 +1386,7 @@ function inkOf(
     ...ballsFor(stroke, style, swept, others),
     ...flaresFor(stroke, style),
     ...teardropsFor(stroke, swept, style),
-    ...serifsFor(stroke, style, others),
+    ...serifsFor(stroke, style, others, swept),
     ...filletsFor(stroke, style, swept, others),
   ];
 }
@@ -2093,37 +2093,106 @@ function softened(
   return end;
 }
 
+/** How near the pen's side line a node of the outline has to lie to be on it, in units. */
+const SIDE_LINE_TOLERANCE = 1e-6;
+
 /**
- * How far a swelled arm's edge on one side of its beak runs in for every unit
- * back up the arm, as `wing` reads it (a lean below nought runs in): the
- * swell's growth across the end, spread over the arm's last straight piece,
- * which is where the sweep spreads it (see `ends.ts`). So the beak's hollow
- * arrives on the flared edge where it meets it, a beak's depth back from the
- * end, rather than where the edge stands at the end itself -- a step of two
- * units at a Black. Nothing on an end that is not swelled, nor on its side that
- * keeps to a line; `which` is the end, `side` the wing's, as `serifsFor` has
- * them.
+ * A swelled arm's edge on one side of its beak, as `wing` reads it: where it
+ * crosses the end (`from`, across the end from the spine) and how far it runs
+ * in for every unit back up the arm (`lean`, below nought running in). Null on
+ * an end that is not swelled, on its side that keeps to a line, and on one
+ * that does not end on a line; `which` is the end, `side` the wing's, as
+ * `serifsFor` has them.
+ *
+ * Read off the side the sweep draws (`swelled` in ends.ts), which is the pen's
+ * own side line carried out at the end to `swell` times the pen's reach --
+ * and at its root as well where the other end of the same piece swells that
+ * side, as both ends of a T's bar do. Taken as the pen's whole reach across
+ * the end and its growth spread evenly back up the arm, the edge stood off the
+ * one drawn wherever the pen is held at an angle: the reach across a level
+ * arm is longer than the arm is half-wide by as much as the nib leans, and the
+ * swell grew that with it, so the beak's hollow came down to a point three
+ * units clear of the flared edge at a text weight and ten at a Black and
+ * dropped onto it as a step. On the line itself, the hollow arrives on the
+ * edge it meets.
+ *
+ * And from where the sweep left that side, which is not always where the
+ * spine's piece begins: an arm leaving another stroke at a corner -- the top
+ * of a Z coming off its diagonal -- has the inside of that corner rounded or
+ * met short of the spine's own corner, and the swelled side runs from there.
+ * Still on the pen's own side line, that point is the node of the stroke's
+ * swept outline (`swept`) lying on the line nearest the end; where none does,
+ * or nothing was swept, the piece's own root.
+ *
+ * Never leaning outward: a side swelled at both ends is parallel to the spine,
+ * and a lean that rounding left a hair above nought is the inside of a
+ * diagonal to `wing`, which draws that hollow another way.
  */
-function swellLean(
+function flaredEdge(
   stroke: Stroke,
   terminal: Terminal,
   which: number,
   side: number,
+  at: Vec2,
   outward: Vec2,
-): number {
-  if (terminal.swell === undefined) return 0;
+  swept: Contour[],
+): { from: number; lean: number } | null {
+  if (terminal.swell === undefined) return null;
   // The wing's side against the way the stroke travels: see `softened`.
   const travelling = which === 1 ? side : -side;
-  if (terminal.swellSide !== undefined && terminal.swellSide !== travelling) return 0;
+  if (terminal.swellSide !== undefined && terminal.swellSide !== travelling) return null;
   const pieces = endPieces(stroke.spine);
   const piece = which === 1 ? pieces?.last : pieces?.first;
-  if (piece?.kind !== "line") return 0;
+  if (!pieces || piece?.kind !== "line") return null;
   const length = Math.hypot(piece.to.x - piece.from.x, piece.to.y - piece.from.y);
-  if (length < 1e-9) return 0;
-  const normal = { x: -outward.y, y: outward.x };
-  const shift = reachAlong(normal, penReach(stroke.pen));
-  const grows = Math.abs(normal.x * shift.x + normal.y * shift.y) * (terminal.swell - 1);
-  return -grows / length;
+  if (length < 1e-9) return null;
+  const heading = {
+    x: (piece.to.x - piece.from.x) / length,
+    y: (piece.to.y - piece.from.y) / length,
+  };
+  const reach = reachAlong(leftOf(heading), penReach(stroke.pen));
+  const offset = { x: reach.x * travelling, y: reach.y * travelling };
+  // The other end of the same piece, swelled on this side too or not.
+  const other = which === 1 ? stroke.start : stroke.end;
+  const both =
+    pieces.first === pieces.last &&
+    other.swell !== undefined &&
+    (other.swellSide === undefined || other.swellSide === travelling);
+  const rootScale = both ? other.swell! : 1;
+  const [tipSpine, rootSpine] = which === 1 ? [piece.to, piece.from] : [piece.from, piece.to];
+  const tipEdge = {
+    x: tipSpine.x + offset.x * terminal.swell,
+    y: tipSpine.y + offset.y * terminal.swell,
+  };
+  let rootEdge = { x: rootSpine.x + offset.x * rootScale, y: rootSpine.y + offset.y * rootScale };
+  if (!both) {
+    const plain = { x: tipSpine.x + offset.x, y: tipSpine.y + offset.y };
+    let nearest = Infinity;
+    for (const contour of swept) {
+      for (const { point } of contour.nodes) {
+        const dx = point.x - plain.x;
+        const dy = point.y - plain.y;
+        // Off the pen's side line, and how far back from the end along the arm.
+        const off = Math.abs(dx * heading.y - dy * heading.x);
+        const back = -(dx * outward.x + dy * outward.y);
+        if (off > SIDE_LINE_TOLERANCE || back <= SIDE_LINE_TOLERANCE || back >= nearest) continue;
+        nearest = back;
+        rootEdge = point;
+      }
+    }
+  }
+  // In the wing's frame: `u` across the end on the wing's side, `v` back up the arm.
+  const across = { x: -outward.y * side, y: outward.x * side };
+  const frame = (point: Vec2): { u: number; v: number } => {
+    const dx = point.x - at.x;
+    const dy = point.y - at.y;
+    return { u: dx * across.x + dy * across.y, v: -(dx * outward.x + dy * outward.y) };
+  };
+  const tip = frame(tipEdge);
+  const root = frame(rootEdge);
+  if (Math.abs(root.v - tip.v) < 1e-9) return null;
+  const lean = Math.min(0, (root.u - tip.u) / (root.v - tip.v));
+  return { from: tip.u - lean * tip.v, lean };
 }
 
 /**
@@ -2317,6 +2386,16 @@ const HEAD_SLOPE = 0.3;
 function headSlope(style: Style): number {
   // The nib's slope, however long the face holds its serifs: see `Parts.slab.hold`.
   return HEAD_SLOPE * Math.min(1, serifReach(style, true) / Math.max(style.pen.weight, 1e-9));
+}
+
+/**
+ * How much deeper than a text weight's a sloped head's flag is drawn, as a
+ * factor: one and a share more where the face asks (`slab.headDepth`, held to
+ * nought to one), and exactly one where it does not.
+ */
+function headDepthOf(style: Style): number {
+  const asked = style.parts.slab.headDepth ?? 0;
+  return asked > 0 ? 1 + Math.min(1, asked) : 1;
 }
 
 /**
@@ -4127,7 +4206,13 @@ const ARM_SERIF_HOLD = 0.1;
  * stem -- as an edge of the wing rather than as a hole that has to be
  * subtracted.
  */
-function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] {
+function serifsFor(
+  stroke: Stroke,
+  style: Style,
+  others: Contour[] = [],
+  // The stroke as swept, which an arm swelled toward its beak is read off: see `flaredEdge`.
+  swept: Contour[] = [],
+): Contour[] {
   const out: Contour[] = [];
   const reference = penReach(style.pen).across;
   const ends = endsOf(stroke);
@@ -4384,7 +4469,14 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
             heading: facing,
           }
         : backFromEnd(which === 1 ? stroke.spine : reversed(stroke.spine), 3 + inner * 0.6);
-      const from = refused ? 0 : inner;
+      /*
+       * On an arm swelled toward its beak, the wing leaves the flared edge where
+       * the sweep draws it, which runs in as it goes back up the arm (see
+       * `flaredEdge`).
+       */
+      const flared =
+        refused || level ? null : flaredEdge(stroke, terminal, which, side, at, outward, swept);
+      const from = refused ? 0 : flared ? flared.from : inner;
       // And no longer than the stroke is wide where it is put, which on a
       // curve with contrast is not how wide it is at the end.
       const tip = refused
@@ -4402,20 +4494,26 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
        * quarter of the x-height down the side of the stem: the top of every
        * n, i and l was a wedge rather than a flag.
        */
-      const headCap = shear > 0 ? style.metrics.unitsPerEm * 0.045 : Infinity;
+      /*
+       * Grown, flag and limit alike, where the face asks for a deeper head
+       * (`slab.headDepth`): a soft text face's flag runs a good way further
+       * down its stem than a text weight's.
+       */
+      const headGrown = shear > 0 ? headDepthOf(style) : 1;
+      const headCap = shear > 0 ? style.metrics.unitsPerEm * 0.045 * headGrown : Infinity;
       const deep = refused
         ? BURIED
-        : Math.min(thickness * Math.max(0.55, Math.min(1, short)), headCap);
+        : Math.min(thickness * headGrown * Math.max(0.55, Math.min(1, short)), headCap);
       const tipDeep = terminal.shape === "wedge" ? deep * WEDGE_TIP : deep;
       /*
        * How far the stroke's edge on this side moves out along the wing for
        * every unit back up the stroke: nothing on an upright, and on a serif
        * laid level across a diagonal, the diagonal's own slant. On an arm
-       * swelled toward its beak, the flare running in (see `swellLean`).
+       * swelled toward its beak, the flare running in.
        */
       const edgeLean = level
         ? (across.x * into.x + across.y * into.y) / Math.abs(outward.y)
-        : swellLean(stroke, terminal, which, side, outward);
+        : (flared?.lean ?? 0);
       /*
        * Never fillet more than the wing is deep or wide, or the curve would
        * have to begin before the serif does. Measured against whichever wing is
@@ -4516,6 +4614,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
               terminal.shape === "wedge",
               climb,
               terminal.tip ?? 0,
+              flared !== null,
             ),
           ];
       for (const piece of shape) {
@@ -4938,6 +5037,14 @@ const INSIDE_PULL = 0.6;
  * `round` is the face's soft tip (`Terminal.tip`), nought to one: the share of
  * the tip's depth turned on a radius rather than cut square. Nought, the wing
  * is drawn exactly as it always was.
+ *
+ * `steady` keeps the wing's buried side square across the stroke where the edge
+ * it leaves leans (an arm swelled toward its beak, `flaredEdge`) rather than
+ * leaning with it. Buried, that side is never seen as an edge, but a
+ * rasteriser still draws it: a long side a hair off level inside the arm came
+ * out as a faint seam along the beak's foot, on past it to the arm's end,
+ * where a level one leaves none. Left off, the side leans with the edge as it
+ * always has.
  */
 function wing(
   at: Vec2,
@@ -4954,6 +5061,7 @@ function wing(
   wedge = false,
   climb = 0,
   round = 0,
+  steady = false,
 ): Contour {
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
@@ -4998,7 +5106,7 @@ function wing(
   let cap = lean > 0 ? (0.5 * (tip - from)) / lean : Infinity;
   const shift = (v: number): number => lean * Math.min(v, cap);
   const edgeAt = (v: number): number => from + shift(v);
-  const heldAt = (v: number): number => held + shift(v);
+  const heldAt = (v: number): number => (steady ? held : held + shift(v));
   // And whatever the bracket asked for past what the serif can take,
   // climbing on up the stroke: see `BRACKET_CLIMB`.
   // How far along the wing the fillet runs, which the climb never adds to.
