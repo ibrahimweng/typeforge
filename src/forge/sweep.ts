@@ -727,6 +727,102 @@ function crossingOf(a: OffsetLine, b: OffsetLine): { point: Vec2; at: number } |
 }
 
 /**
+ * The inside of a corner between two straight offsets turned on a circle
+ * rather than brought to a point: `before` and `after` are cut back from
+ * where they cross, `at`, by the circle's tangent length, and the arc that
+ * touches both there is handed back to stand between them.
+ *
+ * The radius asked for is `radius`, and the tangent length that takes is
+ * radius·tan(τ/2) for a corner turning τ. It is held to under half of either
+ * offset's run up to the crossing, so a short leg is never eaten past its
+ * start, and the radius comes down with it: a smaller circle, never a
+ * different shape. Two pieces whatever the radius, as the stall it stands in
+ * for is, so the corner has the same nodes with the same handles at every
+ * weight; a circle of no radius is the stall again.
+ *
+ * Where an offset is the first or last of an open stroke and its end is cut
+ * by sliding the corner along the side (a level, plumb or angled cut, see
+ * `slides`), `starts` and `stops` are where that corner will stand, and the
+ * room is counted from there rather than from where the offset starts or
+ * stops: a heavy pen on a narrow vee crosses its inner offsets beyond a level
+ * cut, the corner then slides past the crossing, and a circle laid on the
+ * offsets as they were had both its ends in what the cut removes -- the two
+ * short pieces left crossed each other where the point they stand in for
+ * left a spike. Counted from the slid corner the room is nothing there, and
+ * the circle is the stall again.
+ */
+function roundedInside(
+  before: OffsetLine,
+  after: OffsetLine,
+  at: Vec2,
+  radius: number,
+  starts: Vec2 = before.from,
+  stops: Vec2 = after.to,
+): OffsetEllipse {
+  const unit = (line: OffsetLine): Vec2 => {
+    const d = { x: line.to.x - line.from.x, y: line.to.y - line.from.y };
+    const length = Math.hypot(d.x, d.y) || 1;
+    return { x: d.x / length, y: d.y / length };
+  };
+  const into = unit(before);
+  const outOf = unit(after);
+  const cross = into.x * outOf.y - into.y * outOf.x;
+  const turn = Math.atan2(Math.abs(cross), dot(into, outOf));
+  const way = cross >= 0 ? 1 : -1;
+  const slope = Math.tan(turn / 2);
+  // How far each offset runs up to the crossing, along itself: none where it starts past it.
+  const room =
+    0.45 *
+    Math.min(
+      Math.max(0, (at.x - starts.x) * into.x + (at.y - starts.y) * into.y),
+      Math.max(0, (stops.x - at.x) * outOf.x + (stops.y - at.y) * outOf.y),
+    );
+  const tangent = Math.max(0, Math.min(radius * slope, room));
+  const r = slope > 1e-12 ? tangent / slope : 0;
+  before.to = { x: at.x - into.x * tangent, y: at.y - into.y * tangent };
+  after.from = { x: at.x + outOf.x * tangent, y: at.y + outOf.y * tangent };
+  // On the inside of the turn, a radius off the cut-back end of `before`.
+  const inward = leftOf(into);
+  const centre = { x: before.to.x + inward.x * way * r, y: before.to.y + inward.y * way * r };
+  const from = Math.atan2(before.to.y - centre.y, before.to.x - centre.x);
+  return {
+    kind: "ellipse",
+    centre,
+    rx: r,
+    ry: r,
+    rotation: 0,
+    from,
+    to: from + way * turn,
+    pieces: WEDGE_PIECES,
+  };
+}
+
+/**
+ * Where a straight end's cut will leave one side's corner, where that cut is
+ * the side's own end node slid along it (see `slides`): the corner
+ * `terminalNodes` puts there, asked before the sides are stitched, for
+ * `roundedInside` to count its room from. Nothing for an end that does not
+ * slide, whose corner is where its side stops.
+ */
+function slidCorner(
+  terminal: Terminal,
+  headed: Headed[],
+  atEnd: boolean,
+  side: number,
+  reach: PenReach,
+): Vec2 | null {
+  if (!slides(terminal, true)) return null;
+  const one = atEnd ? headed[headed.length - 1] : headed[0];
+  const at = atEnd ? segmentEnd(one.segment) : segmentStart(one.segment);
+  const outward = atEnd ? one.end : { x: -one.start.x, y: -one.start.y };
+  const corners = terminalNodes(terminal, at, outward, reach, true);
+  if (corners.length === 0) return null;
+  // The end's left is the stroke's left at its far end and its right at its near end.
+  const leftOfEnd = atEnd ? side > 0 : side < 0;
+  return (leftOfEnd ? corners[0] : corners[corners.length - 1]).point;
+}
+
+/**
  * The outside of a corner: the wedge the two offsets left between them.
  *
  * A round join needs no limit and cannot overshoot, because it is the pen
@@ -837,10 +933,13 @@ export const MITER_LIMIT = 4;
  * the inside of the turn. So one call handles both sides and neither has to
  * know which one it is.
  *
- * `_inside` is the radius the inside of a corner is to be rounded by, in font
- * units (`Stroke.inside` times the pen's weight), or nothing. Not read yet:
- * until the rounding is built every corner resolves as below whatever is
- * passed.
+ * `inside` is the radius the inside of a corner is to be rounded by, in font
+ * units (`Stroke.inside` times the pen's weight), or nothing. Given, the
+ * inside of a corner between two straight pieces is turned on a circle of
+ * that radius instead of being cut back to a point: see `roundedInside`.
+ * Left out, every corner resolves as it always has. `ends`, given with it on
+ * an open stroke, are the stroke's two terminals, for where a slid cut will
+ * leave the first and last offsets' corners (see `slidCorner`).
  */
 function sideRun(
   headed: Headed[],
@@ -848,10 +947,20 @@ function sideRun(
   reach: PenReach,
   join: JoinKind,
   closed: boolean,
-  _inside?: number,
+  inside?: number,
+  ends?: { start: Terminal; end: Terminal },
 ): OffsetSegment[] {
   const offsets = headed.map((one) => ({ ...offsetSegment(one, side, reach) }));
   const filling = new Map<number, OffsetSegment[]>();
+  // The first and last pieces that go anywhere, whose far corners an end's cut may move.
+  const goes = (one: Headed): boolean =>
+    one.segment.kind === "line"
+      ? Math.hypot(one.segment.to.x - one.segment.from.x, one.segment.to.y - one.segment.from.y) >
+        1e-9
+      : Math.abs(one.segment.endAngle - one.segment.startAngle) > 1e-9;
+  const cutEnds = ends !== undefined && !closed;
+  const firstGoing = cutEnds ? headed.findIndex(goes) : -1;
+  const lastGoing = cutEnds ? headed.length - 1 - [...headed].reverse().findIndex(goes) : -1;
 
   for (const kink of kinksOf(headed, closed)) {
     const before = offsets[kink.before];
@@ -941,6 +1050,31 @@ function sideRun(
       // any of these are true.
       const point = swallowed && before.kind === "line" ? before.from : crossing?.point;
       if (point && (overlapping || swallowed || within)) {
+        /*
+         * The inside of the turn rounded, where the stroke asks for it: the
+         * two offsets cut back short of where they cross and a circle run
+         * between them in place of the stall -- the same two pieces, so the
+         * same nodes with the same handles, wherever the pen puts them.
+         */
+        if (
+          inside !== undefined &&
+          overlapping &&
+          before.kind === "line" &&
+          after.kind === "line"
+        ) {
+          const from =
+            ends && kink.before === firstGoing
+              ? slidCorner(ends.start, headed, false, side, reach)
+              : null;
+          const to =
+            ends && kink.after === lastGoing
+              ? slidCorner(ends.end, headed, true, side, reach)
+              : null;
+          filling.set(kink.before, [
+            roundedInside(before, after, point, inside, from ?? before.from, to ?? after.to),
+          ]);
+          continue;
+        }
         before.to = point;
         after.from = point;
         filling.set(kink.before, stall(point));
@@ -1570,8 +1704,9 @@ export function sweep(stroke: Stroke): Contour[] {
 
   const join = stroke.join ?? "miter";
   const inside = stroke.inside ? stroke.inside * pen.weight : undefined;
-  let left = sideRun(headed, 1, reach, join, spine.closed, inside);
-  let right = sideRun(headed, -1, reach, join, spine.closed, inside);
+  const ends = inside === undefined ? undefined : { start: stroke.start, end: stroke.end };
+  let left = sideRun(headed, 1, reach, join, spine.closed, inside, ends);
+  let right = sideRun(headed, -1, reach, join, spine.closed, inside, ends);
   /*
    * The soft finishes that move a side, each only where its field asked for
    * it and nothing at all otherwise: a bowl's inner side first, then an end
