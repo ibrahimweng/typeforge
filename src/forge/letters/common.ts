@@ -2660,6 +2660,14 @@ export function shoulderRadius(frame: Frame, height: number): number {
  * half a pen over the line, and never so wide that the flat across the top
  * runs backwards: each a min and a max of the pen's own measurements, so the
  * shoulder changes smoothly with the weight and keeps its pieces.
+ *
+ * And the turn down never tighter than any shoulder is let be (see
+ * `shoulderRadius`): half the arch's reach, or the pen's least where that is
+ * more, with the turn up growing only as far as that leaves it. Left to give
+ * up everything down to the pen's least, a light pen's turn down came to a
+ * fifth of the arch at the top of the range: the m's first arch fell into its
+ * middle stem round what read as a corner, and the letter read as an r
+ * beside an n.
  */
 export function risenTurns(
   frame: Frame,
@@ -2669,11 +2677,9 @@ export function risenTurns(
 ): { up: number; down: number } | null {
   const rise = frame.style.parts.shoulder.rise ?? 0;
   if (!(rise > 0)) return null;
-  const up = Math.max(
-    radius,
-    Math.min(radius * (1 + rise), span - frame.least, crest - frame.half),
-  );
-  const down = Math.max(frame.least, Math.min(radius, span - up));
+  const least = Math.min(radius, Math.max(frame.least, frame.arch * 0.5));
+  const up = Math.max(radius, Math.min(radius * (1 + rise), span - least, crest - frame.half));
+  const down = Math.max(least, Math.min(radius, span - up));
   return { up, down };
 }
 
