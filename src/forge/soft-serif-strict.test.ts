@@ -4,15 +4,17 @@
  *
  * `soft-serif.test.ts` asks that the soft finishes add nothing to what the
  * Serif already does at the Soft Serif's settings. That left room for the pen
- * itself: held at eighteen degrees with contrast 0.7, the plain Serif's four,
- * nine and the two fractions built of the four had their corners in another
- * order at some masters, the lje's soft sign ran through its own bowl and
- * crossed itself at 194 and width 100, the g came in two pieces there, and
- * every variable font held the four, the nine and the fractions still. The
- * face shipped with all of it. So here the face itself is asked, at every pen
- * and width a family is drawn through and through a wave book: nothing
- * crosses itself, every letter keeps its points, every letter is one piece,
- * and a variable font holds nothing.
+ * itself, and the face shipped with what its pen did: held at eighteen
+ * degrees with contrast 0.7, the four's diagonal and the nine's tail were cut
+ * level at some masters and square at others, so the four, the nine and the
+ * two fractions built of the four had their points in another order from one
+ * master to the next; the lje's soft sign ran through its own bowl and
+ * crossed itself at 194 and width 100; the g's link stopped just short of its
+ * loop there and the g came in two pieces; and every variable font held the
+ * four, the nine and the fractions still. So here the face itself is asked,
+ * at every pen and width a family is drawn through and through a wave book:
+ * nothing crosses itself, every letter keeps its points, every letter is one
+ * piece, and a variable font holds nothing.
  *
  * With one allowance, named letter by letter. The Serif as it ships draws
  * five letters with other points at some of these settings on its own pen --
@@ -35,7 +37,7 @@ import { deliver } from "./deliver";
 import { formOf, startFrom } from "./document";
 import { widthedStyle } from "./family";
 import { readyToShape } from "./layers";
-import { openWaveBook, type WaveBook, waveBookAt } from "./shapes";
+import { bowlPoint, openWaveBook, type WaveBook, waveBookAt } from "./shapes";
 import { SOFT_SERIF } from "./starts";
 import { SERIF, type Style } from "./style";
 import { signatureText } from "./testing/signature";
@@ -209,4 +211,39 @@ describe("the Soft Serif on its own, at every pen and width", () => {
     expect(delivered.members.map((one) => one.weight)).toEqual([100, 400, 700, 900]);
     expect(delivered.held).toEqual([]);
   }, 300_000);
+});
+
+describe("a point on a bowl", () => {
+  /*
+   * The lje's soft sign at 194 and width 100 on the Soft Serif's pen: a bowl
+   * a hair taller than it is wide, whose quarters meet on the vertical with
+   * one ending at 89.99999999999994 degrees and the next beginning at
+   * 90.00000000000006. Straight up and straight down fell in neither, and
+   * the bowl's centre came back for both.
+   */
+  const centre = { x: 735.8599355897499, y: 167.79193652048528 };
+  const wide = 131.36193187324585;
+  const tall = 132.20806347951472;
+
+  it("is found on a direction that falls between two of its pieces by a rounding error", () => {
+    const top = bowlPoint(centre, wide, tall, 1, 97, 90, 0.0001);
+    const foot = bowlPoint(centre, wide, tall, 1, 97, -90, 0.0001);
+    expect(top.x).toBeCloseTo(centre.x, 6);
+    expect(top.y).toBeCloseTo(centre.y + tall, 6);
+    expect(foot.x).toBeCloseTo(centre.x, 6);
+    expect(foot.y).toBeCloseTo(centre.y - tall, 6);
+  });
+
+  it("is never the centre on the four plumb and level directions, however near square the bowl", () => {
+    const missed: string[] = [];
+    for (let step = 0; step <= 400; step++) {
+      const across = wide * (0.98 + step * 0.0001);
+      for (const degrees of [0, 90, 180, 270, -90]) {
+        const point = bowlPoint(centre, across, tall, 1, 97, degrees, 0.0001);
+        if (Math.hypot(point.x - centre.x, point.y - centre.y) < Math.min(across, tall) * 0.5)
+          missed.push(`${across} at ${degrees}`);
+      }
+    }
+    expect(missed).toEqual([]);
+  });
 });

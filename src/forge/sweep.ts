@@ -1823,7 +1823,6 @@ export function sweep(stroke: Stroke): Contour[] {
   let rightNodes = stitch([...right].reverse().map(reverseOffset), reach);
   const levelStart = slides(stroke.start, startStraight);
   const levelEnd = slides(stroke.end, endStraight);
-  if ((globalThis as any).__dbg) (globalThis as any).__dbg.push({ start: stroke.start, end: stroke.end, seg: spine.segments, levelStart, levelEnd });
   // Counted against what the sides started with, not against what is left of
   // them: a stroke of one straight run has two nodes a side and both of them
   // are replaced, which is right, and a rule applied one end at a time would

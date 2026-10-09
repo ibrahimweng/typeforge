@@ -783,10 +783,12 @@ export function humanistG(style: Style): Recipe {
    * drawn is laid out for its own lighter one, so at a heavy weight the link
    * lands out toward the loop's outer edge rather than on its middle. Its end
    * is cut square with the pen, and on a pen whose cut runs along that edge --
-   * held at eighteen degrees with contrast 0.7 -- the cut lay just outside it
-   * and the g came in two pieces. Where it does not reach, it is aimed at the
-   * middle of the loop as drawn. Asked of the run before it is inked, so it
-   * is inked once whatever the answer, as it always was.
+   * held at eighteen degrees with contrast 0.7 -- the cut lay a quarter of a
+   * unit outside it at 194 and width 100, and the g came in two pieces. Where
+   * it does not reach, it is aimed at the middle of the loop as drawn; where
+   * it does, which is everywhere every base draws it, it is aimed as it
+   * always was. Asked of the run before it is inked, so it is inked once
+   * whatever the answer.
    */
   let lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
   const aimed: Stroke = {

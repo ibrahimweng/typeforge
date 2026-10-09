@@ -307,10 +307,11 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      * That start is a reach under the cap line, and on a text serif's nib held
      * at an angle -- eighteen degrees with contrast 0.7 -- the reach across
      * the diagonal runs so nearly level that it lands within a unit of the
-     * line at some masters, where it is cut level, and not at others. With the
-     * same points either way (`Terminal.keepsPoints`). Asked on a text serif
-     * only: the written hands' fours and the Didone's small ones in the
-     * fractions do the same, and are drawn as they always were.
+     * line at some weights and widths, where it is cut level, and not at the
+     * rest. With the same points either way (`Terminal.keepsPoints`). Asked on
+     * a text serif only: the written hands' fours and the Didone's small ones
+     * in the fractions are cut level at some masters too, and are drawn as
+     * they always were.
      */
     const textSerif = bookish(f) && f.style.parts.slab.shape === "wedge";
     return finish(f, [
@@ -579,8 +580,8 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
             // sits up off the line clear of the bowl, as Lora's does.
             bend(f, at(centre.x, foot), radius, 0, drops(f) ? NINE_DROP : -120, wide),
           ),
-          // Begun in the middle of the bowl, which moves with the pen and can
-          // pass within a unit of the x-height: see `Terminal.keepsPoints`.
+          // Begun inside the bowl, at its middle, which moves with the pen and
+          // can pass within a unit of the x-height: see `Terminal.keepsPoints`.
           KEEPS_POINTS,
           f.end,
         ),

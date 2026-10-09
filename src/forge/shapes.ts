@@ -1273,15 +1273,18 @@ export function bowlPoint(
    * And a direction that falls between two pieces by a rounding error.
    *
    * Where two pieces meet on a direction asked for -- straight up or down on
-   * a bowl as wide as it is tall, which has no flat there and meets two
+   * a bowl about as wide as it is tall, which has no flat there and meets two
    * quarters on the vertical -- one piece can end at 89.99999999999994
    * degrees and the next begin at 90.00000000000006, and ninety lies in
-   * neither. The centre came back instead: the soft sign hung on the lje ran
-   * its top and bottom out level from the stem's middle, through its own
+   * neither. The centre came back instead: on a nib held at eighteen degrees
+   * with contrast 0.7, at 194 and width 100, the soft sign hung on the lje
+   * ran its top and bottom out level from the stem's middle, through its own
    * bowl, and the letter crossed itself and came in two pieces. Read off the
    * piece whose ends the direction misses by least, if by no more than that.
+   * Only where nothing was found above, so every direction that was on a
+   * piece is read off the same piece as it always was.
    */
-  let nearest: SpineSegment | null = null;
+  let nearest: Vec2 | null = null;
   let miss = SEAM;
   for (const segment of loop) {
     if (!hasLength(segment)) continue;
@@ -1290,12 +1293,14 @@ export function bowlPoint(
     if (to <= from) to += 360;
     const reading = wanted < from ? wanted + 360 : wanted;
     const off = Math.min(Math.max(0, reading - to), Math.max(0, from + 360 - reading));
-    if (off <= miss) {
+    if (off > miss) continue;
+    const point = hit(segment, centre, degrees);
+    if (point) {
       miss = off;
-      nearest = segment;
+      nearest = point;
     }
   }
-  return (nearest && hit(nearest, centre, degrees)) ?? centre;
+  return nearest ?? centre;
 }
 
 /** How far, in degrees, a direction may fall between two pieces of a bowl and still be on one. */

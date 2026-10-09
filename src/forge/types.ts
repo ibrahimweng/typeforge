@@ -171,14 +171,17 @@ export interface Terminal {
    *
    * A level cut on a straight end stands in for the last node of each side
    * rather than following it (see `sweep`), and at the start that leaves its
-   * left corner at the end of the outline where a square cut's is at the
-   * front: the same points, begun one along. Whether an end is cut level is
-   * asked of where it lands, to within a unit of a line, and a few ends are
-   * written a pen's reach from one -- the four's diagonal starts a reach
-   * under the cap line, the nine's tail in the middle of its bowl -- which at
-   * some pens lands inside that unit and at others does not. Begun one along
-   * at some masters and not at others, the letter could not ride a weight
-   * axis. Only ever on an end that is never seen, so never softened.
+   * left corner at the end of the outline where a square cut's is welded to
+   * the front: the same points, begun one along. Whether an end is cut level
+   * is asked of where it lands, to within a unit of a line, and a few ends
+   * are set near a line by the pen rather than written on it -- the four's
+   * diagonal starts a reach of the pen under the cap line, the nine's tail at
+   * the middle of its bowl -- and on a nib held at eighteen degrees with
+   * contrast 0.7 those land inside that unit at some weights and widths and
+   * outside it at others. Begun one along at some masters and not at the
+   * rest, neither letter could ride a weight axis. Only the order changes:
+   * the cut is drawn as it was. Set by a letter's recipe, on ends that are
+   * never seen and so never softened.
    */
   keepsPoints?: true;
   /** For `angled`, degrees away from square. Ignored otherwise. */
