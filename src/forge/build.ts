@@ -1835,12 +1835,258 @@ function dress(
      */
     return { ...end, level: true };
   };
-  const start = made(stroke.start, 0);
-  const end = made(stroke.end, 1);
+  const start = softened(
+    made(stroke.start, 0),
+    stroke.start,
+    0,
+    stroke,
+    style,
+    straight.start,
+    small,
+  );
+  const end = softened(made(stroke.end, 1), stroke.end, 1, stroke, style, straight.end, small);
   if (start === stroke.start && end === stroke.end) return rounded(stroke, straight);
   const spine =
     pullStart > 0 || pullEnd > 0 ? pulledBack(stroke.spine, pullStart, pullEnd) : stroke.spine;
   return rounded({ ...stroke, spine, start, end }, straight);
+}
+
+/**
+ * An end as `dress` made it, with the soft finishes the style asks for noted
+ * on it: an arm swelled toward its beak (`Terminal.swell`), a curved end
+ * tapered (`taper`), and the corners of a seen cut rounded (`soft`). The
+ * sweep reads the notes; see `ends.ts`.
+ *
+ * The very end it was given wherever the style switches none of them on,
+ * which is every base. And which end takes which, and which corners, is read
+ * off the style, the kind the end was dressed as and the kind of piece its run
+ * ends on -- never off the pen -- because each note adds to or moves the
+ * nodes the end is drawn with, and a letter has to have the same nodes at
+ * every weight and width. Only how far each one reaches comes from the pen.
+ *
+ * The kind of piece, and not `endsStraight`, which looks past the pieces of
+ * no length a run ends on to the first one that goes anywhere: whether a piece
+ * has length is the pen's and the width's business. A squarish c cut out of a
+ * bowl ends on the bowl's upright side, of no length where the cut falls on the
+ * corner's curve and a few units long at a narrow width, where it falls on the
+ * side; asked of `endsStraight`, its foot was a curve at one width, tapered
+ * and softened on both corners with its sliver of serif dropped, and straight
+ * at the next, serif kept and softened on one corner. An end on a straight
+ * piece is left with the serif `dress` gave it, which changes between the two
+ * as `endsStraight` does but is drawn with the same nodes either way.
+ *
+ * - Left alone: an end hung with a drop or carrying a beak, a round cap or a
+ *   teardrop, each of which is its own finish; and an open end on a face that
+ *   hangs balls or flares on its open ends.
+ * - Swelled: the end of a straight arm lying along a line where it wears a
+ *   serif's beak (the level slab `dress` makes there), `1 + slab.swell` as
+ *   wide as the arm's root on each side its beak can go (`swellSide`).
+ * - Tapered: a seen end -- open, or hinted `seen` by its recipe -- ending
+ *   on a curve and cut plain, `1 - terminal.taper` of its width kept, and
+ *   never less than fifteen hundredths; not one cut along a line. A serif
+ *   refused on a curve is a cut with a sliver buried in it, and the sliver
+ *   would stand out of the tapered side, so it becomes the plain cut it is
+ *   drawn as.
+ * - Softened: a radius of `terminal.soft` times the end's full width, as it
+ *   is once swelled or tapered. Both corners of a seen plain cut, and of a
+ *   serif refused on a curve or one wearing no serif at all; the inside
+ *   corner alone of a curved end seen without being open, which runs into
+ *   another stroke's head; on the head of a lowercase stem, sloped or
+ *   flagged, the corner away from the flag, as the bump beside the notch of
+ *   an n: a run that is a stem and nothing else, or one whose head `dress`
+ *   sank or flagged. None on a sloped plain cut, which is that other stroke's
+ *   head, nor where a serif's wings or beak stand on the end, whose tips are
+ *   the serif's own, nor where a serif was refused on a straight end, which is
+ *   refused at one weight and worn at the next.
+ */
+function softened(
+  dressed: Terminal,
+  undressed: Terminal,
+  index: 0 | 1,
+  stroke: Stroke,
+  style: Style,
+  isStraight: boolean,
+  small: boolean,
+): Terminal {
+  const { terminal: part, slab, ball, flare } = style.parts;
+  const soft = part.soft ?? 0;
+  const taper = part.taper ?? 0;
+  const swell = slab.swell ?? 0;
+  if (!(soft > 0 || taper > 0 || swell > 0)) return dressed;
+  if (dressed.drop || dressed.beak || dressed.kind === "round" || dressed.kind === "teardrop") {
+    return dressed;
+  }
+  if (dressed.open === true && (ball.size > 0 || flare.spread > 0)) return dressed;
+  const [, at, outward] = endsOf(stroke)[index];
+  const seen = undressed.open === true || undressed.seen === true;
+  // A slab that lays a serif on the end at all, as `serifsFor` asks it.
+  const winged = (dressed.projection ?? 0) > 0 && (dressed.thickness ?? 0) > 0;
+  // The piece the recipe ends the run with at this end, of whatever length
+  // the pen leaves it: an arc that the trim has eaten is still an arc.
+  const segments = stroke.spine.segments;
+  const last = index === 1 ? segments[segments.length - 1] : segments[0];
+  const curved = last?.kind === "arc";
+  let end = dressed;
+
+  if (
+    swell > 0 &&
+    end.kind === "slab" &&
+    winged &&
+    isStraight &&
+    end.level === true &&
+    end.bare !== true &&
+    Math.abs(outward.y) < 1e-3
+  ) {
+    /*
+     * Each side flares only where its wing could go: an edge lying along a
+     * line stays on it, as the serif's own wing never crosses it (see
+     * `crossesALine`). Swelled both ways, the top arm of an E rose off the cap
+     * height toward its end and the foot sank through the baseline. The side
+     * is named against the way the stroke travels, which at the near end is
+     * the way out turned round.
+     */
+    const half = halfWidthAcross(stroke, outward);
+    const free = [1, -1].filter((side) => !crossesALine(at, outward, side, half * 2, half, style));
+    if (free.length > 0) {
+      const travelling = index === 1 ? 1 : -1;
+      end = {
+        ...end,
+        swell: 1 + swell,
+        ...(free.length === 1 ? { swellSide: free[0] * travelling === 1 ? 1 : -1 } : {}),
+      };
+    }
+  }
+
+  if (
+    taper > 0 &&
+    seen &&
+    curved &&
+    // Not one cut along a line (`aligned`, a grotesque's c): the cut carries
+    // each side on along its own curve after the taper has drawn the inner one
+    // in, and carried that far the inner side ran out across the outer.
+    end.aligned !== true &&
+    (end.kind === "butt" || end.kind === "angled" || end.kind === "slab")
+  ) {
+    end = {
+      ...end,
+      kind: end.kind === "slab" ? "butt" : end.kind,
+      taper: Math.max(0.15, 1 - taper),
+    };
+  }
+
+  if (soft > 0) {
+    let sides: { left?: number; right?: number } | null = null;
+    const both = { left: 1, right: 1 };
+    if (end.kind === "butt" || end.kind === "angled") {
+      /*
+       * Not a sloped plain cut, though: that is a stem's head sunk in under
+       * the stroke running into it -- the t's, under its flag -- covered by
+       * it but for its high corner, which is that stroke's corner too.
+       * Rounded, the two corners never agree, and a notch opened between them
+       * at the top of the t.
+       */
+      if (seen && end.sink === undefined) {
+        /*
+         * And a curved end seen without being open is the stroke running into
+         * such a head -- the t's flag -- whose corner on the outside of its
+         * curve is the one it shares with that stem: only the inside one is
+         * free. Anticlockwise, that is the left of the way it travels -- asked
+         * of the arc the run ends on, which keeps the way it turns even where
+         * the trim has left it no length.
+         */
+        sides =
+          undressed.open !== true && last?.kind === "arc"
+            ? last.sweepPositive
+              ? { left: 1 }
+              : { right: 1 }
+            : both;
+      }
+    } else if (end.kind === "slab") {
+      if (curved || !winged) {
+        // Refused on a curve, or wearing nothing: a cut like any other.
+        if (seen) sides = both;
+      } else if (
+        small &&
+        (end.head === "sloped" || end.head === "flag") &&
+        (end.sink !== undefined ||
+          end.flag === true ||
+          (segments.every((segment) => segment.kind === "line") &&
+            outward.y > 0 &&
+            Math.abs(outward.x) <= 0.02))
+      ) {
+        /*
+         * The head of a lowercase stem: sloped or flagged where it stops on
+         * its line, and the corner away from the flag is the bump beside the
+         * notch of an n. The flag is the wing on the left of the way the end
+         * faces (see `behind` in `serifsFor`): the left of the way the stroke
+         * travels at its far end, and the right at its near end.
+         *
+         * Asked of the head the face draws rather than of what `dress` made
+         * of this end, because that follows where the stem stops, which moves
+         * with the pen: the iota's top stands on the x-height at a light weight
+         * and clear of it at a heavy one, sloped at the one and refused at the
+         * other -- the same corner rounded either way, so the same nodes.
+         * For the same reason a serif refused on a straight end (`bare`) is
+         * left as it is cut: refused at one weight, it is worn at the next.
+         *
+         * But only of a run that is a stem and nothing else, whose end stands
+         * upright at every weight because its one straight piece does; a run
+         * that turns -- a j, a u -- is asked of `dress`, which sinks or flags
+         * its head where it stops on its line. Asked of every run standing
+         * upright, the foot of a squarish c took the stem's bump at a narrow
+         * width, where it ends on its bowl's upright side, and lost it at the
+         * next, where it ends on the curve and leans.
+         */
+        sides = index === 1 ? { right: 1 } : { left: 1 };
+      }
+    }
+    if (sides) {
+      const level = end.level === true && Math.abs(outward.y) > 1e-3;
+      const half = level ? endLevelHalf(stroke, end, outward) : endHalfAcross(stroke, end, outward);
+      const radius = soft * 2 * half * (end.taper ?? 1);
+      end = {
+        ...end,
+        soft: {
+          ...(sides.left !== undefined ? { left: radius } : {}),
+          ...(sides.right !== undefined ? { right: radius } : {}),
+        },
+      };
+    }
+  }
+  return end;
+}
+
+/**
+ * How far a swelled arm's edge on one side of its beak runs in for every unit
+ * back up the arm, as `wing` reads it (a lean below nought runs in): the
+ * swell's growth across the end, spread over the arm's last straight piece,
+ * which is where the sweep spreads it (see `ends.ts`). So the beak's hollow
+ * arrives on the flared edge where it meets it, a beak's depth back from the
+ * end, rather than where the edge stands at the end itself -- a step of two
+ * units at a Black. Nothing on an end that is not swelled, nor on its side that
+ * keeps to a line; `which` is the end, `side` the wing's, as `serifsFor` has
+ * them.
+ */
+function swellLean(
+  stroke: Stroke,
+  terminal: Terminal,
+  which: number,
+  side: number,
+  outward: Vec2,
+): number {
+  if (terminal.swell === undefined) return 0;
+  // The wing's side against the way the stroke travels: see `softened`.
+  const travelling = which === 1 ? side : -side;
+  if (terminal.swellSide !== undefined && terminal.swellSide !== travelling) return 0;
+  const pieces = endPieces(stroke.spine);
+  const piece = which === 1 ? pieces?.last : pieces?.first;
+  if (piece?.kind !== "line") return 0;
+  const length = Math.hypot(piece.to.x - piece.from.x, piece.to.y - piece.from.y);
+  if (length < 1e-9) return 0;
+  const normal = { x: -outward.y, y: outward.x };
+  const shift = reachAlong(normal, penReach(stroke.pen));
+  const grows = Math.abs(normal.x * shift.x + normal.y * shift.y) * (terminal.swell - 1);
+  return -grows / length;
 }
 
 /**
@@ -3407,9 +3653,12 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
       /*
        * How far the stroke's edge on this side moves out along the wing for
        * every unit back up the stroke: nothing on an upright, and on a serif
-       * laid level across a diagonal, the diagonal's own slant.
+       * laid level across a diagonal, the diagonal's own slant. On an arm
+       * swelled toward its beak, the flare running in (see `swellLean`).
        */
-      const edgeLean = level ? (across.x * into.x + across.y * into.y) / Math.abs(outward.y) : 0;
+      const edgeLean = level
+        ? (across.x * into.x + across.y * into.y) / Math.abs(outward.y)
+        : swellLean(stroke, terminal, which, side, outward);
       /*
        * Never fillet more than the wing is deep or wide, or the curve would
        * have to begin before the serif does. Measured against whichever wing is
