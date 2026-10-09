@@ -286,6 +286,14 @@ export interface Terminal {
    */
   swell?: number;
   /**
+   * Which side of a swelled end grows, against the way the stroke travels:
+   * one for its left, minus one for its right; left out, both do. An arm
+   * lying along a line keeps its edge on the line and flares away from it
+   * into its beak, as the top and foot of an E do, where a middle arm flares
+   * both ways. Set with `swell`, and only read with it.
+   */
+  swellSide?: 1 | -1;
+  /**
    * The share of the stroke's width kept at a seen curved end, from 0.15 to
    * one: the inner side is drawn in toward the outer.
    */
