@@ -10,6 +10,7 @@ import type { Vec2 } from "@/font/types";
 import { spineStart } from "../shapes";
 import { blackness, type Style } from "../style";
 import type { Terminal } from "../types";
+import { buried, heftable } from "./hints";
 import {
   veeStroke,
   type Frame,
@@ -49,6 +50,9 @@ import {
   lighter,
   stemSide,
   kArms,
+  pinnedTurn,
+  risenTurns,
+  tailed,
 } from "./common";
 
 /**
@@ -111,7 +115,13 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   c: (style) => {
     const f = frame(style);
     const centre = at(f.edge + f.bowl, f.x / 2);
-    return finish(f, [openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, blackGap(f))], true);
+    // Its foot laid flatter where the face asks for that: see `tailed`.
+    const tail = 1 + (style.parts.bowl.tail ?? 0);
+    return finish(
+      f,
+      [tailed(heftable(f, openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, blackGap(f))), tail)],
+      true,
+    );
   },
 
   d: (style) => {
@@ -276,13 +286,17 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
               eye,
             ),
           ),
-          BUTT,
+          // Buried in the bowl's wall, its join rounded both sides: see `buried`.
+          buried(f, { left: 1, right: 1 }),
           { kind: "butt", level: true },
         ),
         // Cut level along the foot of the bar, on a pen turned on its side.
-        lighter(
-          ink(f, belt, onSide ? { kind: "butt", level: true } : BUTT, f.end),
-          1 - 0.14 * light,
+        heftable(
+          f,
+          lighter(
+            ink(f, belt, onSide ? { kind: "butt", level: true } : BUTT, f.end),
+            1 - 0.14 * light,
+          ),
         ),
       ],
       true,
@@ -511,18 +525,25 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const radius = shoulderRadius(f, f.x);
     const crest = Math.max(f.crest(f.x), radius);
     const landing = stem + Math.max(reach, radius * 2);
+    // Leaving the stem lower where the face's shoulders rise, as the n's arch
+    // does: see `risenTurns`. Each turn then in the pieces its sweep gives it.
+    const risen = risenTurns(f, radius, landing - stem, crest);
+    const up = risen ? risen.up : radius;
+    const down = risen ? risen.down : radius;
+    const bow = risen ? pinnedTurn : turn;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
       ink(
         f,
         chain(
-          turn(at(stem + radius, crest - radius), radius, 180, 90),
-          straight(at(stem + radius, crest), at(landing - radius, crest)),
+          bow(at(stem + up, crest - up), up, 180, 90),
+          straight(at(stem + up, crest), at(landing - down, crest)),
           // Carried a little past the top, so the arm droops rather than
           // stopping dead level, which is what tells an r from a bracket.
-          turn(at(landing - radius, crest - radius), radius, 90, 55),
+          bow(at(landing - down, crest - down), down, 90, 55),
         ),
-        BUTT,
+        // Begun buried in the stem, as the n's arch is: see `arch`.
+        buried(f, { left: 0.6 }),
         f.end,
       ),
     ]);

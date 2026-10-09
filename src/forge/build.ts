@@ -42,11 +42,14 @@ import {
 } from "./accents";
 import { reachesCast, type Cast } from "./cast";
 import { effectInk, reachesEffects, type Effects } from "./effects";
+import { filletsFor } from "./fillet";
+import { prepared } from "./prepare";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
 import { assemble, gridPen, hasTiles, type Kit, unitOf } from "./kit";
 import { thinnedRounds } from "./rounds";
+import { roundNodeCorner } from "./soft";
 import {
   alongSpine,
   decided,
@@ -1375,8 +1378,9 @@ function inkOf(stroke: Stroke, style: Style, others: Contour[] = []): Contour[] 
     ...beaksFor(stroke),
     ...ballsFor(stroke, style, swept, others),
     ...flaresFor(stroke, style),
-    ...teardropsFor(stroke, swept),
+    ...teardropsFor(stroke, swept, style),
     ...serifsFor(stroke, style, others),
+    ...filletsFor(stroke, style, swept, others),
   ];
 }
 
@@ -1447,17 +1451,21 @@ function dressedAll(given: Stroke[], style: Style, name: string): Stroke[] {
    * text face's figures read as a sans's with serifs on their feet.
    */
   const anyDrop = figure || decidedBy(name) === "question";
+  // And made ready for the soft finishes, which on every base is the stroke as dressed.
   return strokes.map((stroke) =>
-    dress(
-      stroke,
+    prepared(
+      dress(
+        stroke,
+        style,
+        small,
+        capital,
+        lettered ? (figure ? "figure" : "letter") : "other",
+        footBeak,
+        capitalDrop,
+        anyDrop,
+        tallS,
+      ),
       style,
-      small,
-      capital,
-      lettered ? (figure ? "figure" : "letter") : "other",
-      footBeak,
-      capitalDrop,
-      anyDrop,
-      tallS,
     ),
   );
 }
@@ -1691,6 +1699,8 @@ function dress(
                   from: top ? height + style.metrics.overshoot : 0,
                 }
               : undefined,
+            // And the serif's soft tip, which a bar beak's corners are turned on.
+            ...((terminal.tip ?? 0) > 0 ? { tip: terminal.tip } : {}),
           },
         };
       }
@@ -1737,7 +1747,7 @@ function dress(
               dropOvershoot(stroke, outward, side, radius) -
                 (at.y - (style.metrics.descender - style.metrics.overshoot)),
             )
-          : TEAR_PULL * Math.max(0, radius - halfWidthAcross(stroke, outward));
+          : TEAR_PULL * Math.max(0, radius - endHalfAcross(stroke, end, outward));
       if (index === 0) pullStart = pull;
       else pullEnd = pull;
       return { ...end, drop: { radius, bend, side } };
@@ -1765,7 +1775,9 @@ function dress(
             (end.kind === "slab" &&
               end.shape === "wedge" &&
               Math.abs(outward.y) <= 0.35 &&
-              lines.some((line) => Math.abs(at.y - line) <= halfWidthAcross(stroke, outward) + 1)));
+              lines.some(
+                (line) => Math.abs(at.y - line) <= endHalfAcross(stroke, end, outward) + 1,
+              )));
     /*
      * Refused a serif, a straight end is still cut the way it would have been
      * with one: level on the line it stops on, or square across an arm. Cut
@@ -1797,7 +1809,7 @@ function dress(
       outward.y > 0 &&
       [metrics.xHeight, metrics.ascender].some((line) => Math.abs(at.y - line) < 1)
     ) {
-      const inner = levelHalfWidth(stroke, outward);
+      const inner = endLevelHalf(stroke, end, outward);
       return { ...end, level: true, sink: headSlope(style) * 2 * inner };
     }
     /*
@@ -2051,8 +2063,10 @@ const TEAR_PULL = 0.6;
  * Always the same five nodes. Where there is no room for the drop -- a heavy
  * pen in a tight aperture -- it shrinks to the stroke's own width rather than
  * going, so the letter is drawn with the same shapes at every weight.
+ *
+ * Handed the style for the pear drop's fields, which nothing reads yet.
  */
-function teardropsFor(stroke: Stroke, swept: Contour[]): Contour[] {
+function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[] {
   if (stroke.spine.closed || swept.length === 0) return [];
   const out: Contour[] = [];
   const band = contoursBounds(swept);
@@ -2207,15 +2221,25 @@ function beaksFor(stroke: Stroke): Contour[] {
       const inward = curve.toward.x < 0 ? -1 : 1;
       const x = outer.x;
       const x2 = outer.x + inward * beak.bar.width;
-      const bar: Contour = {
-        nodes: [
-          node({ x, y: beak.bar.from }),
-          node({ x, y: tipY }),
-          node({ x: x2, y: tipY }),
-          node({ x: x2, y: beak.bar.from }),
-        ],
-        closed: true,
-      };
+      let corners = [
+        node({ x, y: beak.bar.from }),
+        node({ x, y: tipY }),
+        node({ x: x2, y: tipY }),
+        node({ x: x2, y: beak.bar.from }),
+      ];
+      /*
+       * On a face with soft tips, both corners at the bar's tip turned on a
+       * radius as a serif's are: the share of half the bar's width the face
+       * asks for, and never more than most of half its length. Six nodes
+       * rather than four, for the face rather than for the weight.
+       */
+      const soft = beak.tip ?? 0;
+      if (soft > 0) {
+        const radius = Math.min(soft * 0.5 * beak.bar.width, 0.45 * Math.abs(tipY - beak.bar.from));
+        corners = roundNodeCorner(corners, 1, radius, radius);
+        corners = roundNodeCorner(corners, 3, radius, radius);
+      }
+      const bar: Contour = { nodes: corners, closed: true };
       out.push(contourArea(bar) < 0 ? reverseContour(bar) : bar);
       continue;
     }
@@ -3161,7 +3185,9 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
      */
     const level = terminal.level === true && Math.abs(outward.y) > 1e-3;
     const facing = level ? { x: 0, y: Math.sign(outward.y) } : outward;
-    const inner = level ? levelHalfWidth(stroke, outward) : halfWidthAcross(stroke, outward);
+    const inner = level
+      ? endLevelHalf(stroke, terminal, outward)
+      : endHalfAcross(stroke, terminal, outward);
     // The font's own stem, or this stroke's edge if that is further out, and
     // the projection beyond it. Measured from the stem so that every serif in
     // the face is the same size, and from the stroke where the stroke is the
@@ -3359,7 +3385,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
       // And no longer than the stroke is wide where it is put, which on a
       // curve with contrast is not how wide it is at the end.
       const tip = refused
-        ? Math.min(inner, halfWidthAcross(stroke, buried.heading)) * 0.6
+        ? Math.min(inner, endHalfAcross(stroke, terminal, buried.heading)) * 0.6
         : Math.min(full, room);
       /*
        * A wing cut short by a neighbour is made shallower with it, so it
@@ -3483,6 +3509,7 @@ function serifsFor(stroke: Stroke, style: Style, others: Contour[] = []): Contou
               refused ? 0 : edgeLean,
               terminal.shape === "wedge",
               climb,
+              terminal.tip ?? 0,
             ),
           ];
       for (const piece of shape) {
@@ -3773,6 +3800,22 @@ function levelHalfWidth(stroke: Stroke, outward: Vec2): number {
 }
 
 /**
+ * `halfWidthAcross` at an end, as wide as the end really is: an arm swelled
+ * toward its beak (`Terminal.swell`) is that much wider there. The plain
+ * helper's own answer, untouched, on an end that is not swelled.
+ */
+function endHalfAcross(stroke: Stroke, terminal: Terminal, outward: Vec2): number {
+  const half = halfWidthAcross(stroke, outward);
+  return terminal.swell === undefined ? half : half * terminal.swell;
+}
+
+/** `levelHalfWidth` at an end, swelled as `endHalfAcross` is. */
+function endLevelHalf(stroke: Stroke, terminal: Terminal, outward: Vec2): number {
+  const half = levelHalfWidth(stroke, outward);
+  return terminal.swell === undefined ? half : half * terminal.swell;
+}
+
+/**
  * Both ends of a stroke: the terminal, where it is, which way it faces, and
  * whether the run arriving there is straight.
  */
@@ -3885,6 +3928,10 @@ const INSIDE_PULL = 0.6;
  * `shear` tips the whole wing down to the left by so much per unit, which is a
  * sloped head: the stem's own cut falls away along the same line, measured from
  * its right-hand edge at `edge` units right of the spine.
+ *
+ * `round` is the face's soft tip (`Terminal.tip`), nought to one: the share of
+ * the tip's depth turned on a radius rather than cut square. Nought, the wing
+ * is drawn exactly as it always was.
  */
 function wing(
   at: Vec2,
@@ -3900,6 +3947,7 @@ function wing(
   lean = 0,
   wedge = false,
   climb = 0,
+  round = 0,
 ): Contour {
   const across = { x: -outward.y * side, y: outward.x * side };
   const into = { x: -outward.x, y: -outward.y };
@@ -3978,7 +4026,42 @@ function wing(
   }
   const reachUp = deep + rise;
 
-  const nodes: GlyphNode[] = [node(place(held, 0)), node(place(tip, 0))];
+  /*
+   * A soft tip: both of the tip's corners stood back from it by `rho`, and the
+   * cut between them one curve whose handles reach `4/3 rho` out along the
+   * wing. A cubic whose inner handles stand that far out of a straight line
+   * bulges exactly `rho` past it, so the rounded tip reaches as far as the
+   * square one did and no further, and at a whole `round` -- `rho` half the
+   * tip's depth -- it is a half circle. Never more than half what the wing
+   * has between its root and its tip, so the two corners cannot pass.
+   *
+   * Which of these nodes carry handles is the style's question alone: a wing
+   * refused, buried or shrunk to nothing has them too, of no length, and
+   * every weight draws the tip as the same curve.
+   */
+  const rho = round > 0 ? Math.min(round * tipDeep * 0.5, Math.max(0, tip - held) * 0.5) : 0;
+  const reachOut = (4 / 3) * rho;
+  const tipU = tip - rho;
+  const nodes: GlyphNode[] =
+    round > 0
+      ? [
+          node(place(held, 0)),
+          {
+            point: place(tipU, 0),
+            handleIn: null,
+            handleOut: place(tipU + reachOut, 0),
+            type: "smooth",
+          },
+        ]
+      : [node(place(held, 0)), node(place(tip, 0))];
+  // The rounded tip's top corner arriving in line with the hollow it leaves
+  // by, the cut's own length out, and never below the wing's underside.
+  const capIn = (outU: number, outV: number): Vec2 => {
+    const du = outU - tipU;
+    const dv = outV - tipDeep;
+    const length = Math.hypot(du, dv) || 1;
+    return place(tipU - (du / length) * reachOut, Math.max(0, tipDeep - (dv / length) * reachOut));
+  };
   const handle = 0.5523 * rise;
   // A hair inside the edge rather than on it, so the two overlap and no seam
   // is left between them.
@@ -4012,12 +4095,24 @@ function wing(
       const corner = { u: from + lean * tipDeep, v: tipDeep };
       const toward = (u: number, v: number, share: number) =>
         place(u + (corner.u - u) * share, v + (corner.v - v) * share);
-      nodes.push({
-        point: place(top.u, top.v),
-        handleIn: null,
-        handleOut: toward(top.u, top.v, INSIDE_PULL),
-        type: "corner",
-      });
+      if (round > 0) {
+        // The soft tip's top corner, the hollow aimed at the same corner from it.
+        const outU = tipU + (corner.u - tipU) * INSIDE_PULL;
+        const outV = top.v + (corner.v - top.v) * INSIDE_PULL;
+        nodes.push({
+          point: place(tipU, top.v),
+          handleIn: capIn(outU, outV),
+          handleOut: place(outU, outV),
+          type: "smooth",
+        });
+      } else {
+        nodes.push({
+          point: place(top.u, top.v),
+          handleIn: null,
+          handleOut: toward(top.u, top.v, INSIDE_PULL),
+          type: "corner",
+        });
+      }
       nodes.push({
         point: place(meetU, reachUp),
         handleIn: toward(meetU, reachUp, INSIDE_PULL),
@@ -4027,12 +4122,24 @@ function wing(
       nodes.push(node(place(heldAt(reachUp), reachUp)));
       return { nodes, closed: true };
     }
-    nodes.push({
-      point: place(top.u, top.v),
-      handleIn: null,
-      handleOut: place(top.u - du * 0.55, top.v + dv * 0.12),
-      type: "corner",
-    });
+    if (round > 0) {
+      // The soft tip's top corner, the hollow leaving it as it leaves the square one.
+      const outU = tipU - (tipU - meetU) * 0.55;
+      const outV = top.v + dv * 0.12;
+      nodes.push({
+        point: place(tipU, top.v),
+        handleIn: capIn(outU, outV),
+        handleOut: place(outU, outV),
+        type: "smooth",
+      });
+    } else {
+      nodes.push({
+        point: place(top.u, top.v),
+        handleIn: null,
+        handleOut: place(top.u - du * 0.55, top.v + dv * 0.12),
+        type: "corner",
+      });
+    }
     const pull = Math.max(dv * 0.6, 0);
     nodes.push({
       point: place(meetU, reachUp),
@@ -4044,7 +4151,17 @@ function wing(
     return { nodes, closed: true };
   }
 
-  nodes.push(node(place(tip, tipDeep)));
+  if (round > 0) {
+    // The soft tip's top corner, the bar's top running on from it as a line.
+    nodes.push({
+      point: place(tipU, tipDeep),
+      handleIn: place(tipU + reachOut, tipDeep),
+      handleOut: null,
+      type: "smooth",
+    });
+  } else {
+    nodes.push(node(place(tip, tipDeep)));
+  }
   if (rise > 0) {
     /*
      * The fillet: a quarter turn hollowing out the inside corner where the

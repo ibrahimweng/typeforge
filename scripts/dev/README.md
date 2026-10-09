@@ -49,6 +49,7 @@ derive from.
 | `merged-ink.ts` | The same after the strokes are fused. |
 | `moved.ts` | How far the drawn weight moved, glyph by glyph, between two runs. |
 | `drawnbytes.ts` | A fingerprint of every face's outlines at its drawn weight. |
+| `golden.ts` | Every base, every glyph in every form, at fifteen pens and widths, a wave book and a variable export, hashed; compared against a baseline it says whether anything moved. |
 | `bones.ts` | Whether a letter's spine has the same pieces at every weight. |
 | `standing.ts` | Which letters cannot follow the weight axis, and where they come apart. |
 | `whole.ts` | Every script-face letter in one piece or not, across the weight axis. |

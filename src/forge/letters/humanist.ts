@@ -23,6 +23,7 @@ import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
+import { heftable, seen } from "./hints";
 import {
   arm,
   bendWidth,
@@ -66,6 +67,7 @@ import {
   tStem,
   uses,
   bookish,
+  tailed,
 } from "./common";
 
 /** How much further round the e's tail runs than the construction's, in degrees. */
@@ -116,7 +118,14 @@ export function humanistE(style: Style): Recipe {
   const f = frame(style);
   const past = textSerif(f) ? Math.min(1, Math.max(0, (heaviness(f) - 1) / 0.5)) : 0;
   if (past > 0) drawn = eyed(style, height, E_LIFT * past);
-  return drawn.recipe;
+  // The belt's foot laid flatter where the face asks for that: see `tailed`.
+  const tail = 1 + (style.parts.bowl.tail ?? 0);
+  return tail > 1
+    ? {
+        ...drawn.recipe,
+        strokes: drawn.recipe.strokes.map((one, index) => (index === 1 ? tailed(one, tail) : one)),
+      }
+    : drawn.recipe;
 }
 
 /** Whether a face is a text serif's -- wedge serifs on a pen with contrast. */
@@ -243,7 +252,7 @@ function eyed(
       ...drawn,
       strokes: [
         drawnBar,
-        inherit(belt, { ...belt, spine: tail, start: bowlStart, end: foot }),
+        heftable(f, inherit(belt, { ...belt, spine: tail, start: bowlStart, end: foot })),
         ...rest,
       ],
     },
@@ -343,8 +352,9 @@ export function humanistT(style: Style): Recipe {
   const stemLeft = stem - stemHalf;
   const stemRight = stem + stemHalf;
   // The flag's pen, and how far across it reaches from its spine along a row.
+  // Its end at the head seen, though nothing marks it open: see `seen`.
   const flagOf = (share: number) =>
-    lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, LEVEL), share);
+    lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, seen(f, LEVEL)), share);
   /*
    * The arc leaves the bar flatter than its chord and reaches the head
    * steeper, each by the angle its sag turns it through, and a pen crosses a
@@ -438,7 +448,7 @@ export function humanistT(style: Style): Recipe {
         // Round the foot and on up into the tail, as Lora's is.
         inPieces(turn(at(stem + radius, f.dip(0) + radius), radius, 180, 305), 2),
       ),
-      { ...LEVEL, sink },
+      seen(f, { ...LEVEL, sink }),
       f.end,
     ),
     wedge,
@@ -654,10 +664,13 @@ export function humanistC(style: Style): Recipe {
   const f = frame(style);
   const centre = at(f.edge + f.bowl, f.x / 2);
   const closer = -C_CLOSE * Math.min(1, heaviness(f));
-  return swollen(
+  const drawn = swollen(
     style,
-    finish(f, [openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, closer)], true),
+    finish(f, [heftable(f, openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, closer))], true),
   );
+  // Its foot laid flatter where the face asks for that, once swollen: see `tailed`.
+  const tail = 1 + (style.parts.bowl.tail ?? 0);
+  return tail > 1 ? { ...drawn, strokes: drawn.strokes.map((one) => tailed(one, tail)) } : drawn;
 }
 
 /** How many half-pens nearer the c's two ends stand at a Black than the plain c's. */

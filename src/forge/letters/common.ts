@@ -41,9 +41,10 @@ import {
   type Style,
   terminalFor,
 } from "../style";
-import { MITER_LIMIT, penReach, reachAlong, sweep } from "../sweep";
+import { MITER_LIMIT, penReach, piecesFor, reachAlong, sweep } from "../sweep";
 import { contoursIntersect } from "@/font/outline";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
+import { buried, seen } from "./hints";
 
 /**
  * A letter, as strokes plus how it should be spaced.
@@ -2503,10 +2504,16 @@ export function stopRadius(f: Frame): number {
  * otherwise carry it past the ascender.
  */
 export function tittle(f: Frame, x: number): Stroke {
+  /*
+   * Grown or shrunk by the face's own dot scale where it names one, before
+   * the room under the ascender has its say: see `Metrics.dotScale`.
+   */
+  const scale = f.style.metrics.dotScale;
+  const scaled = (size: number): number => (scale === undefined ? size : size * scale);
   if (squareDots(f)) {
     // Square, a little wider than the stem, its top level with the ascender --
     // at every weight, as Geist's is, the Thin's as high as the Black's.
-    const side = f.half * 1.03;
+    const side = scaled(f.half * 1.03);
     const high = f.asc - side;
     return dot(f, at(x, Math.max(high, f.x + f.half * 0.6 + side)), side);
   }
@@ -2523,7 +2530,7 @@ export function tittle(f: Frame, x: number): Stroke {
    */
   if (drops(f)) {
     const gap = Math.min(f.half * 0.6, f.x * 0.1);
-    const round = Math.min(f.half * 1.24, (f.asc - f.x - gap) / 2);
+    const round = Math.min(scaled(f.half * 1.24), (f.asc - f.x - gap) / 2);
     const top = f.asc - Math.max(0, 0.31 * f.half * 2 - (f.style.pen.weight - 87) * 0.5);
     return dot(f, at(x, Math.max(top - round, f.x + gap + round)), round);
   }
@@ -2535,10 +2542,12 @@ export function tittle(f: Frame, x: number): Stroke {
    * stem's weight or a little over it.
    */
   const radius = Math.min(
-    Math.max(
-      f.half * (0.55 + own) + lightBody(f) * (f.style.parts.script.on ? 1.4 : 1),
-      f.style.metrics.unitsPerEm * 0.04 * own,
-      f.half * 1.06,
+    scaled(
+      Math.max(
+        f.half * (0.55 + own) + lightBody(f) * (f.style.parts.script.on ? 1.4 : 1),
+        f.style.metrics.unitsPerEm * 0.04 * own,
+        f.half * 1.06,
+      ),
     ),
     // And no larger than the room over the x-height leaves it.
     Math.max((f.asc - f.x - f.half * 0.6) / 2, f.half * 0.55),
@@ -2640,8 +2649,57 @@ export function shoulderRadius(frame: Frame, height: number): number {
   return Math.max(frame.least, reach * 0.5, Math.min(reach, height * (1 - spring)));
 }
 
+/**
+ * The two turns of a shoulder that leaves its stem lower, where the face asks
+ * for that (`shoulder.rise`): the turn up out of the stem grown by the rise,
+ * and the turn down giving up what the flat between them no longer has room
+ * for. Nothing where the face does not ask, and the shoulder is drawn as it
+ * always was.
+ *
+ * Never tighter than the turns it replaces on the way up, never lower than
+ * half a pen over the line, and never so wide that the flat across the top
+ * runs backwards: each a min and a max of the pen's own measurements, so the
+ * shoulder changes smoothly with the weight and keeps its pieces.
+ */
+export function risenTurns(
+  frame: Frame,
+  radius: number,
+  span: number,
+  crest: number,
+): { up: number; down: number } | null {
+  const rise = frame.style.parts.shoulder.rise ?? 0;
+  if (!(rise > 0)) return null;
+  const up = Math.max(
+    radius,
+    Math.min(radius * (1 + rise), span - frame.least, crest - frame.half),
+  );
+  const down = Math.max(frame.least, Math.min(radius, span - up));
+  return { up, down };
+}
+
+/** Every arc of a run drawn in the pieces its own sweep gives it, said rather than left to be worked out. */
+function inOwnPieces(drawn: Spine): Spine {
+  return {
+    ...drawn,
+    segments: drawn.segments.map((arc) =>
+      arc.kind === "arc" ? { ...arc, pieces: piecesFor(arc.endAngle - arc.startAngle) } : arc,
+    ),
+  };
+}
+
+/** A turn drawn in the pieces its own sweep gives it: see `inOwnPieces`. */
+export function pinnedTurn(
+  centre: Vec2,
+  radius: number,
+  fromDegrees: number,
+  toDegrees: number,
+): Spine {
+  return inOwnPieces(turn(centre, radius, fromDegrees, toDegrees));
+}
+
 export function arch(frame: Frame, fromX: number, height: number): Stroke {
-  return ink(frame, archSpine(frame, fromX, height), BUTT, frame.end);
+  // Begun buried in the stem, its outer side rounded where it leaves it: see `buried`.
+  return ink(frame, archSpine(frame, fromX, height), buried(frame, { left: 0.6 }), frame.end);
 }
 
 /**
@@ -2696,10 +2754,41 @@ export function archSpine(frame: Frame, fromX: number, height: number, bottom = 
      */
     const middle = at((fromX + landing) / 2, top);
     const half = (landing - fromX) / 2;
+    /*
+     * Risen, the quarter up out of the stem is a taller one on the same
+     * middle and as wide, so the two still meet level at the crest -- `bend`
+     * takes a quarter's height as its radius and its width last -- and the
+     * quarter down is the one it always was: its width is not the flat's to
+     * give, so nothing limits the rise but the line. Each quarter's arcs in
+     * the pieces their own sweeps give them, as every arc a finish draws is.
+     */
+    const risen = risenTurns(frame, radius, Infinity, crest);
+    if (risen) {
+      return chain(
+        inOwnPieces(bend(frame, at(middle.x, crest - risen.up), risen.up, 180, 90, half)),
+        inOwnPieces(bend(frame, middle, radius, 90, 0, half)),
+        straight(at(landing, top), at(landing, Math.min(bottom, top))),
+      );
+    }
     return chain(
       bend(frame, middle, radius, 180, 90, half),
       bend(frame, middle, radius, 90, 0, half),
       straight(at(landing, top), at(landing, Math.min(bottom, top))),
+    );
+  }
+  /*
+   * Risen, the turn up out of the stem is wider and leaves it lower, and the
+   * turn down gives up whatever the flat between them has no room for: the
+   * same four pieces, each turn in its one.
+   */
+  const risen = risenTurns(frame, radius, landing - fromX, crest);
+  if (risen) {
+    const { up, down } = risen;
+    return chain(
+      pinnedTurn(at(fromX + up, crest - up), up, 180, 90),
+      straight(at(fromX + up, crest), at(landing - down, crest)),
+      pinnedTurn(at(landing - down, crest - down), down, 90, 0),
+      straight(at(landing, crest - down), at(landing, Math.min(bottom, crest - down))),
     );
   }
   return chain(
@@ -3333,6 +3422,88 @@ export function openBowl(
     f.end,
     f.end,
   );
+}
+
+/** Whether an angle is the bottom of a turn, three quarters of the way round, to a millionth. */
+function atFoot(angle: number): boolean {
+  const off = (((angle - 1.5 * Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+  return off < 1e-6 || 2 * Math.PI - off < 1e-6;
+}
+
+/**
+ * A bowl's foot laid flatter: the tail of a c or an e drawn again with every
+ * turn in it `k` times as wide, so it runs out longer and lower before it
+ * turns up into its end (`bowl.tail`, k being one more than it).
+ *
+ * Found by the skeleton alone: the run from the first arc that begins at the
+ * very bottom of its turn, 270 degrees, to the end of the stroke. It leaves
+ * that point as it always did, level, and every piece after it is kept, in
+ * order, at its own length: an arc on a circle k times its own radius, so it
+ * turns through a k-th of what it did, and a straight run laid on at the
+ * angle it always made with the piece before it. So the tail turns up a k-th
+ * as fast all the way along, whatever mix of circles the bowl was drawn
+ * with: the larger the tail, the flatter the foot and the lower its end, at
+ * every step of the control, and never lower than the bottom of the bowl.
+ *
+ * Not the whole run on one circle k times the first one's: on an oval bowl
+ * the arcs after the first are flatter than it, and bent onto that circle a
+ * small tail turned the foot further up instead of laying it down -- far
+ * enough, on the Serif's narrow c, to hang a drop off it at some weights and
+ * not others.
+ *
+ * A piece of no length is still one, a turn on a point still turns where it
+ * did, and each arc is drawn in the pieces its own sweep gave it. A run with
+ * no such arc, as a heavy e's that starts further round, comes back as it
+ * was, with the same points either way. Lines stay lines and arcs stay arcs,
+ * so the sweep still offsets it exactly.
+ */
+export function tailed(stroke: Stroke, k: number): Stroke {
+  if (!(k > 1) || stroke.spine.closed) return stroke;
+  const segments = stroke.spine.segments;
+  const from = segments.findIndex((one) => one.kind === "arc" && atFoot(one.startAngle));
+  if (from < 0) return stroke;
+  const foot = segments[from] as SpineArc;
+  let here = at(
+    foot.centre.x + foot.radius * Math.cos(foot.startAngle),
+    foot.centre.y + foot.radius * Math.sin(foot.startAngle),
+  );
+  // How far the run as laid is turned against the run as it was, so far: every
+  // piece after keeps the angle it made with the one before it.
+  let behind = 0;
+  const laid: SpineSegment[] = segments.slice(0, from);
+  for (const one of segments.slice(from)) {
+    if (one.kind === "arc") {
+      const sweep = one.endAngle - one.startAngle;
+      // A turn on a point has no circle to widen, and turns where it did.
+      const wider = one.radius > 1e-9 ? k : 1;
+      const radius = one.radius * wider;
+      const startAngle = one.startAngle + behind;
+      const endAngle = startAngle + sweep / wider;
+      const centre = at(
+        here.x - radius * Math.cos(startAngle),
+        here.y - radius * Math.sin(startAngle),
+      );
+      laid.push({
+        ...one,
+        centre,
+        radius,
+        startAngle,
+        endAngle,
+        pieces: one.pieces ?? piecesFor(sweep),
+      });
+      here = at(centre.x + radius * Math.cos(endAngle), centre.y + radius * Math.sin(endAngle));
+      behind += sweep / wider - sweep;
+      continue;
+    }
+    // A straight run turned as the curve before it now is, on from where it got to.
+    const cos = Math.cos(behind);
+    const sin = Math.sin(behind);
+    const run = at(one.to.x - one.from.x, one.to.y - one.from.y);
+    const to = at(here.x + run.x * cos - run.y * sin, here.y + run.x * sin + run.y * cos);
+    laid.push({ ...one, from: here, to });
+    here = to;
+  }
+  return inherit(stroke, { ...stroke, spine: { ...stroke.spine, segments: laid } });
 }
 
 /**
@@ -4403,7 +4574,8 @@ export function crossbar(f: Frame, from: number, to: number): Stroke {
    */
   const end: Terminal =
     f.plain.kind === "angled" || f.plain.kind === "round" ? f.plain : { ...f.plain, level: true };
-  return thin(f, straight(at(from, height), at(to, height)), end, end);
+  // Both ends seen, though neither is open: see `seen`.
+  return thin(f, straight(at(from, height), at(to, height)), seen(f, end), seen(f, end));
 }
 
 /**
@@ -4423,10 +4595,11 @@ export function arms(f: Frame, line: number): [number, number] {
  * An arm off a stem: the three of an E, the two of an F, the foot of an L.
  *
  * Square where it leaves the stem, because it is buried in ink that is already
- * there, and finished with the face's own terminal at the far end.
+ * there, and finished with the face's own terminal at the far end. `start`
+ * is that buried end, for a letter that says how its join is rounded.
  */
-export function arm(f: Frame, from: number, to: number, height: number): Stroke {
-  return thin(f, straight(at(from, height), at(to, height)), BUTT, f.end);
+export function arm(f: Frame, from: number, to: number, height: number, start = BUTT): Stroke {
+  return thin(f, straight(at(from, height), at(to, height)), start, f.end);
 }
 
 /** The same, cut square, for a bowl that runs into a stem rather than stopping. */

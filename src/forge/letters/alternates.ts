@@ -5,6 +5,7 @@ import { alongSpine, bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart 
 import { penReach, reachAlong } from "../sweep";
 import { blackness, scriptUnit, type Style } from "../style";
 import type { Spine, Stroke } from "../types";
+import { buried } from "./hints";
 import {
   grotesqueA,
   grotesqueAt,
@@ -1304,8 +1305,10 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
            * The left arm stops inside the tail, just above where the two
            * spines cross. Carried on past them, its square end stood out of
            * the right side of the tail as a spur at every weight.
+           *
+           * Its join with the tail rounded on the crotch side: see `buried`.
            */
-          ink(f, straight(at(left, f.x), stop), f.end, BUTT),
+          ink(f, straight(at(left, f.x), stop), f.end, buried(f, { left: 1.5 })),
           ink(
             f,
             chain(straight(top, knee), {
