@@ -16,7 +16,16 @@
 
 import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
-import { type Headed, type OffsetSegment, type PenReach, reachAlong } from "./sweep";
+import {
+  cutAlong,
+  type Headed,
+  moving,
+  type OffsetSegment,
+  offsetEnd,
+  offsetStart,
+  type PenReach,
+  reachAlong,
+} from "./sweep";
 import type { Stroke } from "./types";
 
 /**
@@ -59,25 +68,123 @@ export function heftShift(stroke: Stroke, reach: PenReach): Vec2 {
  * new runs: the runs given, and their pieces, are left as they were, since
  * the sweep compares the two (see `sidesAt` in sweep.ts).
  *
- * Not built yet: hands back the runs it was given.
+ * Every piece of the inner side is moved by the one vector -- a straight run's
+ * two ends, an ellipse's centre, and the stalls and wedges filling its corners
+ * with them -- so every weld along the side still holds, and a ring's counter
+ * is the same counter set off its middle.
+ *
+ * An open stroke's ends would then be cut on a slant: the inner corner moved
+ * and the outer one not. So at each end the inner side is carried on, or
+ * brought back, along its own curve until its corner lies on the line the end
+ * was cut along before the move -- the line through the outer corner and the
+ * inner corner as the pen put it -- which is `cutAlong` asked about that
+ * line. Never further than twice the move: a side that would have to go
+ * further than that to meet the line, or does not meet it at all, keeps its
+ * corner where the move left it. The pieces are the same either way.
  */
 export function hefted(
-  _stroke: Stroke,
-  _headed: Headed[],
+  stroke: Stroke,
+  headed: Headed[],
   left: OffsetSegment[],
   right: OffsetSegment[],
-  _reach: PenReach,
+  reach: PenReach,
 ): [OffsetSegment[], OffsetSegment[]] {
-  return [left, right];
+  const side = innerSide(headed);
+  if (side === 0) return [left, right];
+  const shift = heftShift(stroke, reach);
+  const plain = side > 0 ? left : right;
+  const outer = side > 0 ? right : left;
+  const inner = plain.map((one) => movedBy(one, shift));
+  if (!stroke.spine.closed) {
+    const most = 2 * Math.hypot(shift.x, shift.y);
+    for (const atEnd of [false, true]) squared(inner, plain, outer, atEnd, most);
+  }
+  return side > 0 ? [inner, right] : [left, inner];
+}
+
+/** One side piece moved whole: a run's ends, or an ellipse's centre. */
+function movedBy(one: OffsetSegment, by: Vec2): OffsetSegment {
+  const moved = (point: Vec2): Vec2 => ({ x: point.x + by.x, y: point.y + by.y });
+  return one.kind === "line"
+    ? { kind: "line", from: moved(one.from), to: moved(one.to) }
+    : { ...one, centre: moved(one.centre) };
+}
+
+/**
+ * The moved inner side at one end brought back onto the line that end was cut
+ * along, in place: see `hefted`. `most` is how far the corner may travel to
+ * get there, in units.
+ */
+function squared(
+  inner: OffsetSegment[],
+  plain: OffsetSegment[],
+  outer: OffsetSegment[],
+  atEnd: boolean,
+  most: number,
+): void {
+  const endOf = (run: OffsetSegment[]): Vec2 =>
+    atEnd ? offsetEnd(run[run.length - 1]) : offsetStart(run[0]);
+  const corner = endOf(outer);
+  const was = endOf(plain);
+  const along = { x: corner.x - was.x, y: corner.y - was.y };
+  const across = Math.hypot(along.x, along.y);
+  if (across < 1e-9) return;
+  const normal = { x: -along.y / across, y: along.x / across };
+  const value = normal.x * corner.x + normal.y * corner.y;
+  // The last piece of the side that goes anywhere, from this end.
+  const order = atEnd ? [...inner.keys()].reverse() : [...inner.keys()];
+  const found = order.findIndex((index) => moving(inner[index]));
+  if (found < 0) return;
+  const index = order[found];
+  const piece = inner[index];
+  if (piece.kind === "ellipse") {
+    /*
+     * Carried on along its own curve, or brought back along it and, where the
+     * line lies further back than the last piece reaches, along the pieces
+     * before it no further than the corner may travel: those it passes are
+     * left standing on the new end at no length, as an aligned cut leaves
+     * them, so the side keeps its points. Tried on a copy, and kept only where
+     * the corner has travelled no further than it may.
+     */
+    const trial = [...inner];
+    const cut = cutAlong(trial, atEnd, { normal, value }, most);
+    if (!cut) return;
+    cut();
+    const from = endOf(inner);
+    const to = endOf(trial);
+    if (Math.hypot(to.x - from.x, to.y - from.y) > most) return;
+    inner.splice(0, inner.length, ...trial);
+    return;
+  }
+  // A straight piece: its end moved along it to the line, past it or short of it.
+  const run = { x: piece.to.x - piece.from.x, y: piece.to.y - piece.from.y };
+  const rate = normal.x * run.x + normal.y * run.y;
+  if (Math.abs(rate) < 1e-12) return;
+  const share = (value - normal.x * piece.from.x - normal.y * piece.from.y) / rate;
+  const length = Math.hypot(run.x, run.y);
+  const travel = (atEnd ? share - 1 : share) * length;
+  if (Math.abs(travel) > most || (atEnd ? share <= 1e-6 : share >= 1 - 1e-6)) return;
+  const tip = { x: piece.from.x + run.x * share, y: piece.from.y + run.y * share };
+  inner[index] = atEnd
+    ? { kind: "line", from: piece.from, to: tip }
+    : { kind: "line", from: tip, to: piece.to };
+  // Whatever lay past it, of no length, is left standing on the new end.
+  for (const other of order.slice(0, found)) {
+    const one = inner[other];
+    inner[other] =
+      one.kind === "line"
+        ? { kind: "line", from: tip, to: tip }
+        : { ...one, centre: tip, rx: 0, ry: 0 };
+  }
 }
 
 /**
  * A stroke given the style's heft, where it takes one: every closed spine,
  * and every stroke its recipe marked `heftable`, while `parts.bowl.heft` is
- * above nought.
- *
- * Not built yet: hands back the stroke it was given.
+ * above nought. The same stroke, untouched, everywhere else.
  */
-export function withHeft(stroke: Stroke, _style: Style): Stroke {
-  return stroke;
+export function withHeft(stroke: Stroke, style: Style): Stroke {
+  const share = style.parts.bowl.heft ?? 0;
+  if (!(share > 0) || !(stroke.spine.closed || stroke.heftable)) return stroke;
+  return { ...stroke, heft: { share, tilt: style.parts.bowl.heftTilt ?? 0 } };
 }

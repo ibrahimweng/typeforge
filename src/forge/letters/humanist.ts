@@ -67,6 +67,7 @@ import {
   tStem,
   uses,
   bookish,
+  tailed,
 } from "./common";
 
 /** How much further round the e's tail runs than the construction's, in degrees. */
@@ -117,7 +118,14 @@ export function humanistE(style: Style): Recipe {
   const f = frame(style);
   const past = textSerif(f) ? Math.min(1, Math.max(0, (heaviness(f) - 1) / 0.5)) : 0;
   if (past > 0) drawn = eyed(style, height, E_LIFT * past);
-  return drawn.recipe;
+  // The belt's foot laid flatter where the face asks for that: see `tailed`.
+  const tail = 1 + (style.parts.bowl.tail ?? 0);
+  return tail > 1
+    ? {
+        ...drawn.recipe,
+        strokes: drawn.recipe.strokes.map((one, index) => (index === 1 ? tailed(one, tail) : one)),
+      }
+    : drawn.recipe;
 }
 
 /** Whether a face is a text serif's -- wedge serifs on a pen with contrast. */
@@ -656,10 +664,13 @@ export function humanistC(style: Style): Recipe {
   const f = frame(style);
   const centre = at(f.edge + f.bowl, f.x / 2);
   const closer = -C_CLOSE * Math.min(1, heaviness(f));
-  return swollen(
+  const drawn = swollen(
     style,
     finish(f, [heftable(f, openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, closer))], true),
   );
+  // Its foot laid flatter where the face asks for that, once swollen: see `tailed`.
+  const tail = 1 + (style.parts.bowl.tail ?? 0);
+  return tail > 1 ? { ...drawn, strokes: drawn.strokes.map((one) => tailed(one, tail)) } : drawn;
 }
 
 /** How many half-pens nearer the c's two ends stand at a Black than the plain c's. */

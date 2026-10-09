@@ -1034,11 +1034,15 @@ function alignedCut(headed: Headed[], atEnd: boolean): { axis: "x" | "y"; value:
  *
  * Drawn in the pieces the side had before it moved, so a side carried past a
  * right angle is not a node more at one weight than at another.
+ *
+ * The line is level or upright (`axis`), or any line at all given as the
+ * points whose `normal` component is `value`: the end of a bowl whose inner
+ * side a heft has moved, squared again (see `hefted` in heft.ts).
  */
-function cutAlong(
+export function cutAlong(
   run: OffsetSegment[],
   atEnd: boolean,
-  cut: { axis: "x" | "y"; value: number },
+  cut: { axis: "x" | "y"; value: number } | { normal: Vec2; value: number },
   furthest: number,
 ): (() => void) | null {
   const order = atEnd ? [...run.keys()].reverse() : [...run.keys()];
@@ -1050,7 +1054,10 @@ function cutAlong(
   if (found < 0) return null;
   const outermost = run[order[found]];
   if (outermost.kind !== "ellipse") return null;
-  const off = (point: Vec2): number => (cut.axis === "y" ? point.y : point.x) - cut.value;
+  const off =
+    "normal" in cut
+      ? (point: Vec2): number => cut.normal.x * point.x + cut.normal.y * point.y - cut.value
+      : (point: Vec2): number => (cut.axis === "y" ? point.y : point.x) - cut.value;
   /*
    * Where along a piece the side meets the line, nearest its outer end: `t`
    * is the ellipse's own angle, or the share of the way along a straight.

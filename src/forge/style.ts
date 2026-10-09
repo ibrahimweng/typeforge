@@ -791,7 +791,7 @@ export function terminalFor(style: Style): Terminal {
   const plain = { kind: kind === "slab" ? "butt" : kind, angle: terminal.angle ?? 0 } as const;
   if (!slab.on) return { ...plain, open: true };
   const stem = style.pen.weight;
-  return {
+  const serif: Terminal = {
     kind: "slab",
     open: true,
     projection: slab.projection * serifReach(style),
@@ -804,6 +804,9 @@ export function terminalFor(style: Style): Terminal {
     head: slab.head === "sloped" || slab.head === "flag" ? slab.head : "level",
     curved: plain,
   };
+  // The tip's rounding, carried only where it is asked for: see `Terminal.tip`.
+  if ((slab.tip ?? 0) > 0) serif.tip = slab.tip;
+  return serif;
 }
 
 const TERMINAL_KINDS: TerminalKind[] = ["butt", "angled", "round", "teardrop", "level"];
