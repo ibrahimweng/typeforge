@@ -961,8 +961,30 @@ function sideRun(
   const cutEnds = ends !== undefined && !closed;
   const firstGoing = cutEnds ? headed.findIndex(goes) : -1;
   const lastGoing = cutEnds ? headed.length - 1 - [...headed].reverse().findIndex(goes) : -1;
+  const kinks = kinksOf(headed, closed);
+  /*
+   * Where rounding the insides, where each inside corner between two straight
+   * offsets crosses, asked of the offsets as they come off the pen before any
+   * corner has cut them back: by the offset that runs into it and the one
+   * that runs out of it, so a rounding can keep short of the corners either
+   * side of its own (see `roundedInside`). Nothing asked where the insides
+   * are not rounded.
+   */
+  const crossesAtEnd = new Map<number, Vec2>();
+  const crossesAtStart = new Map<number, Vec2>();
+  if (inside !== undefined) {
+    for (const kink of kinks) {
+      const one = offsets[kink.before];
+      const other = offsets[kink.after];
+      if (one.kind !== "line" || other.kind !== "line") continue;
+      const crossing = crossingOf(one, other);
+      if (crossing === null || !(crossing.at > 1e-9 && crossing.at < 1 - 1e-9)) continue;
+      crossesAtEnd.set(kink.before, crossing.point);
+      crossesAtStart.set(kink.after, crossing.point);
+    }
+  }
 
-  for (const kink of kinksOf(headed, closed)) {
+  for (const kink of kinks) {
     const before = offsets[kink.before];
     const after = offsets[kink.after];
 
@@ -1070,8 +1092,27 @@ function sideRun(
             ends && kink.after === lastGoing
               ? slidCorner(ends.end, headed, true, side, reach)
               : null;
+          /*
+           * And no further than the corner either side of this one, where that
+           * is the inside of a turn too: the offset between the two is cut back
+           * to where it crosses there. Counted to the offset's own end instead
+           * -- which on a short run lies past that crossing -- a circle laid
+           * here reached past it, and the next corner, finding its offsets no
+           * longer crossing ahead of their start, swallowed itself, losing its
+           * rounding and skewing its edge; on a closed run the inner outline
+           * crossed itself. Counted from the crossing rather than from where
+           * the corner before cut the offset back, so each of two such corners
+           * has the same share of the run between them.
+           */
           filling.set(kink.before, [
-            roundedInside(before, after, point, inside, from ?? before.from, to ?? after.to),
+            roundedInside(
+              before,
+              after,
+              point,
+              inside,
+              from ?? crossesAtStart.get(kink.before) ?? before.from,
+              to ?? crossesAtEnd.get(kink.after) ?? after.to,
+            ),
           ]);
           continue;
         }

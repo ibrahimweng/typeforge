@@ -785,6 +785,7 @@ function rounding(
       const way = { x: out.x / reach, y: out.y / reach };
       const past = Math.max(0.25 * bite, bite - ((meet.x - x.x) * way.x + (meet.y - x.y) * way.y));
       tuck = { x: meet.x + way.x * past, y: meet.y + way.y * past };
+      tuck = behindChords(tuck, x, a, h, meet, bite);
     }
   } else {
     const k = 0.5523 * L;
@@ -792,6 +793,73 @@ function rounding(
     handleH = { x: h.x - th.x * k, y: h.y - th.y * k };
   }
   return threeNodes(a, handleA, h, handleH, tuck, turning);
+}
+
+/**
+ * The tuck brought in behind the corner until both edges into it run through
+ * ink: on the far side of each chord from the corner `x` to where the arc
+ * touches (`a` on the arriving edge, `h` on the host) from the hollow.
+ *
+ * Laid past where the two tangent lines meet, the tuck keeps the arc inside
+ * the contour, but it is the chords that say where the ink is. An edge that
+ * bulges into the hollow -- an arch's outside, leaving its stem -- lies on
+ * the hollow's side of its own chord, and its tangent where the arc touches
+ * it, which the tuck was laid back along, lies further out still: there the
+ * tangents met up the stem, above the corner, and the edge from the arc to the
+ * tuck cut back across the arch's outside short of the stem, leaving a sliver
+ * of paper between the rounding, the arch and the stem. At a large rounding
+ * on an arch that leaves its stem low, the ink between the sliver and the
+ * rounding stood up out of the join as a horn.
+ *
+ * So, where the tuck is not already half a bite's share behind both chords,
+ * it is moved straight toward the point a bite behind the corner along the
+ * middle of the two chords -- which is behind both -- by the least share that
+ * puts it there, and never past where it would leave the tangent lines'
+ * meeting outside the contour's triangle, so the arc still cannot cross the
+ * contour. A value, never a shape: the same three nodes wherever it lies.
+ */
+function behindChords(tuck: Vec2, x: Vec2, a: Vec2, h: Vec2, meet: Vec2, bite: number): Vec2 {
+  const unitFrom = (p: Vec2): Vec2 | null => {
+    const d = Math.hypot(p.x - x.x, p.y - x.y);
+    return d > 1e-9 ? { x: (p.x - x.x) / d, y: (p.y - x.y) / d } : null;
+  };
+  const toA = unitFrom(a);
+  const toH = unitFrom(h);
+  if (!toA || !toH) return tuck;
+  const middle = { x: toA.x + toH.x, y: toA.y + toH.y };
+  const spread = Math.hypot(middle.x, middle.y);
+  if (spread < 1e-9) return tuck;
+  const deep = { x: x.x - (middle.x / spread) * bite, y: x.y - (middle.y / spread) * bite };
+  const cross = (o: Vec2, d: Vec2, p: Vec2): number => d.x * (p.y - o.y) - d.y * (p.x - o.x);
+  // How far each point stands behind a line through `o` along `d`, away from `hollow`.
+  const behind = (o: Vec2, d: Vec2, hollow: Vec2) => {
+    const sign = cross(o, d, hollow) > 0 ? -1 : 1;
+    return (p: Vec2): number => sign * cross(o, d, p);
+  };
+  let share = 0;
+  for (const [along, hollow] of [
+    [toA, h],
+    [toH, a],
+  ] as const) {
+    const depth = behind(x, along, hollow);
+    const wanted = 0.5 * depth(deep);
+    const now = depth(tuck);
+    if (now < wanted && depth(deep) > now) share = Math.max(share, (wanted - now) / (depth(deep) - now));
+  }
+  if (!(share > 0)) return tuck;
+  // Never so far that the meeting of the tangent lines leaves the contour.
+  for (const [end, other] of [
+    [a, h],
+    [h, a],
+  ] as const) {
+    const side = { x: meet.x - end.x, y: meet.y - end.y };
+    const depth = behind(end, side, other);
+    const from = depth(tuck);
+    const to = depth(deep);
+    if (to < 0 && from > 0) share = Math.min(share, from / (from - to));
+  }
+  share = Math.min(1, Math.max(0, share));
+  return { x: tuck.x + (deep.x - tuck.x) * share, y: tuck.y + (deep.y - tuck.y) * share };
 }
 
 /** The rounding's contour in the order `turning` names: see `rounding`. */

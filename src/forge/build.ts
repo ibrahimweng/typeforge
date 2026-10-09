@@ -2432,6 +2432,13 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
     const least = (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
     const bend = drop.bend > 0 ? drop.bend : drop.radius * 4;
     const pear = pearAt(stroke, swept, drop, index === 1 ? side : -side, reach);
+    /*
+     * A plain drop on a bottom-heavy bowl meets the inner side where the heft
+     * moved it, as a pear does (see `heftLift`): left on the side as it was
+     * drawn without one, its neck came back to a place inside the counter
+     * and climbed out of it to the stroke, a cusp in the counter's edge.
+     */
+    const lift = pear ? null : heftLift(stroke, index === 1 ? side : -side, reach);
     // A pear is drawn carried on `hang` radii and turned `turn` toward plumb;
     // a plain drop has neither, and is drawn as it always was.
     const make = (size: number, pull?: number, close?: boolean, hang = 0, turn = 0) =>
@@ -2447,6 +2454,7 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
         pull,
         close,
         pear && { ...pear, hang, turn },
+        lift,
       );
     /*
      * Made as large as the drop wants, then smaller until it keeps to the
@@ -2659,19 +2667,29 @@ function pearAt(
   if (drop.hang === undefined && drop.turn === undefined && drop.neck === undefined) {
     return undefined;
   }
-  let lift: Vec2 | null = null;
-  if (stroke.heft) {
-    // The pieces the sweep walks (see `headings` in sweep.ts), of which
-    // `innerSide` reads only the arcs' sweeps.
-    const still = { x: 0, y: 0 };
-    const turning = stroke.spine.segments
-      .filter((segment) => segment.kind !== "arc" || segment.radius > 1e-9)
-      .map((segment) => ({ segment, start: still, end: still }));
-    if (innerSide(turning) === side) lift = heftShift(stroke, reach);
-  }
+  const lift = heftLift(stroke, side, reach);
   const neck = drop.neck ?? 0;
   const ink = neck > 0 ? flatten(swept, DIP_CHORDS) : null;
   return { hang: drop.hang ?? 0, turn: drop.turn ?? 0, neck, lift, ink };
+}
+
+/**
+ * How far a bottom-heavy bowl's heft (`Stroke.heft`) moved the side a drop
+ * hangs on, or nothing where it has no heft or the drop hangs on the side the
+ * heft leaves where it was. The stroke's whole inner side is moved by one
+ * vector, so a drop hanging on that side meets the stroke moved by as much.
+ * `side` is the drop's side against the stroke's own direction of travel, as
+ * `innerSide` names sides.
+ */
+function heftLift(stroke: Stroke, side: number, reach: ReturnType<typeof penReach>): Vec2 | null {
+  if (!stroke.heft) return null;
+  // The pieces the sweep walks (see `headings` in sweep.ts), of which
+  // `innerSide` reads only the arcs' sweeps.
+  const still = { x: 0, y: 0 };
+  const turning = stroke.spine.segments
+    .filter((segment) => segment.kind !== "arc" || segment.radius > 1e-9)
+    .map((segment) => ({ segment, start: still, end: still }));
+  return innerSide(turning) === side ? heftShift(stroke, reach) : null;
 }
 
 /** How many chords each curve of a stroke is flattened into, to ask whether a neck dips. */
@@ -3016,6 +3034,8 @@ function tear(
   close = false,
   // The face's pear, drawn by `pearShape`; without one, the drop as it always was.
   pear?: Pear,
+  // How far a heft moved the side the drop hangs on: see `heftLift`.
+  lift: Vec2 | null = null,
 ): Contour {
   if (pear) return pearShape(stroke, spine, at, u, n, outer, radius, bend, pull, close, pear);
   const k = 0.5523 * radius;
@@ -3050,6 +3070,15 @@ function tear(
   const toward = shift.x * local.x + shift.y * local.y >= 0 ? shift : { x: -shift.x, y: -shift.y };
   let meets = { x: back.point.x + toward.x, y: back.point.y + toward.y };
   let behind = back.point;
+  /*
+   * On a bottom-heavy bowl, onto the inner side where the heft moved it, and
+   * closed back from the middle of the stroke as the heft left it (see
+   * `pearShape`).
+   */
+  if (lift) {
+    meets = { x: meets.x + lift.x, y: meets.y + lift.y };
+    behind = { x: behind.x + lift.x * 0.5, y: behind.y + lift.y * 0.5 };
+  }
   /*
    * A drop with no room to swell is hardly wider than the stroke, and the
    * point it would come back to can then lie inside the drop itself -- where
@@ -3167,7 +3196,16 @@ function pearShape(
   const toward = dot(shift, local) >= 0 ? shift : { x: -shift.x, y: -shift.y };
   const lift = pear.lift ?? { x: 0, y: 0 };
   let meets = { x: back.point.x + toward.x + lift.x, y: back.point.y + toward.y + lift.y };
-  let behind = back.point;
+  /*
+   * And the closing edge from the middle of the stroke as the heft left it,
+   * half the lift over its spine. Left on the spine, it was laid from a point
+   * the lifted inner side had come up to, and bowing back along the stroke
+   * it passed under that side, leaving a sliver of the counter uninked
+   * between the drop and the stroke where the neck came onto it.
+   */
+  let behind = pear.lift
+    ? { x: back.point.x + lift.x * 0.5, y: back.point.y + lift.y * 0.5 }
+    : back.point;
   // Whether the closing edge runs back along the stroke, or is closed off short.
   let along = true;
   if (Math.hypot(meets.x - centre.x, meets.y - centre.y) < radius * 1.1) {

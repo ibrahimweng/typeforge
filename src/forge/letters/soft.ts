@@ -34,7 +34,9 @@ import {
   inherit,
   ink,
   type Recipe,
+  remember,
   ring,
+  rippled,
   roundHalf,
   straight,
   thin,
@@ -98,11 +100,37 @@ export const CURLED_FOOT_FROM = 330;
  */
 export const CURLED_FOOT_FLATTEN = 30;
 
-/** How far round the arch turns into its drop, in degrees from the stem. */
+/** How far round the arch turns into its drop, in degrees from the stem, at a text weight. */
 export const CURLED_END = 165;
+
+/**
+ * How many degrees of that turn a heavy weight gives up, by a heaviness of
+ * one, and half as many again for the next half (as the humanist a's arch
+ * gives up its own). Turned the whole way over at a Black, the arch's end
+ * pointed straight down and its drop hung on the bowl's shoulder, closing
+ * the opening under the head.
+ */
+export const CURLED_END_EASE = 30;
 
 /** How far the a's bowl comes down for the stem a heavy weight gains: as the humanist a's. */
 const CURLED_SINK = 0.3;
+
+/**
+ * The least the bowl's counter is rounded at its ends, in its own pens: how
+ * far the bowl's spine stands outside the pen's half at its tightest turn,
+ * wherever the arch leaves the room for it.
+ *
+ * The bowl is a ring whose turns are as round as its height allows, so its
+ * tightest turn is its height, and the counter's ends are that turn less the
+ * pen's half. Held only to the least the pen goes round (the `CLEARANCE` a
+ * bowl is never drawn under), a heavy weight's sink brought the bowl down to
+ * exactly that: the counter's ends had nothing left to turn on and came out
+ * as corners, and with its long sides still straight the counter was a
+ * sharp-cornered slot, and leaning, a parallelogram. A third of a pen keeps
+ * them turning, so the counter stays an oval to the Black, as the humanist
+ * a's does, and at a text weight the bowl is taller than this anyway.
+ */
+export const CURLED_COUNTER = 0.35;
 
 /**
  * The two-storey a of a soft text face: the bowl a lighter oval leaning back
@@ -140,8 +168,15 @@ export function curledA(style: Style): Recipe {
    * counter: held at a text weight's height, a Black's bowl met the drop.
    */
   const room = (top - f.dip(0)) / 2;
+  /*
+   * And never so low that its counter's ends stop turning (see
+   * `CURLED_COUNTER`), where the arch leaves the room: past that the room
+   * wins, and past that again the least the pen goes round.
+   */
+  const rounded = Math.min(bowlPen.weight * (0.5 + CURLED_COUNTER), room);
   const bh = Math.max(
     Math.min((CURLED_BOWL_TOP * f.x - f.dip(0)) / 2 - f.gain * CURLED_SINK, room),
+    rounded,
     bowlPen.weight * 0.55,
   );
   const bw = Math.max(bh * CURLED_BOWL_WIDE, f.least);
@@ -173,6 +208,10 @@ export function curledA(style: Style): Recipe {
   const foot = f.dip(0) + rf;
   const from = CURLED_FOOT_FROM - CURLED_FOOT_FLATTEN * Math.min(1, heavy);
   const crown = Math.max(top, foot);
+  const end =
+    CURLED_END -
+    CURLED_END_EASE * Math.min(1, heavy) -
+    CURLED_END_EASE * 0.5 * Math.min(1, Math.max(0, heavy - 1) * 2);
   return finish(f, [
     bowlStroke,
     ink(
@@ -180,7 +219,7 @@ export function curledA(style: Style): Recipe {
       chain(
         inPieces(turn(at(stem + rf, foot), rf, from, 180), 2),
         straight(at(stem, foot), at(stem, crown)),
-        inPieces(turn(at(stem - over, crown), over, 0, CURLED_END), 2),
+        inPieces(turn(at(stem - over, crown), over, 0, end), 2),
       ),
       f.end,
       f.end,
@@ -301,7 +340,19 @@ export function swungY(style: Style): Recipe {
 // ---------------------------------------------------------------------------
 
 /** How far the tucked f's bar reaches back past its stem, against the plain f's. */
-export const TUCKED_LEFT = 0.55;
+export const TUCKED_LEFT = 0.95;
+
+/** How far the tucked f's bar reaches out to the right of its stem, against the plain f's. */
+export const TUCKED_RIGHT = 1;
+
+/** How much heavier the tucked f's bar is than the face's crossbars. */
+export const TUCKED_BAR = 1;
+
+/**
+ * How far under the x-height the tucked f's bar hangs, in its own weights:
+ * none hangs its top on the line, as the plain f's does.
+ */
+export const TUCKED_SINK = 0;
 
 /**
  * The f of a soft text face: the plain f's stem and hook, and its bar in two
@@ -319,7 +370,8 @@ export function tuckedF(style: Style): Recipe {
   const left = Math.max(roundHalf(f) * 0.36, f.least, f.half * 1.5);
   const stem = f.edge + left;
   const top = f.crest(f.asc) - radius;
-  const height = f.hangs(f.x, f.bar);
+  const weight = f.bar * TUCKED_BAR;
+  const height = f.hangs(f.x, weight * (1 + 2 * TUCKED_SINK));
   // The crossbar's cut: see `crossbar`.
   const cut: Terminal =
     f.plain.kind === "angled" || f.plain.kind === "round" ? f.plain : { ...f.plain, level: true };
@@ -331,14 +383,39 @@ export function tuckedF(style: Style): Recipe {
       f.end,
     ),
     // Travelling left, so its top is on its right.
-    thin(
+    bar(
       f,
+      weight,
       straight(at(stem, height), at(stem - left * TUCKED_LEFT, height)),
       buried(f, { right: 1 }),
       seen(f, cut),
     ),
-    thin(f, straight(at(stem, height), at(stem + roundHalf(f) * 0.57, height)), BUTT, seen(f, cut)),
+    bar(
+      f,
+      weight,
+      straight(at(stem, height), at(stem + roundHalf(f) * 0.57 * TUCKED_RIGHT, height)),
+      BUTT,
+      seen(f, cut),
+    ),
   ]);
+}
+
+/**
+ * A bar drawn as `thin` draws one, `share` of the face's stem heavy rather
+ * than the crossbar's own share: the same pen, waved against its own width.
+ */
+function bar(
+  f: ReturnType<typeof frame>,
+  share: number,
+  spine: Spine,
+  start: Terminal,
+  end: Terminal,
+): Stroke {
+  if (share === f.bar) return thin(f, spine, start, end);
+  uses("crossbar");
+  const { pen } = f.style;
+  const weight = pen.weight * share;
+  return remember({ spine: rippled(f, spine, weight / 2), pen: { ...pen, weight }, start, end });
 }
 
 // ---------------------------------------------------------------------------
