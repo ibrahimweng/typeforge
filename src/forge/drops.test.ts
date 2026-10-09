@@ -20,13 +20,13 @@ import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { builtFrom, drawLetter, letterNames, makeLetter } from "./build";
 import { widthedStyle } from "./family";
 import { heftShift } from "./heft";
-import { recipeOf } from "./letters";
+import { everyFormOf, recipeOf } from "./letters";
 import { ALTERNATES } from "./letters/alternates";
 import { openWaveBook, type WaveBook, waveBookAt } from "./shapes";
 import { flatten, pointAt, windingAt } from "./soft";
-import { SERIF, type Style } from "./style";
+import { DIDONE, GEOMETRIC, GROTESQUE, SANS, SERIF, SLAB, type Style } from "./style";
 import { penReach } from "./sweep";
-import { FOLD_WEIGHTS, foldFaces, foldSweep } from "./testing/fold-sweep";
+import { FOLD_WEIGHTS, foldFaces, foldSweep, withField } from "./testing/fold-sweep";
 import { signatureText } from "./testing/signature";
 import type { Stroke } from "./types";
 
@@ -600,5 +600,130 @@ describe("each drop field alone, at its least, middle and most", () => {
   });
   it("folds nothing at any neck", { timeout: 120_000 }, () => {
     expect(foldSweep("terminal.dropNeck", [0.05, 0.5, 1])).toEqual([]);
+  });
+});
+
+describe("the drop fields together", () => {
+  /** The Soft Serif's pen on the Serif: its contrast and its angle. */
+  const SOFT_PEN: Style = { ...SERIF, pen: { ...SERIF.pen, contrast: 0.7, angle: 18 } };
+
+  /**
+   * Every letter, in every form, with a contour that crosses itself drawn
+   * with `fields` but not drawn without them, at each pen and width: a face's
+   * own folds, which these fields do not touch, are not theirs to answer for.
+   * Letters built from others (an `Aacute`) are their pieces, moved.
+   */
+  const newFolds = (base: Style, fields: Fields, pens: number[], widths: number[]): string[] => {
+    const crosses = (style: Style, name: string, form?: string): boolean =>
+      drawLetter(name, style, form)?.contours.some((contour) => contoursIntersect([contour])) ??
+      false;
+    const folded: string[] = [];
+    for (const name of letterNames().filter((one) => !builtFrom(one))) {
+      for (const { id } of everyFormOf(name)) {
+        const form = id || undefined;
+        for (const pen of pens) {
+          for (const width of widths) {
+            const plain = at(pen, width, base);
+            if (crosses(dropped(plain, fields), name, form) && !crosses(plain, name, form)) {
+              folded.push(`${base.name} ${name}${form ? `/${form}` : ""} at ${pen}/${width}`);
+            }
+          }
+        }
+      }
+    }
+    return folded;
+  };
+
+  /**
+   * `foldSweep` with several fields set at once: every letter, in its default
+   * form and the face's own, at the weights the controls are driven at, on
+   * the Sans with serifs and the Serif.
+   */
+  const foldSweepTogether = (fields: Fields): string[] => {
+    const folds: string[] = [];
+    const names = letterNames().filter((name) => !builtFrom(name));
+    for (const weight of FOLD_WEIGHTS) {
+      for (const [face, base] of foldFaces(weight)) {
+        const style = dropped(base, fields);
+        for (const name of names) {
+          const own = style.forms?.[name];
+          for (const form of own ? [undefined, own] : [undefined]) {
+            const drawn = drawLetter(name, style, form);
+            if (drawn?.contours.some((contour) => contoursIntersect([contour])) ?? true) {
+              folds.push(`${face} ${name}${form ? `/${form}` : ""} at ${weight}`);
+            }
+          }
+        }
+      }
+    }
+    return folds;
+  };
+
+  /*
+   * The Soft Serif's drop on the Soft Serif's pen. Turned toward plumb at a
+   * heavy weight, its pear sat its ball back over the c's narrow top and its
+   * neck crossed its own closing edge; and every pear the ladder drew again
+   * kept the hang it had settled at turned, which unturned left the band.
+   */
+  it("folds nothing at the Soft Serif's pen, in any letter or form, at any pen and width", {
+    timeout: 300_000,
+  }, () => {
+    expect(newFolds(SOFT_PEN, PEAR, PENS, WIDTHS)).toEqual([]);
+  });
+
+  it("keeps the same points at every pen and width at the Soft Serif's pen", () => {
+    const drift: string[] = [];
+    for (const name of DROPS) {
+      const seen = new Set<string>();
+      for (const pen of PENS) {
+        for (const width of WIDTHS) {
+          const style = dropped(at(pen, width, SOFT_PEN), PEAR);
+          seen.add(signatureText(drawLetter(name, style)!.contours));
+        }
+      }
+      if (seen.size !== 1) drift.push(`${name}: ${[...seen].join(" | ")}`);
+    }
+    expect(drift).toEqual([]);
+  });
+
+  it("folds nothing with all four at their least, middle or most", { timeout: 300_000 }, () => {
+    const folded = [
+      { dropSize: -0.3, dropHang: 0.05, dropCurl: 0.05, dropNeck: 0.05 },
+      { dropSize: 0.15, dropHang: 0.75, dropCurl: 0.5, dropNeck: 0.5 },
+      { dropSize: 0.6, dropHang: 1.5, dropCurl: 1, dropNeck: 1 },
+    ].flatMap((fields) =>
+      foldSweepTogether(fields).map((one) => `${JSON.stringify(fields)}: ${one}`),
+    );
+    expect(folded).toEqual([]);
+  });
+
+  /*
+   * The pairs and threes that folded the long s's hook from a Bold up, each
+   * field of them clean alone: a ball carried on and turned, with and without
+   * a neck, and the Soft Serif's drop carried on further.
+   */
+  it("folds nothing with the hang and the curl together, with or without a neck", {
+    timeout: 300_000,
+  }, () => {
+    const folded = [
+      { dropHang: 1.5, dropCurl: 1 },
+      { dropSize: 0.3, dropHang: 0.75, dropCurl: 0.5 },
+      { dropSize: 0.3, dropHang: 0.75, dropCurl: 0.5, dropNeck: 0.5 },
+      { ...PEAR, dropHang: 1 },
+    ].flatMap((fields) =>
+      foldSweepTogether(fields).map((one) => `${JSON.stringify(fields)}: ${one}`),
+    );
+    expect(folded).toEqual([]);
+  });
+
+  /*
+   * Any face whose terminal is set to a teardrop hangs a pear where it hangs
+   * a drop: the Didone's f, the Grotesque's and the Geometric's s, a dollar.
+   */
+  it("folds nothing new on another face set to teardrops", { timeout: 300_000 }, () => {
+    const faces = [SANS, GROTESQUE, GEOMETRIC, DIDONE, SLAB].map((face) =>
+      withField(face, "terminal.kind", "teardrop"),
+    );
+    expect(faces.flatMap((face) => newFolds(face, PEAR, PENS, [100]))).toEqual([]);
   });
 });

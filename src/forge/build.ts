@@ -2154,6 +2154,8 @@ const TEAR_PULL = 0.6;
  * pear, the ball is brought back in toward the end before it is made any
  * smaller; and a neck asked to leave the stroke smoothly is held to it, drawn
  * again as a drop that folds is wherever it dips into the stroke's own ink.
+ * A pear that folds gives up its turn and then its hang, each settled into
+ * the band afresh, and is never kept folded where one that does not is found.
  */
 function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[] {
   if (stroke.spine.closed || swept.length === 0) return [];
@@ -2181,9 +2183,9 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
     const least = (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
     const bend = drop.bend > 0 ? drop.bend : drop.radius * 4;
     const pear = pearAt(stroke, swept, drop, index === 1 ? side : -side, reach);
-    // How far the ball is carried on, which a pear with no room gives up first.
-    let hang = pear?.hang ?? 0;
-    const make = (size: number, pull?: number, close?: boolean, turn = pear?.turn ?? 0) =>
+    // A pear is drawn carried on `hang` radii and turned `turn` toward plumb;
+    // a plain drop has neither, and is drawn as it always was.
+    const make = (size: number, pull?: number, close?: boolean, hang = 0, turn = 0) =>
       tear(
         stroke,
         spine,
@@ -2197,20 +2199,31 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
         close,
         pear && { ...pear, hang, turn },
       );
-    let radius = Math.max(drop.radius, least);
-    let shape = make(radius);
-    for (let tries = 0; pear && hang > 0 && tries < 8 && !within(shape, band); tries++) {
-      hang *= 0.82;
-      shape = make(radius);
-    }
-    for (let tries = 0; tries < 8 && !within(shape, band); tries++) {
-      radius = Math.max(least, radius * 0.82);
-      shape = make(radius);
-    }
-    if (!within(shape, band)) {
-      radius = least;
-      shape = make(least);
-    }
+    /*
+     * Made as large as the drop wants, then smaller until it keeps to the
+     * stroke's band, and never smaller than the least that covers the end. A
+     * pear with no room brings its ball back in toward the end, giving up its
+     * hang, before it is made any smaller.
+     */
+    const settle = (hang: number, turn: number): Settled => {
+      let radius = Math.max(drop.radius, least);
+      let shape = make(radius, undefined, undefined, hang, turn);
+      for (let tries = 0; pear && hang > 0 && tries < 8 && !within(shape, band); tries++) {
+        hang *= 0.82;
+        shape = make(radius, undefined, undefined, hang, turn);
+      }
+      for (let tries = 0; tries < 8 && !within(shape, band); tries++) {
+        radius = Math.max(least, radius * 0.82);
+        shape = make(radius, undefined, undefined, hang, turn);
+      }
+      if (!within(shape, band)) {
+        radius = least;
+        shape = make(least, undefined, undefined, hang, turn);
+      }
+      return { shape, radius, hang, turn };
+    };
+    const settled = settle(pear?.hang ?? 0, pear?.turn ?? 0);
+    let shape = settled.shape;
     /*
      * And never one that crosses itself: on a hairline of a very high
      * contrast, the neck the drop leaves the stroke by is so narrow that the
@@ -2219,7 +2232,7 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
      * only taken again where it does not and still keeps to the stroke's
      * band; a drop that already did not is left as it was.
      */
-    const kept = radius;
+    const kept = settled.radius;
     // Asked of the drop as it will be stored, on the unit grid: a crossing
     // too slight to see in the drawing is still one once rounded.
     const folds = (drop: Contour) =>
@@ -2240,12 +2253,6 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
           })),
         },
       ]) || contoursIntersect([drop]);
-    /*
-     * A pear's neck, asked to leave the stroke smoothly, is held to the same
-     * ladder where it dips into the stroke's own ink on the way: a neck that
-     * runs under the edge and out again leaves a notch in the letter.
-     */
-    const dips = pear?.ink ? dipsInto(pear.ink) : () => false;
     const again: Array<[number, boolean]> = [
       // The tail left the stroke less steeply, then closed back onto its own
       // foot, whose edge it cannot then rise over.
@@ -2255,50 +2262,120 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
       [0.3, true],
       [0, true],
     ];
-    if (folds(shape) || dips(shape)) {
-      /*
-       * A pear turned toward plumb on a tight curve sits its ball back over
-       * the stroke, and its neck then starts inside the ink: before it is
-       * taken smaller, it is turned half as far, and then not at all.
-       */
-      const turns = pear && pear.turn > 0 ? [pear.turn, pear.turn * 0.5, 0] : [pear?.turn ?? 0];
-      const last = turns[turns.length - 1];
-      const tries = [
-        ...turns.flatMap((turn, step) => [
-          ...(step > 0 ? [() => make(kept, undefined, undefined, turn)] : []),
+    if (!pear) {
+      const clean = (drop: Contour) => !folds(drop) && within(drop, band);
+      if (folds(shape)) {
+        const tries = [
           ...again.map(
             ([pull, close]) =>
               () =>
-                make(kept, pull, close, turn),
+                make(kept, pull, close),
           ),
-        ]),
-        // And failing both, taken smaller.
-        ...[1, 2, 3, 4, 5, 6].map(
-          (k) => () => make(Math.max(least, kept * 0.9 ** k), undefined, undefined, last),
-        ),
-      ];
-      /*
-       * The first that neither folds, nor leaves the band, nor dips; and
-       * failing that, a pear whose ball lies so far over the stroke that every
-       * neck dips is still taken as the first that does not fold.
-       */
-      let found = false;
-      let unfolded: Contour | null = null;
-      for (const attempt of tries) {
-        const next = attempt();
-        if (folds(next) || !within(next, band)) continue;
-        if (!dips(next)) {
-          shape = next;
-          found = true;
-          break;
+          // And failing both, taken smaller.
+          ...[1, 2, 3, 4, 5, 6].map((k) => () => make(Math.max(least, kept * 0.9 ** k))),
+        ];
+        for (const attempt of tries) {
+          const next = attempt();
+          if (clean(next)) {
+            shape = next;
+            break;
+          }
         }
-        unfolded ??= next;
       }
-      if (!found && unfolded && folds(shape)) shape = unfolded;
+    } else {
+      /*
+       * A pear's neck, asked to leave the stroke smoothly, is held to the same
+       * ladder where it dips into the stroke's own ink on the way: a neck that
+       * runs under the edge and out again leaves a notch in the letter.
+       */
+      const dips = pear.ink ? dipsInto(pear.ink) : () => false;
+      if (folds(shape) || dips(shape)) {
+        /*
+         * Drawn again from the most pear down to the least: the plain drop's
+         * ladder at the pear as it settled; then the pear turned half as far
+         * toward plumb, and not at all; then all three again with its ball not
+         * carried on; and failing every one, the last of them taken smaller.
+         * Each pear but the first is settled into the band afresh, from the
+         * full size and the hang it asks for: a ball turned toward plumb sits
+         * back over the stroke, and the hang and size it settled at are not
+         * the ones an unturned ball has room for.
+         */
+        const turns = pear.turn > 0 ? [pear.turn, pear.turn * 0.5, 0] : [0];
+        const hangs = pear.hang > 0 ? [pear.hang, 0] : [0];
+        const stages = hangs.flatMap((hang) => turns.map((turn) => [hang, turn] as const));
+        let stage = settled;
+        const tries: Array<() => Contour> = [];
+        stages.forEach(([hang, turn], step) => {
+          if (step > 0) {
+            tries.push(() => {
+              stage = settle(hang, turn);
+              return stage.shape;
+            });
+          }
+          for (const [pull, close] of again) {
+            tries.push(() => make(stage.radius, pull, close, stage.hang, stage.turn));
+          }
+        });
+        // And failing both, taken smaller.
+        for (const k of [1, 2, 3, 4, 5, 6]) {
+          tries.push(() =>
+            make(
+              Math.max(least, stage.radius * 0.9 ** k),
+              undefined,
+              undefined,
+              stage.hang,
+              stage.turn,
+            ),
+          );
+        }
+        /*
+         * The first that neither folds, nor leaves the band, nor dips. Where
+         * none is clean, a pear that folds is still never kept: it gives way
+         * to the first that keeps to the band though its neck dips, and
+         * failing that to the one that strays least past the band -- at a
+         * weight where even the least drop that covers the end does not fit
+         * the band, the pear it settled at did not either. A pear that only
+         * dips is kept as it was. Every try is the same five nodes with the
+         * same handles: only where they lie changes.
+         */
+        let found = false;
+        let dipping: Contour | null = null;
+        let straying: Contour | null = null;
+        let strays = Infinity;
+        for (const attempt of tries) {
+          const next = attempt();
+          if (folds(next)) continue;
+          if (within(next, band)) {
+            if (!dips(next)) {
+              shape = next;
+              found = true;
+              break;
+            }
+            dipping ??= next;
+            continue;
+          }
+          const bounds = contoursBounds([next]);
+          const past = Math.max(bounds.yMax - band.yMax, band.yMin - bounds.yMin);
+          if (past < strays) {
+            strays = past;
+            straying = next;
+          }
+        }
+        if (!found && folds(shape)) shape = dipping ?? straying ?? shape;
+      }
     }
     out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
   }
   return out;
+}
+
+/** A drop made to keep to its stroke's band: see `settle` in `teardropsFor`. */
+interface Settled {
+  shape: Contour;
+  radius: number;
+  /** How far a pear's ball is carried on, once it has given up what it had no room for. */
+  hang: number;
+  turn: number;
 }
 
 /** What `tear` is told of a pear: see `pearOf`, and `lift` in `pearAt`. */
