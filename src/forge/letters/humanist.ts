@@ -23,6 +23,7 @@ import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
+import { flatten, windingAt } from "../soft";
 import { heftable, seen } from "./hints";
 import {
   arm,
@@ -751,7 +752,6 @@ export function humanistG(style: Style): Recipe {
   const loop = at(left + loopHalf, bottom + loopH);
   const roundness = 1 - f.square;
   const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 260 - 25 * heavy, f.curve);
-  const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
   // The ear, out of the bowl's top right, up over the x-height and down into its drop.
   const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 22, f.curve);
   // A text serif's reaching as far as Lora's past its narrower loop, as far
@@ -761,41 +761,75 @@ export function humanistG(style: Style): Recipe {
     upper.x + upperW + Math.max(f.bowl * 0.45, f.half * 1.6) + earOut,
     f.x + f.x * 0.1,
   );
+  const bowlStroke = lighter(ink(f, ring(f, upper, upperW, upperH)), 1 - 0.12 * heavy);
+  /*
+   * Lighter still at a heavy weight, as Lora Bold's loop is -- sides of
+   * a hundred on a stem of 142 -- and laid out for the pen it is drawn
+   * with: laid out for the stem's, its ends were turned no rounder than
+   * the stem's pen needs, and inside the lighter one the counter came to
+   * a corner at each end.
+   */
+  const drawnLoop = lighter(ink(f, ring(f, loop, loopHalf, loopH)), loopShare);
+  const loopStroke = inherit(drawnLoop, {
+    ...drawnLoop,
+    spine: bowl(loop, loopHalf, loopH, roundness, drawnLoop.pen.weight / 2, f.curve),
+  });
+  // In two pieces at every weight, however little a heavy one turns.
+  const linkSpine = (to: Vec2): Spine =>
+    inPieces(bowed(f, leaves, to, -Math.max(LINK_BOW - 0.12 * heavy, 0.06)), 2);
+  const linkShare = 0.45 + 0.15 * heavy;
+  /*
+   * The link is aimed at the loop laid out for the stem's pen, and the loop
+   * drawn is laid out for its own lighter one, so at a heavy weight the link
+   * lands out toward the loop's outer edge rather than on its middle. Its end
+   * is cut square with the pen, and on a pen whose cut runs along that edge --
+   * held at eighteen degrees with contrast 0.7 -- the cut lay a quarter of a
+   * unit outside it at 194 and width 100, and the g came in two pieces. Where
+   * it does not reach, it is aimed at the middle of the loop as drawn; where
+   * it does, which is everywhere every base draws it, it is aimed as it
+   * always was. Asked of the run before it is inked, so it is inked once
+   * whatever the answer.
+   */
+  let lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
+  const aimed: Stroke = {
+    spine: linkSpine(lands),
+    pen: { ...f.style.pen, weight: f.style.pen.weight * linkShare },
+    start: BUTT,
+    end: BUTT,
+    join: f.style.parts.corner.join,
+  };
+  if (!meets(aimed, loopStroke)) {
+    lands = bowlPoint(loop, loopHalf, loopH, roundness, drawnLoop.pen.weight / 2, 140, f.curve);
+  }
   return {
     ...finish(
       f,
       [
-        lighter(ink(f, ring(f, upper, upperW, upperH)), 1 - 0.12 * heavy),
-        /*
-         * Lighter still at a heavy weight, as Lora Bold's loop is -- sides of
-         * a hundred on a stem of 142 -- and laid out for the pen it is drawn
-         * with: laid out for the stem's, its ends were turned no rounder than
-         * the stem's pen needs, and inside the lighter one the counter came to
-         * a corner at each end.
-         */
-        (() => {
-          const drawn = lighter(ink(f, ring(f, loop, loopHalf, loopH)), loopShare);
-          return inherit(drawn, {
-            ...drawn,
-            spine: bowl(loop, loopHalf, loopH, roundness, drawn.pen.weight / 2, f.curve),
-          });
-        })(),
-        lighter(
-          // In two pieces at every weight, however little a heavy one turns.
-          ink(
-            f,
-            inPieces(bowed(f, leaves, lands, -Math.max(LINK_BOW - 0.12 * heavy, 0.06)), 2),
-            BUTT,
-            BUTT,
-          ),
-          0.45 + 0.15 * heavy,
-        ),
+        bowlStroke,
+        loopStroke,
+        lighter(ink(f, linkSpine(lands), BUTT, BUTT), linkShare),
         lighter(ink(f, inPieces(bowed(f, from, earEnd, EAR_BOW), 2), BUTT, f.end), 0.72),
       ],
       true,
     ),
     air: 0.2,
   };
+}
+
+/**
+ * Whether one run's ink reaches another's: a point of its swept outline inside
+ * the other's outer edge, or a point of that edge inside it.
+ */
+function meets(one: Stroke, other: Stroke): boolean {
+  const [mine] = sweep(one);
+  const [outside] = sweep(other);
+  if (!mine || !outside) return true;
+  const a = flatten([mine]);
+  const b = flatten([outside]);
+  return (
+    a.polygons.some((polygon) => polygon.points.some((point) => windingAt(b, point) !== 0)) ||
+    b.polygons.some((polygon) => polygon.points.some((point) => windingAt(a, point) !== 0))
+  );
 }
 
 /** How far the g's link swings out to the left of its chord. */

@@ -1872,6 +1872,22 @@ export function sweep(stroke: Stroke): Contour[] {
   } else {
     nodes = joinedAtSeams(runs);
   }
+  /*
+   * A level start that keeps a square cut's points begins where a square cut
+   * does: on its left corner, which a level cut leaves at the end of the
+   * outline. See `Terminal.keepsPoints`.
+   */
+  const startLeft = startNodes[startNodes.length - 1];
+  if (
+    levelStart &&
+    stroke.start.keepsPoints &&
+    stroke.start.soft === undefined &&
+    nodes.length > 1 &&
+    startLeft !== undefined &&
+    nodes[nodes.length - 1] === startLeft
+  ) {
+    nodes = [startLeft, ...nodes.slice(0, -1)];
+  }
   const outline = facing({ nodes, closed: true }, 1);
   return [crowded(spine, pen) ? withoutBackLoops(outline, pen.weight) : outline];
 }
