@@ -86,10 +86,12 @@ export const CURLED_FOOT = 0.7;
 export const CURLED_FOOT_EASE = 0.2;
 
 /**
- * Where on its circle the foot's curl starts, in degrees: thirty degrees
- * under the level on the right, so the end points up and out at sixty.
+ * Where on its circle the foot's curl starts, in degrees: ten degrees under
+ * the level on the right, so the end points up at eighty, nearly upright.
+ * Tuned against the reference: started thirty under, pointing up and out at
+ * sixty, every a in it matched less well.
  */
-export const CURLED_FOOT_FROM = 330;
+export const CURLED_FOOT_FROM = 350;
 
 /**
  * How many degrees of that curl a heavy weight gives up, by a heaviness of

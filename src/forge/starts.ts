@@ -35,6 +35,11 @@ import { SERIF, type Family, type Style } from "./style";
  * to this face: the same settings on the Serif by hand draw the same letters.
  * Several of them have no slider (the drops' shape, the dot's size, which way
  * the bowls' weight leans), which is the other reason to offer it whole.
+ *
+ * The letter widths, the drops' size and hang, the bowls' heft and aperture,
+ * the serifs' depth, the arches' reach, the bars' weight and the dot were then
+ * tuned against the text it was drawn to match, a value at a time, keeping a
+ * value only where the whole line matched better and no letter much worse.
  */
 export const SOFT_SERIF: Style = {
   ...SERIF,
@@ -43,33 +48,45 @@ export const SOFT_SERIF: Style = {
   pen: { ...SERIF.pen, weight: 84, contrast: 0.7, angle: 18 },
   metrics: {
     ...SERIF.metrics,
-    dotScale: 1.27,
+    dotScale: 1.17,
     proportions: {
       ...SERIF.metrics.proportions,
       f: 1.108,
-      h: 0.973,
+      h: 0.958,
       m: 0.957,
-      n: 0.964,
+      n: 0.9565,
       t: 1.09,
-      E: 1.184,
-      y: 1.07,
+      E: 1.154,
+      y: 1.25,
+      c: 0.86,
+      p: 0.886,
+      r: 0.79,
+      s: 0.965,
     },
   },
   parts: {
     ...SERIF.parts,
-    slab: { ...SERIF.parts.slab, projection: 0.85, bracket: 0.7, tip: 1, swell: 0.3 },
-    shoulder: { ...SERIF.parts.shoulder, rise: 0.3, crest: 0.97 },
-    bowl: { ...SERIF.parts.bowl, tail: 0.8, heft: 0.08 },
+    slab: {
+      ...SERIF.parts.slab,
+      projection: 0.85,
+      thickness: 0.45,
+      bracket: 0.7,
+      tip: 1,
+      swell: 0.3,
+    },
+    shoulder: { ...SERIF.parts.shoulder, rise: 0.3, crest: 0.97, reach: 0.785 },
+    bowl: { ...SERIF.parts.bowl, aperture: 0.9, tail: 0.8, heft: 0.16 },
     terminal: {
       ...SERIF.parts.terminal,
       soft: 0.3,
       taper: 0.5,
-      dropSize: 0.15,
-      dropHang: 0.3,
+      dropSize: 0.05,
+      dropHang: 0.1,
       dropCurl: 0.6,
       dropNeck: 1,
     },
     corner: { ...SERIF.parts.corner, fillet: 0.35 },
+    crossbar: { ...SERIF.parts.crossbar, weight: 1.05 },
   },
   forms: { ...SERIF.forms, a: "curled", y: "swung", f: "tucked" },
 };
