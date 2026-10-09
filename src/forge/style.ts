@@ -151,7 +151,10 @@ export interface Metrics {
   /**
    * How far the middle arm of an E reaches against the arms above and below
    * it, as a share of theirs, 0.5 to one; and the F's, the Æ's and the
-   * Œ's with it. Left out, 0.86, a little short, as a roman E's is.
+   * Œ's with it. Never so short at a heavy weight that it shows less than a
+   * third of what they show past the stem. The Grotesque's E and F keep the
+   * arms they are measured to. Left out, 0.86, a little short, as a roman
+   * E's is.
    */
   middleArm?: number;
   /**
@@ -489,7 +492,8 @@ export interface Parts {
      * Whether a stem an arch springs from keeps its head where the arch stops
      * short of the x-height (`shoulder.crest` below one): stood on the
      * x-height and wearing the head an i's stem wears, rather than stopped
-     * with its arch, where there is no line to lay a head on. Left out, the
+     * with its arch, where there is no line to lay a head on. An arch raised
+     * past the x-height takes its stem up with it either way. Left out, the
      * n's and the m's stems stop with their arches.
      */
     headKeep?: boolean;

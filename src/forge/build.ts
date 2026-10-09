@@ -5043,8 +5043,9 @@ const INSIDE_PULL = 0.6;
  * leaning with it. Buried, that side is never seen as an edge, but a
  * rasteriser still draws it: a long side a hair off level inside the arm came
  * out as a faint seam along the beak's foot, on past it to the arm's end,
- * where a level one leaves none. Left off, the side leans with the edge as it
- * always has.
+ * where a level one leaves none. Square, it is still kept under the edge it
+ * leaves wherever the wing reaches (see `level`). Left off, the side leans
+ * with the edge as it always has.
  */
 function wing(
   at: Vec2,
@@ -5106,7 +5107,6 @@ function wing(
   let cap = lean > 0 ? (0.5 * (tip - from)) / lean : Infinity;
   const shift = (v: number): number => lean * Math.min(v, cap);
   const edgeAt = (v: number): number => from + shift(v);
-  const heldAt = (v: number): number => (steady ? held : held + shift(v));
   // And whatever the bracket asked for past what the serif can take,
   // climbing on up the stroke: see `BRACKET_CLIMB`.
   // How far along the wing the fillet runs, which the climb never adds to.
@@ -5139,6 +5139,23 @@ function wing(
     along *= share;
   }
   const reachUp = deep + rise;
+  // How far inside the edge the hollow comes down onto it: see `meetU`.
+  const inset = Math.min(0.5, from * 0.05);
+  /*
+   * The buried side, square across the stroke where `steady` asks: at `held`,
+   * a bite inside where the wing leaves the edge, but never nearer the edge
+   * at the top of the hollow than twice the inset the hollow comes down at.
+   * So it lies under the edge the whole way up, whichever way the edge runs,
+   * and the hollow always lands on the edge itself, a hair inside it. Laid at
+   * `held` alone, an edge running in by more than the bite over the wing's
+   * depth -- a short arm swelled hard, as the foot of a Slab t is and the top
+   * of its bar -- left the side standing out past it in the paper, and the
+   * hollow came down onto that side instead and turned back on itself: the
+   * wing crossed its own outline by a unit or two. Not steady, it leans with
+   * the edge, a bite under it all the way, as it always has.
+   */
+  const level = steady ? Math.min(held, edgeAt(reachUp) - 2 * inset) : held;
+  const heldAt = (v: number): number => (steady ? level : held + shift(v));
 
   /*
    * A soft tip: both of the tip's corners stood back from it by `rho`, and the
@@ -5159,7 +5176,7 @@ function wing(
   const nodes: GlyphNode[] =
     round > 0
       ? [
-          node(place(held, 0)),
+          node(place(level, 0)),
           {
             point: place(tipU, 0),
             handleIn: null,
@@ -5167,7 +5184,7 @@ function wing(
             type: "smooth",
           },
         ]
-      : [node(place(held, 0)), node(place(tip, 0))];
+      : [node(place(level, 0)), node(place(tip, 0))];
   // The rounded tip's top corner arriving in line with the hollow it leaves
   // by, the cut's own length out, and never below the wing's underside.
   const capIn = (outU: number, outV: number): Vec2 => {
@@ -5179,7 +5196,7 @@ function wing(
   const handle = 0.5523 * rise;
   // A hair inside the edge rather than on it, so the two overlap and no seam
   // is left between them.
-  const meetU = Math.max(heldAt(reachUp), edgeAt(reachUp) - Math.min(0.5, from * 0.05));
+  const meetU = Math.max(heldAt(reachUp), edgeAt(reachUp) - inset);
   const tangent = (() => {
     const slant = reachUp < cap ? lean : 0;
     const length = Math.hypot(slant, 1);

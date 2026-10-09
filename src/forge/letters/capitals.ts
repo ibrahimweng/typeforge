@@ -222,7 +222,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       arm(
         f,
         stem,
-        stem + reach * middleArm(f),
+        stem + reach * middleArm(f, reach),
         middleBar(f, f.cap),
         buried(f, { left: 1, right: 1 }),
       ),
@@ -240,7 +240,7 @@ export const CAPITAL_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       arm(
         f,
         stem,
-        stem + reach * middleArm(f),
+        stem + reach * middleArm(f, reach),
         middleBar(f, f.cap),
         buried(f, { left: 1, right: 1 }),
       ),

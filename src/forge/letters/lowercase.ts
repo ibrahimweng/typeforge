@@ -86,10 +86,15 @@ const SEAM = 0.01;
  * face whose stems stop plain. But a serif's head is laid on a line, and a
  * stem stopped short of one wears none: on a face that asks for both, the n
  * and the m went bare beside an i, an r and a p wearing theirs.
+ *
+ * Never under the crown, though: an arch raised past the x-height (the
+ * panel's arch height runs to 1.05) has its stem go up with it, head and all,
+ * as it does on a face that does not ask. Stopped on the x-height there, the
+ * stem's head sat under the arch's own top and the arch stood up over it.
  */
 function archStem(f: Frame): number {
   const { slab } = f.style.parts;
-  return slab.on && slab.headKeep === true ? f.x : f.crown;
+  return slab.on && slab.headKeep === true ? Math.max(f.x, f.crown) : f.crown;
 }
 
 /** The most an r's arm is set down, as a share of the x-height: see `armCrest`. */
