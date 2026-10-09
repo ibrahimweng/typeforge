@@ -2677,20 +2677,24 @@ export function risenTurns(
   return { up, down };
 }
 
-/** A turn drawn in the pieces its own sweep gives it, said rather than left to be worked out. */
-export function pinnedTurn(
-  centre: Vec2,
-  radius: number,
-  fromDegrees: number,
-  toDegrees: number,
-): Spine {
-  const drawn = turn(centre, radius, fromDegrees, toDegrees);
+/** Every arc of a run drawn in the pieces its own sweep gives it, said rather than left to be worked out. */
+function inOwnPieces(drawn: Spine): Spine {
   return {
     ...drawn,
     segments: drawn.segments.map((arc) =>
       arc.kind === "arc" ? { ...arc, pieces: piecesFor(arc.endAngle - arc.startAngle) } : arc,
     ),
   };
+}
+
+/** A turn drawn in the pieces its own sweep gives it: see `inOwnPieces`. */
+export function pinnedTurn(
+  centre: Vec2,
+  radius: number,
+  fromDegrees: number,
+  toDegrees: number,
+): Spine {
+  return inOwnPieces(turn(centre, radius, fromDegrees, toDegrees));
 }
 
 export function arch(frame: Frame, fromX: number, height: number): Stroke {
@@ -2755,13 +2759,14 @@ export function archSpine(frame: Frame, fromX: number, height: number, bottom = 
      * middle and as wide, so the two still meet level at the crest -- `bend`
      * takes a quarter's height as its radius and its width last -- and the
      * quarter down is the one it always was: its width is not the flat's to
-     * give, so nothing limits the rise but the line.
+     * give, so nothing limits the rise but the line. Each quarter's arcs in
+     * the pieces their own sweeps give them, as every arc a finish draws is.
      */
     const risen = risenTurns(frame, radius, Infinity, crest);
     if (risen) {
       return chain(
-        bend(frame, at(middle.x, crest - risen.up), risen.up, 180, 90, half),
-        bend(frame, middle, radius, 90, 0, half),
+        inOwnPieces(bend(frame, at(middle.x, crest - risen.up), risen.up, 180, 90, half)),
+        inOwnPieces(bend(frame, middle, radius, 90, 0, half)),
         straight(at(landing, top), at(landing, Math.min(bottom, top))),
       );
     }
@@ -3426,20 +3431,31 @@ function atFoot(angle: number): boolean {
 }
 
 /**
- * A bowl's foot laid flatter: the tail of a c or an e drawn again on a circle
- * `k` times as large, touching the old one where it leaves the bottom of the
- * bowl, so it runs out longer and lower before it turns up into its end
- * (`bowl.tail`, k being one more than it).
+ * A bowl's foot laid flatter: the tail of a c or an e drawn again with every
+ * turn in it `k` times as wide, so it runs out longer and lower before it
+ * turns up into its end (`bowl.tail`, k being one more than it).
  *
  * Found by the skeleton alone: the run from the first arc that begins at the
- * very bottom of its turn, 270 degrees, to the end of the stroke. Every piece
- * of it is kept, in order, at its own length -- an arc turning through as
- * much less as its circle is larger, a straight run laid on along the way the
- * curve is going there -- so a piece of no length is still one, and each arc
- * is drawn in the pieces its own sweep gave it. A run with no such arc, as a
- * heavy e's that starts further round, comes back as it was, with the same
- * points either way. Lines stay lines and arcs stay arcs, so the sweep still
- * offsets it exactly.
+ * very bottom of its turn, 270 degrees, to the end of the stroke. It leaves
+ * that point as it always did, level, and every piece after it is kept, in
+ * order, at its own length: an arc on a circle k times its own radius, so it
+ * turns through a k-th of what it did, and a straight run laid on at the
+ * angle it always made with the piece before it. So the tail turns up a k-th
+ * as fast all the way along, whatever mix of circles the bowl was drawn
+ * with: the larger the tail, the flatter the foot and the lower its end, at
+ * every step of the control, and never lower than the bottom of the bowl.
+ *
+ * Not the whole run on one circle k times the first one's: on an oval bowl
+ * the arcs after the first are flatter than it, and bent onto that circle a
+ * small tail turned the foot further up instead of laying it down -- far
+ * enough, on the Serif's narrow c, to hang a drop off it at some weights and
+ * not others.
+ *
+ * A piece of no length is still one, a turn on a point still turns where it
+ * did, and each arc is drawn in the pieces its own sweep gave it. A run with
+ * no such arc, as a heavy e's that starts further round, comes back as it
+ * was, with the same points either way. Lines stay lines and arcs stay arcs,
+ * so the sweep still offsets it exactly.
  */
 export function tailed(stroke: Stroke, k: number): Stroke {
   if (!(k > 1) || stroke.spine.closed) return stroke;
@@ -3447,40 +3463,45 @@ export function tailed(stroke: Stroke, k: number): Stroke {
   const from = segments.findIndex((one) => one.kind === "arc" && atFoot(one.startAngle));
   if (from < 0) return stroke;
   const foot = segments[from] as SpineArc;
-  const leaves = at(
+  let here = at(
     foot.centre.x + foot.radius * Math.cos(foot.startAngle),
     foot.centre.y + foot.radius * Math.sin(foot.startAngle),
   );
-  const radius = foot.radius * k;
-  let centre = at(
-    leaves.x + k * (foot.centre.x - leaves.x),
-    leaves.y + k * (foot.centre.y - leaves.y),
-  );
-  let angle = foot.startAngle;
-  const way = foot.sweepPositive ? 1 : -1;
+  // How far the run as laid is turned against the run as it was, so far: every
+  // piece after keeps the angle it made with the one before it.
+  let behind = 0;
   const laid: SpineSegment[] = segments.slice(0, from);
   for (const one of segments.slice(from)) {
     if (one.kind === "arc") {
       const sweep = one.endAngle - one.startAngle;
-      const turned = (one.radius * sweep) / radius;
+      // A turn on a point has no circle to widen, and turns where it did.
+      const wider = one.radius > 1e-9 ? k : 1;
+      const radius = one.radius * wider;
+      const startAngle = one.startAngle + behind;
+      const endAngle = startAngle + sweep / wider;
+      const centre = at(
+        here.x - radius * Math.cos(startAngle),
+        here.y - radius * Math.sin(startAngle),
+      );
       laid.push({
         ...one,
         centre,
         radius,
-        startAngle: angle,
-        endAngle: angle + turned,
+        startAngle,
+        endAngle,
         pieces: one.pieces ?? piecesFor(sweep),
       });
-      angle += turned;
+      here = at(centre.x + radius * Math.cos(endAngle), centre.y + radius * Math.sin(endAngle));
+      behind += sweep / wider - sweep;
       continue;
     }
-    // A straight run carried on along the curve where it has got to, and the
-    // circle moved on with it, so whatever turns after it turns from its end.
-    const length = Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y);
-    const here = at(centre.x + radius * Math.cos(angle), centre.y + radius * Math.sin(angle));
-    const going = at(-Math.sin(angle) * way, Math.cos(angle) * way);
-    laid.push({ ...one, from: here, to: at(here.x + going.x * length, here.y + going.y * length) });
-    centre = at(centre.x + going.x * length, centre.y + going.y * length);
+    // A straight run turned as the curve before it now is, on from where it got to.
+    const cos = Math.cos(behind);
+    const sin = Math.sin(behind);
+    const run = at(one.to.x - one.from.x, one.to.y - one.from.y);
+    const to = at(here.x + run.x * cos - run.y * sin, here.y + run.x * sin + run.y * cos);
+    laid.push({ ...one, from: here, to });
+    here = to;
   }
   return inherit(stroke, { ...stroke, spine: { ...stroke.spine, segments: laid } });
 }

@@ -80,7 +80,9 @@ export function heftShift(stroke: Stroke, reach: PenReach): Vec2 {
  * inner corner as the pen put it -- which is `cutAlong` asked about that
  * line. Never further than twice the move: a side that would have to go
  * further than that to meet the line, or does not meet it at all, keeps its
- * corner where the move left it. The pieces are the same either way.
+ * corner where the move left it. The pieces are the same either way. An end
+ * whose own cut brings both corners to its line is left to that cut: see
+ * `cutsItself`.
  */
 export function hefted(
   stroke: Stroke,
@@ -97,9 +99,27 @@ export function hefted(
   const inner = plain.map((one) => movedBy(one, shift));
   if (!stroke.spine.closed) {
     const most = 2 * Math.hypot(shift.x, shift.y);
-    for (const atEnd of [false, true]) squared(inner, plain, outer, atEnd, most);
+    for (const atEnd of [false, true]) {
+      if (cutsItself(atEnd ? stroke.end : stroke.start)) continue;
+      squared(inner, plain, outer, atEnd, most);
+    }
   }
   return side > 0 ? [inner, right] : [left, inner];
+}
+
+/**
+ * Whether an end's own cut puts both corners on its line, whatever the sides
+ * do before it: a level cut, or a cut aligned to the line or the upright,
+ * which slide each corner along its side to the line (`terminalNodes`), or
+ * carry each side along its curve to it (`cutAlong`). Such an end is square
+ * already, and squaring it first only sends the inner corner round its curve
+ * before the cut slides it on again, along a side turned by the trip -- on a
+ * Black e's bar, under the bowl's own foot.
+ *
+ * Decided by the terminal alone, so it is the same at every weight.
+ */
+function cutsItself(terminal: Stroke["start"]): boolean {
+  return terminal.kind !== "round" && (terminal.level === true || terminal.aligned === true);
 }
 
 /** One side piece moved whole: a run's ends, or an ellipse's centre. */
