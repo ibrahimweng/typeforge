@@ -494,6 +494,12 @@ export interface Parts {
      */
     crest: number;
     /**
+     * How much lower the arch leaves the stem, nought to 0.8: the turn up out
+     * of the stem grows by this share and the turn down gives up the same.
+     * Left out, the arch is drawn as it always was.
+     */
+    rise?: number;
+    /**
      * How much further the pen is turned for an arch, in degrees, -45 to 45:
      * the arches of the n, m and h (and of the letters drawn from them) drawn
      * with the pen at its own angle plus this, so the arch leaves the stem
@@ -503,12 +509,6 @@ export interface Parts {
      * out, or nought, an arch is drawn with the face's pen.
      */
     angle?: number;
-    /**
-     * How much lower the arch leaves the stem, nought to 0.8: the turn up out
-     * of the stem grows by this share and the turn down gives up the same.
-     * Left out, the arch is drawn as it always was.
-     */
-    rise?: number;
   };
   bowl: {
     /**
