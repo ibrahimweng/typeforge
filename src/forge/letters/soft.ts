@@ -18,11 +18,11 @@
  */
 
 import type { Vec2 } from "@/font/types";
-import { bowl } from "../shapes";
-import { piecesFor } from "../sweep";
+import { bowl, bowlBetween, spineEnd, spineStart } from "../shapes";
+import { penReach, piecesFor, reachAlong } from "../sweep";
 import type { Style } from "../style";
-import type { Spine, Stroke, Terminal } from "../types";
-import { buried, seen } from "./hints";
+import type { Spine, SpineSegment, Stroke, Terminal } from "../types";
+import { buried, heftable, seen } from "./hints";
 import {
   at,
   BUTT,
@@ -30,9 +30,11 @@ import {
   deg,
   finish,
   frame,
+  headingAt,
   heaviness,
   inherit,
   ink,
+  LEVEL,
   type Recipe,
   remember,
   ring,
@@ -529,4 +531,480 @@ function turnedAbout(stroke: Stroke, about: Vec2, radians: number): Stroke {
     ),
   };
   return inherit(stroke, { ...stroke, spine });
+}
+
+// ---------------------------------------------------------------------------
+// The belted a
+// ---------------------------------------------------------------------------
+
+/** How far the belted a's bowl is turned anticlockwise about its centre, in degrees, at a text weight. */
+export const BELTED_TILT = 25;
+
+/** How much of that turn a heavy weight gives up, by a heaviness of one: as the curled a's. */
+export const BELTED_TILT_EASE = 0.5;
+
+/** Where the top of the belted a's bowl stands, in x-heights, before it is turned. */
+export const BELTED_BOWL_TOP = 0.415;
+
+/** How much wider than tall the belted a's bowl is drawn, before it is turned. */
+export const BELTED_BOWL_WIDE = 1.4875;
+
+/**
+ * Where on its bowl the belt leaves the stem, in degrees round the bowl
+ * before it is turned: short of its top, so turned it leaves the stem running
+ * nearly level, the pen's thin way, as a hairline.
+ */
+export const BELTED_LEAVES = 55;
+
+/**
+ * Where on its bowl the belt comes back into the stem, in degrees round the
+ * bowl before it is turned: well past its foot, so it rises into the stem low
+ * and the stem's foot curls away under it.
+ */
+export const BELTED_JOINS = 330;
+
+/**
+ * The most the belt's ends are carried on along their own headings into the
+ * stem, in the bowl's half-widths: where a heading runs nearly upright the
+ * run to the stem would go on for ever.
+ */
+export const BELTED_REACH = 1.5;
+
+/**
+ * How much heavier the belt is drawn than the curled a's bowl at a text
+ * weight, easing to as heavy by a Bold: drawn as one stroke the bowl's heavy
+ * side is its own, where the curled a's ring shares the stem's.
+ */
+export const BELTED_HEAVIER = 1.12;
+
+/**
+ * The two-storey a of a soft text face with its bowl drawn as one open
+ * stroke, as an e's belt is drawn: leaving the stem high as a hairline,
+ * turning down round the bowl's heavy side and along its foot, and rising
+ * back into the stem low, where the stem's foot curls away under it. The
+ * curled a's arch, stem and foot (see `curledA`), and its bowl's lean and
+ * placing; what the stem stands in is the bowl's right side.
+ *
+ * The bowl is the part of a ring between `BELTED_LEAVES` and `BELTED_JOINS`,
+ * turned about its centre exactly and set down by the whole ring's extremes,
+ * as the curled a's is; each end is then carried on straight along its own
+ * heading until it is buried in the stem. Those two runs are kept at every
+ * weight, of no length where the bowl already reaches into the stem, so the
+ * letter keeps its points.
+ */
+export function beltedA(style: Style): Recipe {
+  const f = frame(style);
+  const heavy = heaviness(f);
+  const weight = f.style.pen.weight;
+  const heavier = 1 + (BELTED_HEAVIER - 1) * Math.max(0, 1 - heavy);
+  const bowlPen = { ...f.style.pen, weight: weight * (1 - CURLED_BOWL_LIGHT * heavy) * heavier };
+  // The curled a's arch, foot and bowl, to the unit: see `curledA`.
+  const asked = Math.max(f.x * 0.31 - f.gain * CURLED_SINK, f.least);
+  const wide = Math.max(asked * f.wide + f.half * 0.35 * heavy + f.gain * 0.2, f.least);
+  const over = Math.max(Math.min(wide, f.x - asked * 2), f.half * 1.15, f.least);
+  const top = f.crest(f.x) - over;
+  const room = (top - f.dip(0)) / 2;
+  const rounded = Math.min(bowlPen.weight * (0.5 + CURLED_COUNTER), room);
+  const bh = Math.max(
+    Math.min((BELTED_BOWL_TOP * f.x - f.dip(0)) / 2 - f.gain * CURLED_SINK, room),
+    rounded,
+    bowlPen.weight * 0.55,
+  );
+  const bw = Math.max(bh * BELTED_BOWL_WIDE, f.least);
+  const tilt = deg(BELTED_TILT * (1 - BELTED_TILT_EASE * Math.min(1, heavy)));
+  const roundness = 1 - f.square;
+  const half = bowlPen.weight / 2;
+  // Set down by the whole ring's extremes, as the curled a's bowl is.
+  const whole = turnedRun(bowl(at(0, 0), bw, bh, roundness, half, f.curve), at(0, 0), tilt);
+  const box = extentOf(whole);
+  const dx = f.edge - box.xMin;
+  const dy = f.dip(0) - box.yMin;
+  const stem = dx + box.xMax + (weight - bowlPen.weight) / 2;
+  const run = movedRun(
+    turnedRun(
+      bowlBetween(at(0, 0), bw, bh, roundness, half, BELTED_LEAVES, BELTED_JOINS, f.curve),
+      at(0, 0),
+      tilt,
+    ),
+    dx,
+    dy,
+  );
+  /*
+   * Each end carried on along the way it was going -- back from the start,
+   * on from the end -- until both corners of its cut stand inside the stem,
+   * and no further than the stem's middle: carried on to the middle at
+   * every weight, a Black's bowl, which already sits well inside its stem,
+   * ran both ends up the stem into each other and the belt crossed itself.
+   */
+  const most = bw * BELTED_REACH;
+  const stemHalf = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
+  const stemLeft = stem - stemHalf;
+  const from = spineStart(run);
+  const leaves = headingOf(run.segments, "start");
+  const to = spineEnd(run);
+  const joins = headingOf(run.segments, "end");
+  // How far each corner of an end's cut stands to either side of its middle.
+  const aside = (heading: Vec2, pen: typeof bowlPen): number =>
+    Math.abs(reachAlong(at(-heading.y, heading.x), penReach(pen)).x);
+  /*
+   * And the belt drawn no wider across either end than the stem it is buried
+   * in: on a pen with no contrast the belt rises into the stem nearly
+   * upright, and a little heavier than the stem its cut stood out either side.
+   */
+  const margin = f.half * 0.1;
+  const fits = Math.min(
+    1,
+    (stemHalf - margin) / Math.max(aside(leaves, bowlPen), 1e-9),
+    (stemHalf - margin) / Math.max(aside(joins, bowlPen), 1e-9),
+  );
+  const beltPen = { ...bowlPen, weight: bowlPen.weight * Math.max(fits, 0.5) };
+  const inside = (heading: Vec2): number =>
+    Math.min(stem, stemLeft + aside(heading, beltPen) + margin);
+  const back =
+    leaves.x < -1e-6 ? Math.min(most, Math.max(0, (from.x - inside(leaves)) / leaves.x)) : 0;
+  const on = joins.x > 1e-6 ? Math.min(most, Math.max(0, (inside(joins) - to.x) / joins.x)) : 0;
+  const belt = chain(
+    straight(at(from.x - leaves.x * back, from.y - leaves.y * back), from),
+    run,
+    straight(to, at(to.x + joins.x * on, to.y + joins.y * on)),
+  );
+  // Where the hairline leaves the stem, the join above it rounded: see `buried`.
+  const inked = ink(f, belt, buried(f, { right: 1 }), BUTT);
+  const bowlStroke = heftable(f, inherit(inked, { ...inked, pen: beltPen }));
+  // The curled a's stem: its foot curl, its straight and its arch.
+  const rise = Math.max(0, top - f.dip(0) - f.half * 0.1);
+  const curl = CURLED_FOOT * weight * (1 - CURLED_FOOT_EASE * Math.min(1, heavy));
+  const rf = Math.max(f.least, Math.min(curl, rise));
+  const foot = f.dip(0) + rf;
+  const footFrom = CURLED_FOOT_FROM - CURLED_FOOT_FLATTEN * Math.min(1, heavy);
+  const crown = Math.max(top, foot);
+  const end =
+    CURLED_END -
+    CURLED_END_EASE * Math.min(1, heavy) -
+    CURLED_END_EASE * 0.5 * Math.min(1, Math.max(0, heavy - 1) * 2);
+  return finish(f, [
+    bowlStroke,
+    ink(
+      f,
+      chain(
+        inPieces(turn(at(stem + rf, foot), rf, footFrom, 180), 2),
+        straight(at(stem, foot), at(stem, crown)),
+        inPieces(turn(at(stem - over, crown), over, 0, end), 2),
+      ),
+      f.end,
+      f.end,
+    ),
+  ]);
+}
+
+/**
+ * Which way a run is going at its start or its end, read off the first (or
+ * last) of its pieces that has any length: a bowl's run keeps pieces of no
+ * length, which point nowhere.
+ */
+function headingOf(segments: SpineSegment[], which: "start" | "end"): Vec2 {
+  const order = which === "start" ? segments : [...segments].reverse();
+  for (const one of order) {
+    const length =
+      one.kind === "line"
+        ? Math.hypot(one.to.x - one.from.x, one.to.y - one.from.y)
+        : one.radius * Math.abs(one.endAngle - one.startAngle);
+    if (length > 1e-9) return headingAt(one, which);
+  }
+  return headingAt(order[0], which);
+}
+
+/** A run turned anticlockwise about a point, exactly, each turn pinned first: see `turnedAbout`. */
+function turnedRun(spine: Spine, about: Vec2, radians: number): Spine {
+  const stroke: Stroke = {
+    spine,
+    pen: { weight: 1, contrast: 0, angle: 0 },
+    start: BUTT,
+    end: BUTT,
+  };
+  return turnedAbout(stroke, about, radians).spine;
+}
+
+/** A run moved bodily: see `movedBy`. */
+function movedRun(spine: Spine, dx: number, dy: number): Spine {
+  const stroke: Stroke = {
+    spine,
+    pen: { weight: 1, contrast: 0, angle: 0 },
+    start: BUTT,
+    end: BUTT,
+  };
+  return movedBy(stroke, dx, dy).spine;
+}
+
+// ---------------------------------------------------------------------------
+// The wide-eyed e
+// ---------------------------------------------------------------------------
+
+/**
+ * How much of the pen's lean the e gives up, nought to one: the e is written
+ * with the nib held this much nearer the upright than the face's own, so its
+ * stress stands nearer the upright and its eye's right side, which the face's
+ * own lean makes the heaviest part of the letter, comes down to the bar no
+ * heavier than a stem.
+ */
+export const WIDE_UPRIGHT = 0.25;
+
+/** How heavy the wide-eyed e's bar is against the face's crossbars. */
+export const WIDE_BAR = 0.8;
+
+/** How heavy the wide-eyed e's pen is against the face's. */
+export const WIDE_WEIGHT = 0.96;
+
+/** How much wider the wide-eyed e is drawn than the face's own e. */
+export const WIDE_WIDTH = 1.03;
+
+/**
+ * The e of a soft text face: the old-style e (`humanistE`, handed in as
+ * `drawE`) written with its pen held nearer the upright, a little lighter and
+ * a little wider, and with a lighter bar, so its eye opens wider -- light
+ * along the bar and over the top, its right side no heavier than a stem --
+ * and its weight sits in its sides.
+ *
+ * The whole letter is drawn with that pen and that bar, not changed after,
+ * so the bar still meets the bowl along the bowl's own edge and the bowl's
+ * start is still cut level at the bar's top.
+ */
+export function wideE(style: Style, drawE: (style: Style) => Recipe): Recipe {
+  const { pen, parts, metrics } = style;
+  return drawE({
+    ...style,
+    pen: { ...pen, weight: pen.weight * WIDE_WEIGHT, angle: pen.angle * (1 - WIDE_UPRIGHT) },
+    metrics: { ...metrics, width: metrics.width * WIDE_WIDTH },
+    parts: {
+      ...parts,
+      crossbar: { ...parts.crossbar, weight: parts.crossbar.weight * WIDE_BAR },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The beaked s
+// ---------------------------------------------------------------------------
+
+/**
+ * How many degrees each of the s's beaks turns through, tighter, after the
+ * head (or the foot) stops: forty brings the old-style s's ends round to the
+ * upright.
+ */
+export const BEAKED_TURN = 40;
+
+/** How tight the turn of each beak is, in half pens: never tighter than the pen goes round. */
+export const BEAKED_HOOK = 1.5;
+
+/**
+ * The s of a soft text face: the old-style s (`humanistS`, handed in as
+ * `drawS`) with its head and foot each running on over a short, tighter turn
+ * into a short beak of its own, cut plain and softened -- and on a face that
+ * tapers its curved ends, tapered -- as the face finishes a seen end, where
+ * the old-style s stands an upright serif's beak off each.
+ *
+ * Each beak's turn is laid inside the head's (or the foot's) own, on a circle
+ * through the point where that stops whose centre lies on its radius, so the
+ * run turns on without a corner; both turns are kept at every weight, so the
+ * letter keeps its points.
+ */
+export function beakedS(style: Style, drawS: (style: Style) => Recipe): Recipe {
+  const f = frame(style);
+  const drawn = drawS(style);
+  const [stroke, ...rest] = drawn.strokes;
+  const segments = stroke?.spine.segments ?? [];
+  const head = segments[0];
+  const foot = segments[segments.length - 1];
+  /*
+   * Only on the old-style s's own run, its head turning up into it and its
+   * foot out of it. A face whose runs undulate draws the plain s there (see
+   * `bookS`), and keeps it: a wave ridden through a turn this tight folded
+   * the Wavy's s at its heaviest.
+   */
+  const { wave } = style.parts;
+  if (
+    (wave.along !== "off" && wave.depth > 0) ||
+    !stroke ||
+    stroke.spine.closed ||
+    segments.length < 3 ||
+    head?.kind !== "arc" ||
+    foot?.kind !== "arc" ||
+    !head.sweepPositive ||
+    foot.sweepPositive
+  ) {
+    return drawn;
+  }
+  const down = deg(BEAKED_TURN);
+  const hook = Math.max(f.least, f.half * BEAKED_HOOK);
+  // The head turns anticlockwise from its start, so its beak runs backwards from there.
+  const headHook = Math.min(hook, head.radius);
+  const c0 = at(
+    head.centre.x + (head.radius - headHook) * Math.cos(head.startAngle),
+    head.centre.y + (head.radius - headHook) * Math.sin(head.startAngle),
+  );
+  // The foot turns clockwise to its end, and its beak runs on clockwise.
+  const footHook = Math.min(hook, foot.radius);
+  const c1 = at(
+    foot.centre.x + (foot.radius - footHook) * Math.cos(foot.endAngle),
+    foot.centre.y + (foot.radius - footHook) * Math.sin(foot.endAngle),
+  );
+  const beaked: Spine = {
+    ...stroke.spine,
+    segments: [
+      {
+        kind: "arc",
+        centre: c0,
+        radius: headHook,
+        startAngle: head.startAngle - down,
+        endAngle: head.startAngle,
+        sweepPositive: true,
+        pieces: piecesFor(down),
+      },
+      ...segments,
+      {
+        kind: "arc",
+        centre: c1,
+        radius: footHook,
+        startAngle: foot.endAngle,
+        endAngle: foot.endAngle - down,
+        sweepPositive: false,
+        pieces: piecesFor(down),
+      },
+    ],
+  };
+  // Cut plain where the face would stand a serif's beak or hang a drop off them.
+  const own = f.end.kind === "slab" || f.end.kind === "teardrop";
+  const cut = own ? seen(f, BUTT) : f.end;
+  return {
+    ...drawn,
+    strokes: [inherit(stroke, { ...stroke, spine: beaked, start: cut, end: cut }), ...rest],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// The wedged t
+// ---------------------------------------------------------------------------
+
+/**
+ * How far up the ascender the wedged t stands: the old-style t's (`humanistT`,
+ * 640 of 755) less three hundredths of it.
+ */
+export const WEDGED_TOP = (640 / 755) * 0.97;
+
+/** How far the wedged t's bar reaches past its stem on the left, at least, in stems. */
+export const WEDGED_OVERHANG = 0.45;
+
+/**
+ * How far round the tail turns, in degrees on its circle from the foot of
+ * the stem: on up past the old-style t's 305, so it flicks up and, turning
+ * across the pen's thin way, flares as it goes.
+ */
+export const WEDGED_TAIL = 345;
+
+/** The tail's radius, against the old-style t's. */
+export const WEDGED_TAIL_WIDE = 0.9;
+
+/** How much heavier the wedged t's bar is than the face's crossbars. */
+export const WEDGED_BAR = 1.35;
+
+/**
+ * The t of a soft text face, under one solid wedge: the old-style t's stem
+ * and bar, a little shorter, its tail flicking up further, and its flag a
+ * straight stroke from the bar's left tip to the stem's top whose outside is
+ * the one line the head is cut along -- the stem's own top sloping down the
+ * same line -- and which is heavy enough to fill the corner between the bar
+ * and the stem, so the head is solid where the old-style flag, bowed over
+ * that corner, left a triangle of paper in it.
+ *
+ * The flag is laid off that line by half its own width, so its outside edge
+ * runs through the bar's tip and the stem's top right corner exactly. It is
+ * cut level along the bar's foot, and upright just inside the stem's right
+ * side, where its corners stand one over the other in the stem's ink however
+ * wide it has to be -- a Thin's stem is far narrower than the corner it
+ * fills -- so neither of its ends is seen. The bar starts under the flag,
+ * where the line crosses its top. Every size here is arithmetic on the
+ * frame, so the letter keeps its points at every weight.
+ */
+export function wedgedT(style: Style): Recipe {
+  const f = frame(style);
+  const pen = f.style.pen;
+  const radius = Math.max(roundHalf(f) * 0.34, f.least, f.half * 1.5) * WEDGED_TAIL_WIDE;
+  const reach = roundHalf(f) * 0.64;
+  const stemHalf = Math.abs(reachAlong(at(1, 0), penReach(pen)).x);
+  const overhang = stemHalf * (1 + 2 * WEDGED_OVERHANG);
+  const stem = Math.max(f.edge + reach * 0.7, f.edge + overhang);
+  // As tall as the old-style t's at every weight, less a little: see `humanistT`.
+  const top = Math.max(f.asc * WEDGED_TOP + Math.max(0, f.half - 43.5) * 0.3, f.x + f.half);
+  const stemLeft = stem - stemHalf;
+  const stemRight = stem + stemHalf;
+  const barLeft = stem - Math.max(reach * 0.7, overhang);
+  // A little heavier than the face's crossbars, still hung from the x-height.
+  const barShare = f.bar * WEDGED_BAR;
+  const barY = f.hangs(f.x, barShare);
+  const barHalf = Math.abs(
+    reachAlong(at(0, 1), penReach({ ...pen, weight: pen.weight * barShare })).y,
+  );
+  const foot = barY - barHalf;
+  const barTop = barY + barHalf;
+  /*
+   * The line the head is cut along: from the bar's foot at its left tip to
+   * the stem's top right corner. `along` runs up it, `inward` off it into
+   * the letter.
+   */
+  const rise = Math.max(top - foot, f.least);
+  const run = Math.max(stemRight - barLeft, f.least);
+  const length = Math.hypot(run, rise);
+  const along = at(run / length, rise / length);
+  const inward = at(along.y, -along.x);
+  const tan = rise / run;
+  // The stem's top falls along it, from its right corner to its left side.
+  const sink = (stemRight - stemLeft) * tan;
+  /*
+   * The flag as wide across as it takes to cover the corner where the bar's
+   * top meets the stem's left side, and to stand over the bar's end under
+   * the line.
+   */
+  const margin = f.half * 0.15;
+  const corner = (stemLeft - barLeft) * inward.x + (barTop - foot) * inward.y;
+  const wide = Math.max(corner, (barTop - foot) * along.x) + margin;
+  /*
+   * Drawn with a round nib that wide, since it is a wedge filled in rather
+   * than a stroke of the pen. That also keeps it whole on a face that draws
+   * its strokes rising to the right as hairlines (`metrics.risingHairline`):
+   * a nib with no thin way has nothing to be thinned to.
+   */
+  const flagPen = { weight: wide, contrast: 0, angle: pen.angle };
+  // Its spine, half its width in off the line, from the bar's foot to just
+  // inside the stem's right side.
+  const off = at(barLeft + (inward.x * wide) / 2, foot + (inward.y * wide) / 2);
+  const start = at(off.x + ((foot - off.y) / along.y) * along.x, foot);
+  const stop = stemRight - margin;
+  const end = at(stop, off.y + ((stop - off.x) / along.x) * along.y);
+  /*
+   * Cut upright there: on a round nib that is the square cut turned by the
+   * flag's own slope, each corner slid along it until the two stand one over
+   * the other in the stem's ink -- the e's bar meets its bowl the same way
+   * (see `eyed`). The slope is never level, so the cut always slides its
+   * corners and the flag keeps its points.
+   */
+  const upright: Terminal = { kind: "angled", angle: (Math.atan2(rise, run) * 180) / Math.PI };
+  const inked = ink(f, straight(start, end), LEVEL, upright);
+  const flag = inherit(inked, { ...inked, pen: flagPen });
+  // The bar, from under the flag where the line crosses its top, out past the stem.
+  const under = barLeft + (barTop - foot) / tan + margin;
+  const cut: Terminal =
+    f.plain.kind === "angled" || f.plain.kind === "round" ? f.plain : { ...f.plain, level: true };
+  return finish(f, [
+    ink(
+      f,
+      chain(
+        straight(at(stem, top), at(stem, f.dip(0) + radius)),
+        inPieces(turn(at(stem + radius, f.dip(0) + radius), radius, 180, WEDGED_TAIL), 2),
+      ),
+      seen(f, { ...LEVEL, sink }),
+      f.end,
+    ),
+    flag,
+    bar(f, barShare, straight(at(under, barY), at(stem + reach, barY)), BUTT, seen(f, cut)),
+  ]);
 }
