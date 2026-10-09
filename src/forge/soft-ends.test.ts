@@ -12,12 +12,13 @@
 
 import { describe, expect, it } from "vitest";
 
+import { contoursIntersect } from "@/font/outline";
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { makeLetter } from "./build";
 import { widthedStyle } from "./family";
 import { openWaveBook, type WaveBook, waveBookAt } from "./shapes";
 import { flatten, windingAt } from "./soft";
-import { SANS, SERIF, type Style } from "./style";
+import { BASES, SANS, SERIF, type Style } from "./style";
 import { sweep } from "./sweep";
 import { foldSweep, withField } from "./testing/fold-sweep";
 import { signatureText } from "./testing/signature";
@@ -519,4 +520,138 @@ describe("no letter crosses itself", () => {
     expect(shows("slab.swell", 0.6, "E")).toBe(true);
     expect(foldSweep("slab.swell", [0.3, 0.6])).toEqual([]);
   });
+});
+
+describe("each finish on its own", () => {
+  /*
+   * The three together are checked above; each here alone, so that none of
+   * them can go missing behind the other two. Softened corners are nodes more
+   * on a stroke; a swell moves the nodes there are, and so does a taper, which
+   * also drops the sliver of serif refused on the curve it draws in.
+   */
+  const swept = (made: ReturnType<typeof makeLetter>) =>
+    nodeCount(made!.runs.map((run) => run.contours[0]));
+  for (const [field, value, letters, adds] of [
+    ["terminal.soft", 0.3, [..."cfnrt"], true],
+    ["terminal.taper", 0.5, [..."ct"], false],
+    ["slab.swell", 0.3, ["E"], false],
+  ] as const) {
+    it(`${field} draws ${letters.join("")} differently at every pen and width`, {
+      timeout: 60_000,
+    }, () => {
+      const missing: string[] = [];
+      const on = withField(SERIF, field, value);
+      for (const name of letters) {
+        const form = SERIF.forms?.[name];
+        for (const pen of PENS) {
+          for (const width of WIDTHS) {
+            const plain = makeLetter(name, widthedStyle(atPen(SERIF, pen), width), form)!;
+            const now = makeLetter(name, widthedStyle(atPen(on, pen), width), form)!;
+            const label = `${name} p${pen}w${width}`;
+            if (JSON.stringify(plain.contours) === JSON.stringify(now.contours)) {
+              missing.push(label);
+            }
+            if (adds && swept(now) <= swept(plain)) missing.push(`${label} has no node more`);
+            // Nor are the swelled arms' nodes any but the plain arms'.
+            if (field === "slab.swell" && swept(now) !== swept(plain)) {
+              missing.push(`${label} changed its nodes`);
+            }
+          }
+        }
+      }
+      expect(missing).toEqual([]);
+    });
+  }
+});
+
+/** A base by its name. */
+const baseNamed = (name: string): Style => {
+  const found = BASES.find((one) => one.name === name);
+  if (!found) throw new Error(`no base named ${name}`);
+  return found;
+};
+
+describe("a long hook tapered as far as it goes", () => {
+  /*
+   * A question mark's hook ends on a curve that has turned through three
+   * quarters of a circle, and drawn in nearly all the way its inner side ran
+   * out across the outer one near the top: measured without a sign, a point
+   * gone through the outer side stood as far off it as one well inside it.
+   */
+  const CASES: Array<[string, number[], number[]]> = [
+    ["Display", [142, 194], [0.85]],
+    ["Geometric", [194], [0.85]],
+    ["Technical", [194], [0.85]],
+    ["Slab", [194], [0.85]],
+    ["Typewriter", [194], [0.85]],
+    ["Wavy", [194], [0.85]],
+    ["Handwriting", [30, 87, 142, 194], [0.75, 0.85]],
+  ];
+
+  it("does not cross itself, and is still tapered", { timeout: 180_000 }, () => {
+    const crossed: string[] = [];
+    const untouched: string[] = [];
+    for (const [face, pens, values] of CASES) {
+      const plain = baseNamed(face);
+      for (const value of values) {
+        const style = withField(plain, "terminal.taper", value);
+        for (const name of ["question", "questiondown"]) {
+          for (const pen of pens) {
+            for (const width of WIDTHS) {
+              const label = `${face} ${name} ${value} p${pen}w${width}`;
+              const at = (one: Style) => widthedStyle(atPen(one, pen), width);
+              const drawn = makeLetter(name, at(style))!;
+              if (drawn.contours.some((contour) => contoursIntersect([contour]))) {
+                crossed.push(label);
+              }
+              const was = makeLetter(name, at(plain))!;
+              if (JSON.stringify(drawn.contours) === JSON.stringify(was.contours)) {
+                untouched.push(label);
+              }
+            }
+          }
+        }
+      }
+    }
+    expect(crossed).toEqual([]);
+    expect(untouched).toEqual([]);
+  });
+});
+
+describe("the same nodes where the pen moves an end", () => {
+  /*
+   * Letters whose ends the pen and the width move in ways the plain drawing
+   * hides. A squarish c's foot and a pound sign's top, cut out of a bowl, end
+   * on the bowl's curve at most widths and on its upright side at a narrow
+   * one, where `endsStraight` calls them straight; and the flag of a one on a
+   * grotesque is drawn from one corner at one width and from the next corner
+   * round at another. Each keeps the settings it shares its nodes at with
+   * every finish on.
+   */
+  const CASES: Array<[string, string[]]> = [
+    ["Slab", ["c", "sterling"]],
+    ["Typewriter", ["c", "sterling"]],
+    ["Grotesque", ["one"]],
+    ["Technical", ["one", "onesuperior", "onequarter", "onehalf"]],
+    ["Ribbon", ["onesuperior", "onequarter", "onehalf"]],
+    ["Marker", ["onesuperior"]],
+  ];
+
+  for (const [face, names] of CASES) {
+    it(`on the ${face}, for ${names.join(", ")}`, { timeout: 180_000 }, () => {
+      const parted: string[] = [];
+      const style = baseNamed(face);
+      for (const name of names) {
+        const form = style.forms?.[name];
+        const was = partition(name, style, form);
+        for (const on of [ON(style), finished(style, 0.5, 0.85, 0.6)]) {
+          const now = partition(name, on, form);
+          if (JSON.stringify(now.groups) !== JSON.stringify(was.groups)) {
+            parted.push(`${name}/${form ?? "-"}: ${now.groups.join(" | ")}`);
+          }
+        }
+      }
+      expect(parted).toEqual([]);
+    });
+  }
 });

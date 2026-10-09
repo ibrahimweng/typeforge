@@ -226,22 +226,53 @@ function sampled(piece: OffsetSegment): Vec2[] {
   return points;
 }
 
-/** How near a point comes to a polyline. */
-function distanceTo(line: Vec2[], point: Vec2): number {
+/**
+ * How far a point stands off a polyline, and on which side of it: above
+ * nought on the left of the way the polyline runs, below on its right, read
+ * off the piece of it the point comes nearest.
+ *
+ * Signed because a side drawn in too far does not only come near the other:
+ * it can go through it. A question mark's hook tapered most of the way ran its
+ * inner side out across the outer one near the top, and measured without a
+ * sign the points that had gone through stood as far off the outer side as
+ * points well inside it, so nothing was held.
+ */
+function standsOff(line: Vec2[], point: Vec2): number {
   let best = Infinity;
+  let signed = Infinity;
   for (let k = 1; k < line.length; k++) {
     const a = line[k - 1];
     const b = line[k];
     const dx = b.x - a.x;
     const dy = b.y - a.y;
     const length = dx * dx + dy * dy;
-    const t =
-      length > 0
-        ? Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length))
-        : 0;
-    best = Math.min(best, Math.hypot(a.x + dx * t - point.x, a.y + dy * t - point.y));
+    if (!(length > 0)) continue;
+    const t = Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length));
+    const distance = Math.hypot(a.x + dx * t - point.x, a.y + dy * t - point.y);
+    if (distance < best) {
+      best = distance;
+      signed = dx * (point.y - a.y) - dy * (point.x - a.x) < 0 ? -distance : distance;
+    }
   }
-  return best;
+  return signed;
+}
+
+/** Whether two polylines cross, touching at an end not counted. */
+function crossing(one: Vec2[], other: Vec2[]): boolean {
+  for (let i = 1; i < one.length; i++) {
+    const a = one[i - 1];
+    const r = { x: one[i].x - a.x, y: one[i].y - a.y };
+    for (let j = 1; j < other.length; j++) {
+      const c = other[j - 1];
+      const s = { x: other[j].x - c.x, y: other[j].y - c.y };
+      const den = r.x * s.y - r.y * s.x;
+      if (Math.abs(den) < 1e-12) continue;
+      const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / den;
+      const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+      if (t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9) return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -369,23 +400,42 @@ function tapered(
    * end turned so far that it ran out across the outer side just before it.
    * So nowhere along the way may the side come nearer the outer one than
    * `TAPER_PINCH` of the end's width once tapered, unless it was already
-   * nearer than that; held to the most that keeps to it, found by a fixed
-   * number of halvings.
+   * nearer than that, nor go through it or through the end; held to the most
+   * that keeps to it, found by a fixed number of halvings.
+   *
+   * The outer side is walked the way the stroke travels, piece after piece in
+   * order, so which side of it a point is on means something; its pieces at
+   * the end are listed from the end inward.
    */
-  const beside = [...chain, ...beyond].map((index) => outer[index]).filter(moving);
+  const beside = [...chain, ...beyond]
+    .sort((one, other) => one - other)
+    .map((index) => outer[index])
+    .filter(moving);
   const outerLine = beside.flatMap((piece) => sampled(piece));
+  // Toward the centre of the curve is the left of the outer side anticlockwise.
+  const inward = segment.segment.sweepPositive ? 1 : -1;
   const innerPoints = chain.flatMap((index) => sampled(inner[index]));
-  const was = innerPoints.map((point) => distanceTo(outerLine, point));
+  // The same side again as one line, walked the way the stroke travels.
+  const innerLine = [...chain]
+    .sort((one, other) => one - other)
+    .flatMap((index) => sampled(inner[index]));
+  const was = innerPoints.map((point) => inward * standsOff(outerLine, point));
   const pinches = (amount: number): boolean => {
     const map = mapFor(amount);
-    const gaps = innerPoints.map((point) => {
+    const drawnIn = (point: Vec2): Vec2 => {
       const v = map({ x: point.x - p0.x, y: point.y - p0.y });
-      return distanceTo(outerLine, { x: p0.x + v.x, y: p0.y + v.y });
-    });
+      return { x: p0.x + v.x, y: p0.y + v.y };
+    };
+    const gaps = innerPoints.map((point) => inward * standsOff(outerLine, drawnIn(point)));
     // The tapered corner, where the end is as wide as it now is: the end of
     // the first piece listed, which is the one at the end, or its start.
     const left = gaps[atEnd ? TAPER_SAMPLES : 0];
-    return gaps.some((gap, index) => gap < Math.min(was[index], left) * TAPER_PINCH);
+    if (gaps.some((gap, index) => gap < Math.min(was[index], left) * TAPER_PINCH)) return true;
+    // And the inner side, drawn in, against the outer one and the end across
+    // from the outer corner to the inner one.
+    const inside = innerLine.map(drawnIn);
+    const tip = atEnd ? inside[inside.length - 1] : inside[0];
+    return crossing(inside, atEnd ? [...outerLine, tip] : [tip, ...outerLine]);
   };
   if (pinches(by)) {
     let low = 0;
@@ -659,9 +709,39 @@ function roundArriving(
 }
 
 /**
+ * The joined outline begun at the near end's left corner, where the left side
+ * starts, and the marks moved round with it.
+ *
+ * Which is where `joinedAtSeams` begins it whenever the near end's last corner
+ * is welded onto the left side's first node, as on most strokes. But a left
+ * side that is nothing but the far end's corner -- one straight piece whose
+ * cut slides its corners along it -- leaves the near end's corner standing at
+ * the back, and the outline begins at the far end; and a flag can be cut so at
+ * one width and not at the next. A run of straight edges looks the same from
+ * either corner, so nothing shows it until a corner is rounded and one edge of
+ * the four is a curve: the figure one's flag on a grotesque was drawn from one
+ * corner at one width and from the next corner round at another, and its
+ * nodes no longer matched.
+ */
+function fromNearCorner(
+  nodes: GlyphNode[],
+  marks: SeamMark[],
+): { nodes: GlyphNode[]; seams: SeamMark[] } {
+  const count = nodes.length;
+  const start = marks.length >= 4 ? marks[3].last : -1;
+  if (!(start > 0) || start >= count) return { nodes, seams: marks };
+  const moved = (index: number) => (index < 0 ? index : (index - start + count) % count);
+  return {
+    nodes: [...nodes.slice(start), ...nodes.slice(0, start)],
+    seams: marks.map((mark) => ({ first: moved(mark.first), last: moved(mark.last) })),
+  };
+}
+
+/**
  * The joined outline of a stroke with the corners its ends ask for (`soft`)
  * rounded, found by `marks` -- where `joinedAtSeams` put each of the four
- * runs: the left side, the far end, the right side, the near end.
+ * runs: the left side, the far end, the right side, the near end -- and begun
+ * at the near end's left corner (see `fromNearCorner`).
  *
  * Each corner adds exactly one node, with a curve where the corner was, even
  * rounded by nothing; see `cornersOf` for how far each reaches. Rounded from
@@ -669,9 +749,10 @@ function roundArriving(
  * marks said; a corner the side leaves is rounded on the outline walked
  * backwards, where the side arrives at it.
  */
-export function softCorners(nodes: GlyphNode[], marks: SeamMark[], stroke: Stroke): GlyphNode[] {
-  const corners = cornersOf(nodes, marks, stroke);
-  if (corners.length === 0) return nodes;
+export function softCorners(given: GlyphNode[], marks: SeamMark[], stroke: Stroke): GlyphNode[] {
+  const { nodes, seams } = fromNearCorner(given, marks);
+  const corners = cornersOf(nodes, seams, stroke);
+  if (corners.length === 0) return given;
   corners.sort((one, other) => other.at - one.at);
   // Which way the outline runs round, by its area: its corners turn that way.
   const [ring] = flatten([{ nodes, closed: true }]).polygons;

@@ -1856,10 +1856,21 @@ function dress(
  *
  * The very end it was given wherever the style switches none of them on,
  * which is every base. And which end takes which, and which corners, is read
- * off the style, the kind the end was dressed as and whether its run arrives
- * straight -- never off the pen -- because each note adds to or moves the
+ * off the style, the kind the end was dressed as and the kind of piece its run
+ * ends on -- never off the pen -- because each note adds to or moves the
  * nodes the end is drawn with, and a letter has to have the same nodes at
- * every weight. Only how far each one reaches comes from the pen.
+ * every weight and width. Only how far each one reaches comes from the pen.
+ *
+ * The kind of piece, and not `endsStraight`, which looks past the pieces of
+ * no length a run ends on to the first one that goes anywhere: whether a piece
+ * has length is the pen's and the width's business. A squarish c cut out of a
+ * bowl ends on the bowl's upright side, of no length where the cut falls on the
+ * corner's curve and a few units long at a narrow width, where it falls on the
+ * side; asked of `endsStraight`, its foot was a curve at one width, tapered
+ * and softened on both corners with its sliver of serif dropped, and straight
+ * at the next, serif kept and softened on one corner. An end on a straight
+ * piece is left with the serif `dress` gave it, which changes between the two
+ * as `endsStraight` does but is drawn with the same nodes either way.
  *
  * - Left alone: an end hung with a drop or carrying a beak, a round cap or a
  *   teardrop, each of which is its own finish; and an open end on a face that
@@ -1867,7 +1878,7 @@ function dress(
  * - Swelled: the end of a straight arm lying along a line where it wears a
  *   serif's beak (the level slab `dress` makes there), `1 + slab.swell` as
  *   wide as the arm's root on each side its beak can go (`swellSide`).
- * - Tapered: a seen end -- open, or hinted `seen` by its recipe -- arriving
+ * - Tapered: a seen end -- open, or hinted `seen` by its recipe -- ending
  *   on a curve and cut plain, `1 - terminal.taper` of its width kept, and
  *   never less than fifteen hundredths; not one cut along a line. A serif
  *   refused on a curve is a cut with a sliver buried in it, and the sliver
@@ -1879,9 +1890,10 @@ function dress(
  *   corner alone of a curved end seen without being open, which runs into
  *   another stroke's head; on the head of a lowercase stem, sloped or
  *   flagged, the corner away from the flag, as the bump beside the notch of
- *   an n. None on a sloped plain cut, which is that other stroke's head, nor
- *   where a serif's wings or beak stand on the end, whose tips are the
- *   serif's own, nor where a serif was refused on a straight end, which is
+ *   an n: a run that is a stem and nothing else, or one whose head `dress`
+ *   sank or flagged. None on a sloped plain cut, which is that other stroke's
+ *   head, nor where a serif's wings or beak stand on the end, whose tips are
+ *   the serif's own, nor where a serif was refused on a straight end, which is
  *   refused at one weight and worn at the next.
  */
 function softened(
@@ -1906,6 +1918,11 @@ function softened(
   const seen = undressed.open === true || undressed.seen === true;
   // A slab that lays a serif on the end at all, as `serifsFor` asks it.
   const winged = (dressed.projection ?? 0) > 0 && (dressed.thickness ?? 0) > 0;
+  // The piece the recipe ends the run with at this end, of whatever length
+  // the pen leaves it: an arc that the trim has eaten is still an arc.
+  const segments = stroke.spine.segments;
+  const last = index === 1 ? segments[segments.length - 1] : segments[0];
+  const curved = last?.kind === "arc";
   let end = dressed;
 
   if (
@@ -1940,7 +1957,7 @@ function softened(
   if (
     taper > 0 &&
     seen &&
-    !isStraight &&
+    curved &&
     // Not one cut along a line (`aligned`, a grotesque's c): the cut carries
     // each side on along its own curve after the taper has drawn the inner one
     // in, and carried that far the inner side ran out across the outer.
@@ -1958,8 +1975,6 @@ function softened(
     let sides: { left?: number; right?: number } | null = null;
     const both = { left: 1, right: 1 };
     if (end.kind === "butt" || end.kind === "angled") {
-      const piece = endPieces(stroke.spine);
-      const curve = index === 1 ? piece?.last : piece?.first;
       /*
        * Not a sloped plain cut, though: that is a stem's head sunk in under
        * the stroke running into it -- the t's, under its flag -- covered by
@@ -1972,24 +1987,29 @@ function softened(
          * And a curved end seen without being open is the stroke running into
          * such a head -- the t's flag -- whose corner on the outside of its
          * curve is the one it shares with that stem: only the inside one is
-         * free. Anticlockwise, that is the left of the way it travels.
+         * free. Anticlockwise, that is the left of the way it travels -- asked
+         * of the arc the run ends on, which keeps the way it turns even where
+         * the trim has left it no length.
          */
         sides =
-          undressed.open !== true && !isStraight && curve?.kind === "arc"
-            ? curve.sweepPositive
+          undressed.open !== true && last?.kind === "arc"
+            ? last.sweepPositive
               ? { left: 1 }
               : { right: 1 }
             : both;
       }
     } else if (end.kind === "slab") {
-      if (!isStraight || !winged) {
+      if (curved || !winged) {
         // Refused on a curve, or wearing nothing: a cut like any other.
         if (seen) sides = both;
       } else if (
         small &&
         (end.head === "sloped" || end.head === "flag") &&
-        outward.y > 0 &&
-        Math.abs(outward.x) <= 0.02
+        (end.sink !== undefined ||
+          end.flag === true ||
+          (segments.every((segment) => segment.kind === "line") &&
+            outward.y > 0 &&
+            Math.abs(outward.x) <= 0.02))
       ) {
         /*
          * The head of a lowercase stem: sloped or flagged where it stops on
@@ -2005,6 +2025,14 @@ function softened(
          * other -- the same corner rounded either way, so the same nodes.
          * For the same reason a serif refused on a straight end (`bare`) is
          * left as it is cut: refused at one weight, it is worn at the next.
+         *
+         * But only of a run that is a stem and nothing else, whose end stands
+         * upright at every weight because its one straight piece does; a run
+         * that turns -- a j, a u -- is asked of `dress`, which sinks or flags
+         * its head where it stops on its line. Asked of every run standing
+         * upright, the foot of a squarish c took the stem's bump at a narrow
+         * width, where it ends on its bowl's upright side, and lost it at the
+         * next, where it ends on the curve and leans.
          */
         sides = index === 1 ? { right: 1 } : { left: 1 };
       }
