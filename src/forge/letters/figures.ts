@@ -11,7 +11,7 @@ import type { Vec2 } from "@/font/types";
 import { spineEnd } from "../shapes";
 import { stemBlack, type Style } from "../style";
 import { penReach, reachAlong, sweep } from "../sweep";
-import type { Stroke } from "../types";
+import type { Stroke, Terminal } from "../types";
 import {
   drops,
   arm,
@@ -21,6 +21,7 @@ import {
   penHeld,
   widthShare,
   BUTT,
+  bookish,
   chain,
   corner,
   figureWidth,
@@ -302,9 +303,24 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const up = edge.y > 0 ? edge : { x: -edge.x, y: -edge.y };
     const flank = Math.abs(reachAlong(at(1, 0), pen).x);
     const start = at(stem - flank - up.x, f.cap - up.y);
+    /*
+     * That start is a reach under the cap line, and on a text serif's nib held
+     * at an angle -- eighteen degrees with contrast 0.7 -- the reach across
+     * the diagonal runs so nearly level that it lands within a unit of the
+     * line at some masters, where it is cut level, and not at others. With the
+     * same points either way (`Terminal.keepsPoints`). Asked on a text serif
+     * only: the written hands' fours and the Didone's small ones in the
+     * fractions do the same, and are drawn as they always were.
+     */
+    const textSerif = bookish(f) && f.style.parts.slab.shape === "wedge";
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      ink(f, chain(straight(start, meet), straight(meet, end)), BUTT, f.end),
+      ink(
+        f,
+        chain(straight(start, meet), straight(meet, end)),
+        textSerif ? KEEPS_POINTS : BUTT,
+        f.end,
+      ),
     ]);
   },
 
@@ -563,7 +579,9 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
             // sits up off the line clear of the bowl, as Lora's does.
             bend(f, at(centre.x, foot), radius, 0, drops(f) ? NINE_DROP : -120, wide),
           ),
-          BUTT,
+          // Begun in the middle of the bowl, which moves with the pen and can
+          // pass within a unit of the x-height: see `Terminal.keepsPoints`.
+          KEEPS_POINTS,
           f.end,
         ),
       ],
@@ -571,6 +589,9 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     );
   },
 };
+
+/** A plain cut with a square cut's points whether or not it is cut level: see `Terminal.keepsPoints`. */
+const KEEPS_POINTS: Terminal = { ...BUTT, keepsPoints: true };
 
 /** Where a six's hood starts, and a nine's tail stops, on a face whose figures end in drops. */
 const SIX_DROP = 35;

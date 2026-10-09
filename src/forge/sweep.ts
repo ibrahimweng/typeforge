@@ -1823,6 +1823,7 @@ export function sweep(stroke: Stroke): Contour[] {
   let rightNodes = stitch([...right].reverse().map(reverseOffset), reach);
   const levelStart = slides(stroke.start, startStraight);
   const levelEnd = slides(stroke.end, endStraight);
+  if ((globalThis as any).__dbg) (globalThis as any).__dbg.push({ start: stroke.start, end: stroke.end, seg: spine.segments, levelStart, levelEnd });
   // Counted against what the sides started with, not against what is left of
   // them: a stroke of one straight run has two nodes a side and both of them
   // are replaced, which is right, and a rule applied one end at a time would
@@ -1871,6 +1872,22 @@ export function sweep(stroke: Stroke): Contour[] {
     nodes = softCorners(joinedAtSeams(runs, marks), marks, stroke);
   } else {
     nodes = joinedAtSeams(runs);
+  }
+  /*
+   * A level start that keeps a square cut's points begins where a square cut
+   * does: on its left corner, which a level cut leaves at the end of the
+   * outline. See `Terminal.keepsPoints`.
+   */
+  const startLeft = startNodes[startNodes.length - 1];
+  if (
+    levelStart &&
+    stroke.start.keepsPoints &&
+    stroke.start.soft === undefined &&
+    nodes.length > 1 &&
+    startLeft !== undefined &&
+    nodes[nodes.length - 1] === startLeft
+  ) {
+    nodes = [startLeft, ...nodes.slice(0, -1)];
   }
   const outline = facing({ nodes, closed: true }, 1);
   return [crowded(spine, pen) ? withoutBackLoops(outline, pen.weight) : outline];

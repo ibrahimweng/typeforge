@@ -164,6 +164,23 @@ export interface Terminal {
    * needed to.
    */
   open?: boolean;
+  /**
+   * On a stroke's start: cut level or square as its line and its pen decide,
+   * but drawn with the points a square cut has, in the order a square cut
+   * has them, either way.
+   *
+   * A level cut on a straight end stands in for the last node of each side
+   * rather than following it (see `sweep`), and at the start that leaves its
+   * left corner at the end of the outline where a square cut's is at the
+   * front: the same points, begun one along. Whether an end is cut level is
+   * asked of where it lands, to within a unit of a line, and a few ends are
+   * written a pen's reach from one -- the four's diagonal starts a reach
+   * under the cap line, the nine's tail in the middle of its bowl -- which at
+   * some pens lands inside that unit and at others does not. Begun one along
+   * at some masters and not at others, the letter could not ride a weight
+   * axis. Only ever on an end that is never seen, so never softened.
+   */
+  keepsPoints?: true;
   /** For `angled`, degrees away from square. Ignored otherwise. */
   angle?: number;
   /** For `slab`: how far the bar reaches past the stroke on each side. */
