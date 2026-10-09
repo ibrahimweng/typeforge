@@ -739,12 +739,25 @@ function crossingOf(a: OffsetLine, b: OffsetLine): { point: Vec2; at: number } |
  * different shape. Two pieces whatever the radius, as the stall it stands in
  * for is, so the corner has the same nodes with the same handles at every
  * weight; a circle of no radius is the stall again.
+ *
+ * Where an offset is the first or last of an open stroke and its end is cut
+ * by sliding the corner along the side (a level, plumb or angled cut, see
+ * `slides`), `starts` and `stops` are where that corner will stand, and the
+ * room is counted from there rather than from where the offset starts or
+ * stops: a heavy pen on a narrow vee crosses its inner offsets beyond a level
+ * cut, the corner then slides past the crossing, and a circle laid on the
+ * offsets as they were had both its ends in what the cut removes -- the two
+ * short pieces left crossed each other where the point they stand in for
+ * left a spike. Counted from the slid corner the room is nothing there, and
+ * the circle is the stall again.
  */
 function roundedInside(
   before: OffsetLine,
   after: OffsetLine,
   at: Vec2,
   radius: number,
+  starts: Vec2 = before.from,
+  stops: Vec2 = after.to,
 ): OffsetEllipse {
   const unit = (line: OffsetLine): Vec2 => {
     const d = { x: line.to.x - line.from.x, y: line.to.y - line.from.y };
@@ -757,11 +770,12 @@ function roundedInside(
   const turn = Math.atan2(Math.abs(cross), dot(into, outOf));
   const way = cross >= 0 ? 1 : -1;
   const slope = Math.tan(turn / 2);
+  // How far each offset runs up to the crossing, along itself: none where it starts past it.
   const room =
     0.45 *
     Math.min(
-      Math.hypot(at.x - before.from.x, at.y - before.from.y),
-      Math.hypot(after.to.x - at.x, after.to.y - at.y),
+      Math.max(0, (at.x - starts.x) * into.x + (at.y - starts.y) * into.y),
+      Math.max(0, (stops.x - at.x) * outOf.x + (stops.y - at.y) * outOf.y),
     );
   const tangent = Math.max(0, Math.min(radius * slope, room));
   const r = slope > 1e-12 ? tangent / slope : 0;
@@ -781,6 +795,31 @@ function roundedInside(
     to: from + way * turn,
     pieces: WEDGE_PIECES,
   };
+}
+
+/**
+ * Where a straight end's cut will leave one side's corner, where that cut is
+ * the side's own end node slid along it (see `slides`): the corner
+ * `terminalNodes` puts there, asked before the sides are stitched, for
+ * `roundedInside` to count its room from. Nothing for an end that does not
+ * slide, whose corner is where its side stops.
+ */
+function slidCorner(
+  terminal: Terminal,
+  headed: Headed[],
+  atEnd: boolean,
+  side: number,
+  reach: PenReach,
+): Vec2 | null {
+  if (!slides(terminal, true)) return null;
+  const one = atEnd ? headed[headed.length - 1] : headed[0];
+  const at = atEnd ? segmentEnd(one.segment) : segmentStart(one.segment);
+  const outward = atEnd ? one.end : { x: -one.start.x, y: -one.start.y };
+  const corners = terminalNodes(terminal, at, outward, reach, true);
+  if (corners.length === 0) return null;
+  // The end's left is the stroke's left at its far end and its right at its near end.
+  const leftOfEnd = atEnd ? side > 0 : side < 0;
+  return (leftOfEnd ? corners[0] : corners[corners.length - 1]).point;
 }
 
 /**
@@ -898,7 +937,9 @@ export const MITER_LIMIT = 4;
  * units (`Stroke.inside` times the pen's weight), or nothing. Given, the
  * inside of a corner between two straight pieces is turned on a circle of
  * that radius instead of being cut back to a point: see `roundedInside`.
- * Left out, every corner resolves as it always has.
+ * Left out, every corner resolves as it always has. `ends`, given with it on
+ * an open stroke, are the stroke's two terminals, for where a slid cut will
+ * leave the first and last offsets' corners (see `slidCorner`).
  */
 function sideRun(
   headed: Headed[],
@@ -907,9 +948,19 @@ function sideRun(
   join: JoinKind,
   closed: boolean,
   inside?: number,
+  ends?: { start: Terminal; end: Terminal },
 ): OffsetSegment[] {
   const offsets = headed.map((one) => ({ ...offsetSegment(one, side, reach) }));
   const filling = new Map<number, OffsetSegment[]>();
+  // The first and last pieces that go anywhere, whose far corners an end's cut may move.
+  const goes = (one: Headed): boolean =>
+    one.segment.kind === "line"
+      ? Math.hypot(one.segment.to.x - one.segment.from.x, one.segment.to.y - one.segment.from.y) >
+        1e-9
+      : Math.abs(one.segment.endAngle - one.segment.startAngle) > 1e-9;
+  const cutEnds = ends !== undefined && !closed;
+  const firstGoing = cutEnds ? headed.findIndex(goes) : -1;
+  const lastGoing = cutEnds ? headed.length - 1 - [...headed].reverse().findIndex(goes) : -1;
 
   for (const kink of kinksOf(headed, closed)) {
     const before = offsets[kink.before];
@@ -1011,7 +1062,17 @@ function sideRun(
           before.kind === "line" &&
           after.kind === "line"
         ) {
-          filling.set(kink.before, [roundedInside(before, after, point, inside)]);
+          const from =
+            ends && kink.before === firstGoing
+              ? slidCorner(ends.start, headed, false, side, reach)
+              : null;
+          const to =
+            ends && kink.after === lastGoing
+              ? slidCorner(ends.end, headed, true, side, reach)
+              : null;
+          filling.set(kink.before, [
+            roundedInside(before, after, point, inside, from ?? before.from, to ?? after.to),
+          ]);
           continue;
         }
         before.to = point;
@@ -1636,8 +1697,9 @@ export function sweep(stroke: Stroke): Contour[] {
 
   const join = stroke.join ?? "miter";
   const inside = stroke.inside ? stroke.inside * pen.weight : undefined;
-  let left = sideRun(headed, 1, reach, join, spine.closed, inside);
-  let right = sideRun(headed, -1, reach, join, spine.closed, inside);
+  const ends = inside === undefined ? undefined : { start: stroke.start, end: stroke.end };
+  let left = sideRun(headed, 1, reach, join, spine.closed, inside, ends);
+  let right = sideRun(headed, -1, reach, join, spine.closed, inside, ends);
   /*
    * The soft finishes that move a side, each only where its field asked for
    * it and nothing at all otherwise: a bowl's inner side first, then an end

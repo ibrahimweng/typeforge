@@ -2,10 +2,17 @@
  * Inside roundings: where a stroke leaves another it is buried in, and on the
  * inside of a corner one stroke turns.
  *
- * Asked for by `parts.corner.fillet`, which no base sets, through the hints a
- * recipe puts on a buried end (`Terminal.fillet`) or a crossing
- * (`Stroke.crossFillets`) only while that field is on. A letter of any
- * existing face never reaches anything here.
+ * Asked for by `parts.corner.fillet`, which no base sets, through the hint a
+ * recipe puts on a buried end (`Terminal.fillet`) only while that field is
+ * on. A letter of any existing face never reaches anything here.
+ *
+ * A crossing with no buried end (`Stroke.crossFillets`: a p's bowl against
+ * its stem) is not rounded yet. The crotch there is not one corner across the
+ * family -- at a heavy pen on a narrow width the bowl's outside passes the
+ * stem's head and the notch is gone, on a light wide one it leaves the stem
+ * nearly flat -- so a rounding found there was the rounding of a different
+ * corner, or none, from one master to the next. Left to the letter's own
+ * skeleton, where a branch can name its crotch the way a buried end does.
  *
  * A join between two strokes is rounded by an overlapping contour of its own,
  * as a serif is, never by cutting into either outline: the outlines of a
@@ -38,15 +45,15 @@ import type { SpineSegment, Stroke, Terminal } from "./types";
  * strokes around it (`others`, already swept), each its own overlapping
  * contour in the stroke's own run, as a serif is.
  *
- * One for every side a buried end names in its `fillet`, and one for
- * every crossing the stroke names in its `crossFillets`, at a radius of the
+ * One for every side a buried end names in its `fillet`, at a radius of the
  * style's `corner.fillet` in stems -- times the face's pen weight -- times the
- * share the hint gives it.
+ * share the hint gives it. `_swept`, the stroke's own outline, is not needed
+ * for that; a crossing it names is not rounded (see above).
  */
 export function filletsFor(
   stroke: Stroke,
   style: Style,
-  swept: Contour[],
+  _swept: Contour[],
   others: Contour[],
 ): Contour[] {
   const fillet = style.parts.corner.fillet ?? 0;
@@ -74,9 +81,6 @@ export function filletsFor(
         out.push(endFillet(stroke, terminal, hosts(), atEnd, sigma, radius * share));
       }
     }
-  }
-  for (const crossing of stroke.crossFillets ?? []) {
-    out.push(crossFillet(stroke, swept, hosts(), crossing.near, radius * crossing.share));
   }
   return out;
 }
@@ -577,13 +581,21 @@ function endFillet(
   const arriving = side.at(u);
   const corner = arriving.point;
 
-  // The host's tangent at the corner, turned away from the stroke on this side.
+  /*
+   * The host's tangent at the corner, turned away from the stroke on this
+   * side: out across the side's own edge, square to the way that edge runs
+   * there. Not square to the stroke's heading -- under a pen with contrast
+   * held at an angle the edge of a curve runs several degrees off the
+   * heading, and a host lying along the edge then had its way picked by a
+   * hair, into the stroke's own ink.
+   */
+  const tA = arriving.inward;
   const away = leftOf(arriving.heading);
-  const outward = { x: away.x * sigma, y: away.y * sigma };
+  const across = leftOf(tA);
+  const outward = { x: across.x * turning, y: across.y * turning };
   const bend = edgeBend(edge, t);
   const hostWay = bend.tangent.x * outward.x + bend.tangent.y * outward.y >= 0 ? 1 : -1;
   const tH = { x: bend.tangent.x * hostWay, y: bend.tangent.y * hostWay };
-  const tA = arriving.inward;
   const alpha = Math.acos(Math.min(1, Math.max(-1, tA.x * tH.x + tA.y * tH.y)));
   if (!(alpha < FLATTEST) || alpha < 1e-6) return fallback();
 
@@ -601,22 +613,29 @@ function endFillet(
     most = Math.min(most, Math.sqrt(sideBend.radius));
   }
   const wanted = radius / Math.tan(alpha / 2);
-  const L = Math.max(0.05, Math.min(Math.max(wanted, 0.5), most));
+  const most0 = Math.max(0.05, Math.min(Math.max(wanted, 0.5), most));
 
-  const onSide = side.at(u + L);
-  const split = splitEdgeAtLength(along[0], along[1], L);
-  const onHost = split.at.point;
-  const hostTangent = tangentAt(split.at, split.to, 0);
-  const awayOnHost =
-    hostTangent.x === 0 && hostTangent.y === 0 ? tangentAt(along[0], along[1], 1) : hostTangent;
+  const place = (length: number): Touching => {
+    const onSide = side.at(u + length);
+    const split = splitEdgeAtLength(along[0], along[1], length);
+    const hostTangent = tangentAt(split.at, split.to, 0);
+    return {
+      a: onSide.point,
+      ta: onSide.inward,
+      h: split.at.point,
+      th:
+        hostTangent.x === 0 && hostTangent.y === 0 ? tangentAt(along[0], along[1], 1) : hostTangent,
+    };
+  };
+  const { length: L, touching } = heldToCorner(place, corner, along[0].point, most0, alpha);
   const half = Math.hypot(...asPair(reachAlong(away, reach)));
   const bite = Math.min(4, 0.25 * half);
   return rounding(
     corner,
-    onSide.point,
-    onSide.inward,
-    onHost,
-    awayOnHost,
+    touching.a,
+    touching.ta,
+    touching.h,
+    touching.th,
     tA,
     tH,
     bite,
@@ -626,6 +645,72 @@ function endFillet(
 }
 
 const asPair = (v: Vec2): [number, number] => [v.x, v.y];
+
+/** Where an arc touches the two edges of a corner, and the way each edge runs on from there. */
+interface Touching {
+  /** On the arriving edge, and the way it runs on inward. */
+  a: Vec2;
+  ta: Vec2;
+  /** On the host, and the way it runs on away from the corner. */
+  h: Vec2;
+  th: Vec2;
+}
+
+/** How many halvings bring a rounding in until both edges run near enough straight to it. */
+const STRAIGHTENINGS = 16;
+
+/** The angle between two directions, either way round, in radians. */
+const angleBetween = (one: Vec2, other: Vec2): number =>
+  Math.atan2(Math.abs(one.x * other.y - one.y * other.x), one.x * other.x + one.y * other.y);
+
+/**
+ * How far along its two edges a rounding touches them: `most` (already held
+ * to what each edge has room for), brought in until neither edge, between
+ * the corner and where the arc touches it, bends away from the straight line
+ * there by more than a quarter of the corner's narrower angle -- `alpha`, or
+ * what it leaves of a half turn. `place` says where the arc touches the
+ * arriving edge and the host that far along; `corner` is where the arriving
+ * edge leaves the host, and `hostFrom` the same place on the host's own edge.
+ *
+ * The arc is laid between the two tangent lines where it touches, so it is
+ * only the rounding of the corner while those lines still cross near it.
+ * Between straight edges they cross on it, at any length. A curved edge turns
+ * its tangent as it goes, and in a narrow corner a turn of a few degrees is
+ * the whole of the angle: a script n's arch leaving its stem four degrees
+ * apart, the Wavy's arm bending away just past the stem, had their tangent
+ * lines crossing well behind the corner or not at all, and the arc swung out
+ * over the edges it was meant to sit between. Held to a quarter, the lines
+ * cross within about a tangent length of the corner, on its side of the arc.
+ *
+ * Nothing is moved where the length asked for already keeps to that; else
+ * the longest that does is found by a fixed number of halvings, never less
+ * than the twentieth of a unit every rounding keeps. A value, never a shape:
+ * the rounding has the same three nodes however short it comes out.
+ */
+function heldToCorner(
+  place: (length: number) => Touching,
+  corner: Vec2,
+  hostFrom: Vec2,
+  most: number,
+  alpha: number,
+): { length: number; touching: Touching } {
+  const limit = Math.min(alpha, Math.PI - alpha) / 4;
+  const strays = (touching: Touching): boolean =>
+    angleBetween({ x: touching.a.x - corner.x, y: touching.a.y - corner.y }, touching.ta) > limit ||
+    angleBetween({ x: touching.h.x - hostFrom.x, y: touching.h.y - hostFrom.y }, touching.th) >
+      limit;
+  const first = place(most);
+  if (!strays(first)) return { length: most, touching: first };
+  let lo = 0;
+  let hi = most;
+  for (let step = 0; step < STRAIGHTENINGS; step++) {
+    const middle = (lo + hi) / 2;
+    if (strays(place(middle))) hi = middle;
+    else lo = middle;
+  }
+  const length = Math.max(0.05, lo);
+  return { length, touching: place(length) };
+}
 
 /** How a side bends at a point: its radius, and the way its centre of curvature lies. */
 function curvature(point: SidePoint): { radius: number; toward: Vec2 } {
@@ -645,10 +730,13 @@ function curvature(point: SidePoint): { radius: number; toward: Vec2 } {
  * The three nodes of a rounding: the arc from where it touches the arriving
  * edge (`a`, going on inward `ta`) to where it touches the host (`h`, going
  * on away `th`), and the node tucked into the ink behind the corner `x`,
- * `bite` back along the hollow's middle. Its handles point at where the two
- * tangent lines cross, kappa of the turn long, so between straight edges it
- * is the circle; where the lines do not meet ahead of the corner they lie
- * along the edges at the length a quarter circle's would.
+ * at least `bite` back from it. Its handles point at where the two tangent
+ * lines cross, kappa of the turn long, so between straight edges it is the
+ * circle, and the tuck lies on past that crossing from the middle of the
+ * chord, so the arc keeps inside its own contour (see below); where the
+ * lines do not meet ahead of the corner the handles lie along the edges at
+ * the length a quarter circle's would, and the tuck is `bite` back along the
+ * hollow's middle.
  *
  * `turning` +1 (the hollow to the left of the walk inward) runs arriving
  * edge, host, tuck; -1 runs host, arriving edge, tuck. Either way the arc is
@@ -669,20 +757,40 @@ function rounding(
 ): Contour {
   const crossing = lineIntersection(a, ta, h, th);
   const turn = Math.acos(Math.min(1, Math.max(-1, -ta.x * th.x - ta.y * th.y)));
+  const middle = { x: tA.x + tH.x, y: tA.y + tH.y };
+  const length = Math.hypot(middle.x, middle.y) || 1;
+  // A bite back from the corner along the hollow's middle, into the ink behind it.
+  let tuck = { x: x.x - (middle.x / length) * bite, y: x.y - (middle.y / length) * bite };
   let handleA: Vec2;
   let handleH: Vec2;
   if (crossing && crossing.s < 0 && crossing.t < 0) {
     const k = kappa(turn);
-    handleA = mix(a, crossing.point, k);
-    handleH = mix(h, crossing.point, k);
+    const meet = crossing.point;
+    handleA = mix(a, meet, k);
+    handleH = mix(h, meet, k);
+    /*
+     * And laid so the arc cannot leave the contour: on the line from the
+     * middle of the chord through where the tangent lines meet, past that
+     * meeting and at least the bite behind the corner. The handles lie on
+     * the way from each end to that meeting, so the arc stays inside the
+     * triangle of its two ends and the tuck, whatever the edges did, and the
+     * contour can neither cross itself nor wind the other way. Between
+     * straight edges the lines meet on the corner and this is the bite back
+     * along the hollow's middle, as before.
+     */
+    const chord = { x: (a.x + h.x) / 2, y: (a.y + h.y) / 2 };
+    const out = { x: meet.x - chord.x, y: meet.y - chord.y };
+    const reach = Math.hypot(out.x, out.y);
+    if (reach > 1e-9 && out.x * (x.x - chord.x) + out.y * (x.y - chord.y) > 0) {
+      const way = { x: out.x / reach, y: out.y / reach };
+      const past = Math.max(0.25 * bite, bite - ((meet.x - x.x) * way.x + (meet.y - x.y) * way.y));
+      tuck = { x: meet.x + way.x * past, y: meet.y + way.y * past };
+    }
   } else {
     const k = 0.5523 * L;
     handleA = { x: a.x - ta.x * k, y: a.y - ta.y * k };
     handleH = { x: h.x - th.x * k, y: h.y - th.y * k };
   }
-  const middle = { x: tA.x + tH.x, y: tA.y + tH.y };
-  const length = Math.hypot(middle.x, middle.y) || 1;
-  const tuck = { x: x.x - (middle.x / length) * bite, y: x.y - (middle.y / length) * bite };
   return threeNodes(a, handleA, h, handleH, tuck, turning);
 }
 
@@ -724,240 +832,4 @@ function sliver(at: Vec2, inward: Vec2, turning: number): Contour {
     y: at.y + across.y * turning * SLIVER,
   };
   return threeNodes(a, a, h, h, at, turning);
-}
-
-// ---------------------------------------------------------------------------
-// Crossings with no buried end
-// ---------------------------------------------------------------------------
-
-/** How many samples each edge of the crossing stroke's outline is tested at. */
-const EDGE_SAMPLES = 12;
-/** How far into a sector the four around a crossing are tested, in font units. */
-const SECTOR = 0.5;
-
-/**
- * The rounding of a crossing a stroke names (`Stroke.crossFillets`): where
- * its own outline passes out of the other strokes nearest `near`.
- *
- * The arriving edge is the stroke's own swept outline -- its outside, where it
- * is a ring -- walked edge by edge, each tested at `EDGE_SAMPLES` points for
- * being inside the other strokes, and the passage from in to out (or out to
- * in) nearest `near` refined by halving. Of the four sectors round that
- * crossing, the hollow is the one outside both strokes; the rounding is then
- * built in it as at a buried end, its order following which way round the
- * hollow lies from the arriving edge.
- */
-function crossFillet(
-  stroke: Stroke,
-  swept: Contour[],
-  hosts: Hosts,
-  near: Vec2,
-  radius: number,
-): Contour {
-  const reach = penReach(stroke.pen);
-  const own = swept.reduce<Contour | null>(
-    (best, one) => (one.nodes.length > 0 && (!best || boxArea(one) > boxArea(best)) ? one : best),
-    null,
-  );
-  const fallback = (): Contour => {
-    const at = nearestSpinePoint(stroke, near);
-    return sliver(at, { x: 1, y: 0 }, 1);
-  };
-  if (!own || own.nodes.length < 2) return fallback();
-  const nodes = own.nodes;
-  const count = nodes.length;
-  const edgeAt = (index: number): [GlyphNode, GlyphNode] => [
-    nodes[index % count],
-    nodes[(index + 1) % count],
-  ];
-  // A place on the outline: its edge and how far along, as one running number.
-  const pointOf = (g: number): Vec2 => {
-    const index = Math.min(Math.floor(g), count - 1);
-    return bezierAt(edgeAt(index), g - index);
-  };
-  // The stroke's own ink, its counter left out, for telling which sector is outside it.
-  const ownWinding = flatten(swept, CHORDS);
-  // Tested a hair inside its own outline, so an edge lying along a host's counts as in it.
-  const sign = signedArea(own) >= 0 ? 1 : -1;
-  const tested = (g: number): Vec2 => {
-    const index = Math.min(Math.floor(g), count - 1);
-    const edge = edgeAt(index);
-    const point = bezierAt(edge, g - index);
-    const tangent = tangentAt(edge[0], edge[1], g - index);
-    const n = leftOf(tangent);
-    return { x: point.x + n.x * sign * NUDGE, y: point.y + n.y * sign * NUDGE };
-  };
-  const inside = (g: number): boolean => windingAt(hosts.flat, tested(g)) !== 0;
-
-  const steps = count * EDGE_SAMPLES;
-  let bestDistance = Infinity;
-  let bracket: [number, number] | null = null;
-  let was = inside(0);
-  for (let k = 1; k <= steps; k++) {
-    const g = k / EDGE_SAMPLES;
-    const now = inside(k === steps ? 0 : g);
-    if (now !== was) {
-      const from = (k - 1) / EDGE_SAMPLES;
-      const middle = pointOf((from + g) / 2 >= count ? 0 : (from + g) / 2);
-      const distance = Math.hypot(middle.x - near.x, middle.y - near.y);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        bracket = was ? [from, g] : [g, from];
-      }
-    }
-    was = now;
-  }
-  if (!bracket) return fallback();
-  // Halved between an inside place and an outside one.
-  let [lo, hi] = bracket;
-  for (let step = 0; step < HALVINGS; step++) {
-    const middle = (lo + hi) / 2;
-    if (inside(middle)) lo = middle;
-    else hi = middle;
-  }
-  let g = (lo + hi) / 2;
-  if (g >= count) g -= count;
-  const index = Math.min(Math.floor(g), count - 1);
-  const arriving = edgeAt(index);
-  let s = g - index;
-  const host = nearestHost(hosts, bezierAt(arriving, s));
-  if (!host) return fallback();
-  const edge = hostEdge(hosts, host);
-  let t = host.t;
-  const s0 = s;
-  for (let step = 0; step < SNAPS; step++) {
-    const p = bezierAt(arriving, s);
-    const b = bezierAt(edge, t);
-    const dp = bezierSlopes(arriving, s).d1;
-    const db = bezierSlopes(edge, t).d1;
-    const f = { x: p.x - b.x, y: p.y - b.y };
-    const det = dp.x * -db.y - -db.x * dp.y;
-    if (Math.abs(det) < 1e-12) break;
-    const ds = (-f.x * -db.y - -db.x * -f.y) / det;
-    const dt = (dp.x * -f.y - -f.x * dp.y) / det;
-    s = Math.min(Math.max(s + ds, 0), 1);
-    t = Math.min(Math.max(t + dt, 0), 1);
-  }
-  const p = bezierAt(arriving, s);
-  const b = bezierAt(edge, t);
-  if (!(Math.hypot(p.x - b.x, p.y - b.y) < 1e-3)) {
-    s = s0;
-    t = host.t;
-  }
-  const corner = bezierAt(arriving, s);
-  const ownBend = edgeBend(arriving, s);
-  const hostBend = edgeBend(edge, t);
-
-  // The sector outside both strokes.
-  let found: { a: number; h: number } | null = null;
-  let many = false;
-  for (const a of [1, -1]) {
-    for (const h of [1, -1]) {
-      const middle = {
-        x: ownBend.tangent.x * a + hostBend.tangent.x * h,
-        y: ownBend.tangent.y * a + hostBend.tangent.y * h,
-      };
-      const length = Math.hypot(middle.x, middle.y);
-      if (length < 1e-9) continue;
-      const probe = {
-        x: corner.x + (middle.x / length) * SECTOR,
-        y: corner.y + (middle.y / length) * SECTOR,
-      };
-      if (windingAt(hosts.flat, probe) === 0 && windingAt(ownWinding, probe) === 0) {
-        if (found) many = true;
-        found = { a, h };
-      }
-    }
-  }
-  if (!found || many) return fallback();
-  const tA = { x: ownBend.tangent.x * found.a, y: ownBend.tangent.y * found.a };
-  const tH = { x: hostBend.tangent.x * found.h, y: hostBend.tangent.y * found.h };
-  const alpha = Math.acos(Math.min(1, Math.max(-1, tA.x * tH.x + tA.y * tH.y)));
-  if (!(alpha < FLATTEST) || alpha < 1e-6) return fallback();
-  const turning = tA.x * tH.y - tA.y * tH.x >= 0 ? 1 : -1;
-
-  const alongOwn = edgeFrom(arriving, s, found.a);
-  const alongHost = edgeFrom(edge, t, found.h);
-  let most = Math.min(
-    0.45 * edgeLength(alongOwn[0], alongOwn[1]),
-    0.45 * edgeLength(alongHost[0], alongHost[1]),
-  );
-  if (Number.isFinite(hostBend.radius)) most = Math.min(most, Math.sqrt(hostBend.radius));
-  const wanted = radius / Math.tan(alpha / 2);
-  const L = Math.max(0.05, Math.min(Math.max(wanted, 0.5), most));
-
-  const onOwn = splitEdgeAtLength(alongOwn[0], alongOwn[1], L);
-  const onHost = splitEdgeAtLength(alongHost[0], alongHost[1], L);
-  const ownTangent = tangentAt(onOwn.at, onOwn.to, 0);
-  const hostTangent = tangentAt(onHost.at, onHost.to, 0);
-  const bite = Math.min(4, 0.25 * Math.min(reach.across, reach.along));
-  return rounding(
-    corner,
-    onOwn.at.point,
-    ownTangent.x === 0 && ownTangent.y === 0 ? tA : ownTangent,
-    onHost.at.point,
-    hostTangent.x === 0 && hostTangent.y === 0 ? tH : hostTangent,
-    tA,
-    tH,
-    bite,
-    turning,
-    L,
-  );
-}
-
-/** A contour's box, by its points: enough to tell a ring's outside from its inside. */
-function boxArea(contour: Contour): number {
-  let xMin = Infinity;
-  let yMin = Infinity;
-  let xMax = -Infinity;
-  let yMax = -Infinity;
-  for (const node of contour.nodes) {
-    xMin = Math.min(xMin, node.point.x);
-    yMin = Math.min(yMin, node.point.y);
-    xMax = Math.max(xMax, node.point.x);
-    yMax = Math.max(yMax, node.point.y);
-  }
-  return (xMax - xMin) * (yMax - yMin);
-}
-
-/** Twice the area the nodes enclose, anticlockwise counted up: which way an outline runs. */
-function signedArea(contour: Contour): number {
-  let sum = 0;
-  const { nodes } = contour;
-  for (let k = 0; k < nodes.length; k++) {
-    const a = nodes[k].point;
-    const b = nodes[(k + 1) % nodes.length].point;
-    sum += a.x * b.y - b.x * a.y;
-  }
-  return sum;
-}
-
-/** The point of a stroke's spine nearest `near`, by sixteen samples a piece. */
-function nearestSpinePoint(stroke: Stroke, near: Vec2): Vec2 {
-  let best = near;
-  let bestDistance = Infinity;
-  for (const segment of stroke.spine.segments) {
-    for (let k = 0; k <= 16; k++) {
-      const share = k / 16;
-      const point =
-        segment.kind === "line"
-          ? mix(segment.from, segment.to, share)
-          : {
-              x:
-                segment.centre.x +
-                segment.radius *
-                  Math.cos(segment.startAngle + (segment.endAngle - segment.startAngle) * share),
-              y:
-                segment.centre.y +
-                segment.radius *
-                  Math.sin(segment.startAngle + (segment.endAngle - segment.startAngle) * share),
-            };
-      const distance = Math.hypot(point.x - near.x, point.y - near.y);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = point;
-      }
-    }
-  }
-  return best;
 }

@@ -1,7 +1,7 @@
 /**
  * The inside roundings (`parts.corner.fillet`): where a stroke leaves another
- * it is buried in, where a bowl crosses a stem, and on the inside of a corner
- * one stroke turns.
+ * it is buried in, and on the inside of a corner one stroke turns. A bowl
+ * crossing a stem with no buried end (the p) is left as it is drawn.
  *
  * Each rounding of a join is an overlapping contour of its own -- three
  * nodes, the arc between the two edges it touches and a node tucked into the
@@ -22,10 +22,11 @@ import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import { drawLetter } from "./build";
 import { widthedStyle } from "./family";
 import { filletsFor, withInside } from "./fillet";
-import { BUTT, shovedStroke, turnedStroke } from "./letters/common";
-import { recipeOf } from "./letters";
+import { readyToShape } from "./layers";
+import { BUTT } from "./letters/common";
+import { everyFormOf, recipeOf } from "./letters";
 import { flatten, windingAt } from "./soft";
-import { SANS, SERIF, type Style } from "./style";
+import { BASES, SANS, SERIF, type Style } from "./style";
 import { openWaveBook, type WaveBook, waveBookAt } from "./shapes";
 import { sweep } from "./sweep";
 import { foldSweep, withField } from "./testing/fold-sweep";
@@ -247,7 +248,6 @@ describe("the inside rounding at the other joins", () => {
     ["r", 1],
     ["y", 1],
     ["e", 2],
-    ["p", 2],
     ["T", 2],
   ] as const) {
     it(`rounds the ${name}'s ${count === 1 ? "join" : "joins"}, inked, on the same strokes at every weight`, () => {
@@ -301,7 +301,7 @@ describe("the inside rounding, held to one drawing across the family", () => {
       corners: new Map(),
       recording: true,
     };
-    for (const name of [..."EFLTnmhrye", "p", "z", "Z", "ae"]) {
+    for (const name of [..."EFLTnmhrye", "z", "Z", "ae"]) {
       // Rounded at all: a join with contours of its own, a turn inside one stroke moved.
       if (name === "z" || name === "Z") {
         expect(JSON.stringify(drawIn(name, ON).contours), name).not.toBe(
@@ -390,18 +390,21 @@ describe("the rounding of a buried end with nothing to come out of", () => {
   });
 });
 
-describe("the crossings a bowl names", () => {
-  it("move with the stroke when it is moved or turned", () => {
+describe("a bowl crossing a stem with no buried end", () => {
+  it("is not rounded: the p draws as it does without the rounding, at every pen and width", () => {
+    for (const weight of [30, 87, 142, 194, 260]) {
+      for (const width of WIDTHS) {
+        expect(
+          JSON.stringify(drawIn("p", atPen(ON, weight, width)).contours),
+          `p at ${weight}, width ${width}`,
+        ).toBe(JSON.stringify(drawIn("p", atPen(SERIF, weight, width)).contours));
+      }
+    }
+    // And nothing it names is rounded, should a recipe name one.
     const [, bowl] = recipeOf("p")!(ON).strokes;
-    expect(bowl.crossFillets).toHaveLength(2);
-    const near = bowl.crossFillets![0].near;
-    const shoved = shovedStroke(bowl, 30, -12);
-    expect(shoved.crossFillets![0].near).toEqual({ x: near.x + 30, y: near.y - 12 });
-    const turned = turnedStroke(bowl, { x: 100, y: 200 });
-    expect(turned.crossFillets![0].near.x).toBeCloseTo(200 - near.x, 9);
-    expect(turned.crossFillets![0].near.y).toBeCloseTo(400 - near.y, 9);
-    // And none are named while the rounding is off.
-    expect(recipeOf("p")!(SERIF).strokes[1].crossFillets).toBeUndefined();
+    expect(bowl.crossFillets).toBeUndefined();
+    const named: Stroke = { ...bowl, crossFillets: [{ near: { x: 0, y: 0 }, share: 1 }] };
+    expect(filletsFor(named, ON, sweep(named), [])).toEqual([]);
   });
 });
 
@@ -529,5 +532,147 @@ describe("the inside of a corner one stroke turns", () => {
       }
     }
     expect(folds).toEqual([]);
+  });
+});
+
+describe("the inside rounding on every face, where it once crossed itself", () => {
+  beforeAll(async () => {
+    await readyToShape();
+  });
+
+  const faceNamed = (name: string): Style =>
+    name === "Sans+serifs"
+      ? withField(SANS, "slab.on", true)
+      : BASES.find((one) => one.name === name)!;
+
+  /**
+   * One letter drawn rounded and not, at a pen and a width: the contours that
+   * cross themselves only where it is rounded, and the roundings themselves
+   * (the three-node contours that are new).
+   */
+  // One style object per face, pen, width and rounding, so whatever is kept per style is kept.
+  const styles = new Map<string, Style>();
+  function styled(face: string, pen: number, width: number, on: boolean): Style {
+    const key = `${face}|${pen}|${width}|${on}`;
+    let style = styles.get(key);
+    if (!style) {
+      const base = faceNamed(face);
+      style = atPen(on ? withField(base, "corner.fillet", 0.35) : base, pen, width);
+      styles.set(key, style);
+    }
+    return style;
+  }
+
+  function rounded(
+    face: string,
+    name: string,
+    form: string | undefined,
+    pen: number,
+    width: number,
+  ): { crossed: Contour[]; roundings: Contour[] } {
+    const was = drawLetter(name, styled(face, pen, width, false), form)!.contours;
+    const now = drawLetter(name, styled(face, pen, width, true), form)!.contours;
+    const old = new Set(was.map((contour) => JSON.stringify(contour)));
+    const crossedBefore = was.some((contour) => contoursIntersect([contour]));
+    return {
+      crossed: crossedBefore ? [] : now.filter((contour) => contoursIntersect([contour])),
+      roundings: now.filter(
+        (contour) => !old.has(JSON.stringify(contour)) && contour.nodes.length === 3,
+      ),
+    };
+  }
+
+  it("brings a vee's rounded inside back to a point where its end is cut beyond the crossing", () => {
+    // A heavy pen on a narrow vee crosses the inner offsets above the level cut at its top.
+    for (const [face, name, form] of [
+      ["Sans", "y", "straight"],
+      ["Sans+serifs", "y", "straight"],
+      ["Technical", "ν", undefined],
+    ] as const) {
+      expect(rounded(face, name, form, 260, 75).crossed, `${face} ${name}`).toEqual([]);
+    }
+    // Made up: both ends cut level, well short of where the inner offsets cross.
+    const vee = (inside?: number): Stroke => ({
+      spine: {
+        closed: false,
+        segments: [
+          { kind: "line", from: { x: 0, y: 100 }, to: { x: 60, y: 0 } },
+          { kind: "line", from: { x: 60, y: 0 }, to: { x: 120, y: 100 } },
+        ],
+      },
+      pen: { weight: 120, contrast: 0, angle: 0 },
+      start: { kind: "butt", level: true },
+      end: { kind: "butt", level: true },
+      ...(inside === undefined ? {} : { inside }),
+    });
+    const [pointed] = sweep(vee());
+    const [held] = sweep(vee(0.35));
+    expect(contoursIntersect([pointed])).toBe(false);
+    expect(contoursIntersect([held])).toBe(false);
+    expect(JSON.stringify(held)).toBe(JSON.stringify(pointed));
+  });
+
+  it("lays no rounding of a narrow corner, or of a side that bends past it, over itself", () => {
+    const cases: Array<[string, string, string | undefined, number, number]> = [];
+    for (const width of [100, 125]) {
+      cases.push(["Brush", "m", undefined, 260, width], ["Brush", "m", "grotesque", 260, width]);
+    }
+    for (const [pen, width] of [
+      [87, 75],
+      [142, 75],
+      [194, 75],
+      [194, 100],
+      [194, 125],
+      [260, 75],
+      [260, 100],
+      [260, 125],
+    ]) {
+      cases.push(["Formal Script", "n", "written", pen, width]);
+    }
+    for (const width of WIDTHS) {
+      for (const name of ["E", "F", "L"]) {
+        cases.push(["Wavy", name, undefined, 142, width], ["Wavy", name, "written", 142, width]);
+      }
+      cases.push(["Wavy", "Eacute", undefined, 142, width], ["Wavy", "ae", undefined, 142, width]);
+    }
+    cases.push(["Wavy", "ae", undefined, 260, 75]);
+    for (const [face, name, form, pen, width] of cases) {
+      const { crossed, roundings } = rounded(face, name, form, pen, width);
+      const at = `${face} ${name}${form ? `/${form}` : ""} at ${pen}, width ${width}`;
+      expect(crossed, at).toEqual([]);
+      for (const contour of roundings) {
+        expect(signatureOf([contour]), at).toEqual([{ closed: true, nodes: 3, edges: "cll" }]);
+        expect(contourArea(contour), at).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("crosses nothing over itself and winds every rounding with the ink, on every face", {
+    timeout: SLOW * 2,
+  }, () => {
+    const problems: string[] = [];
+    for (const face of [...BASES.map((one) => one.name), "Sans+serifs"]) {
+      for (const name of [..."EFLTnmhreyvwzZkKMNVWYA", "ae", "ν", "Λ", "Σ", "Δ", "Л", "м"]) {
+        for (const { id } of everyFormOf(name)) {
+          const form = id || undefined;
+          for (const [pen, width] of [
+            [30, 100],
+            [87, 75],
+            [142, 125],
+            [194, 100],
+            [260, 75],
+            [260, 125],
+          ]) {
+            const { crossed, roundings } = rounded(face, name, form, pen, width);
+            const at = `${face} ${name}${form ? `/${form}` : ""} at ${pen}, width ${width}`;
+            if (crossed.length > 0) problems.push(`${at}: crosses itself`);
+            for (const contour of roundings) {
+              if (!(contourArea(contour) > 0)) problems.push(`${at}: a rounding wound backwards`);
+            }
+          }
+        }
+      }
+    }
+    expect(problems).toEqual([]);
   });
 });

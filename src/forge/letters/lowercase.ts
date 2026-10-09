@@ -27,8 +27,6 @@ import {
   finish,
   frame,
   ink,
-  inherit,
-  uses,
   type LetterName,
   openBowl,
   type Recipe,
@@ -484,29 +482,11 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   p: (style) => {
     const f = frame(style);
     const stem = f.edge;
-    const upright = ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end);
-    /*
-     * The two crotches where the bowl comes out of the stem, rounded where the
-     * inside rounding is on: no end of either stroke is buried there, so the
-     * bowl names them by where they are, about where its outside crosses the
-     * stem's right side. See `Stroke.crossFillets`.
-     */
-    const rounded = (f.style.parts.corner.fillet ?? 0) > 0;
-    if (rounded) uses("corner");
-    const bowl = ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH));
     return finish(
       f,
       [
-        upright,
-        rounded
-          ? inherit(bowl, {
-              ...bowl,
-              crossFillets: [
-                { near: at(stem + f.half, f.x / 2 + f.bowlH * 0.8), share: 0.6 },
-                { near: at(stem + f.half, f.x / 2 - f.bowlH * 0.8), share: 0.6 },
-              ],
-            })
-          : bowl,
+        ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
+        ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
       ],
       true,
     );

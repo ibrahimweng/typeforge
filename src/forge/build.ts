@@ -1579,16 +1579,7 @@ function shiftedStroke(stroke: Stroke, dx: number, dy: number): Stroke {
       : terminal.beak
         ? { ...terminal, beak: { ...terminal.beak, reach: terminal.beak.reach + dy } }
         : terminal;
-  return {
-    ...stroke,
-    spine,
-    start: end(stroke.start),
-    end: end(stroke.end),
-    // And the crossings it names for rounding, which are places on the page too.
-    ...(stroke.crossFillets
-      ? { crossFillets: stroke.crossFillets.map((one) => ({ ...one, near: point(one.near) })) }
-      : {}),
-  };
+  return { ...stroke, spine, start: end(stroke.start), end: end(stroke.end) };
 }
 
 /**
