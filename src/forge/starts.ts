@@ -29,7 +29,8 @@ import { SERIF, type Family, type Style } from "./style";
  * of every join rounded; the c and e tails run long and flat, and the open
  * bowls heavier at the bottom than at the top; the arches springing lower from
  * the stem; bigger dots. On a pen with more contrast at a steeper angle, and
- * with its own a, e, f, t and y (`letters/soft.ts`).
+ * with its own a, e, f, s, t and y, an S (and so a dollar) with the s's
+ * soft beaks (`letters/soft.ts`), and an oe whose bowls share one wall.
  *
  * Every number here is a field the engine reads, and none of them is special
  * to this face: the same settings on the Serif by hand draw the same letters.
@@ -65,6 +66,7 @@ export const SOFT_SERIF: Style = {
     dotScale: 1.195,
     middleArm: 0.69,
     heldPen: true,
+    oeWall: 0.8,
     proportions: {
       ...SERIF.metrics.proportions,
       f: 1.108,
@@ -73,7 +75,7 @@ export const SOFT_SERIF: Style = {
       n: 0.9565,
       t: 1.075,
       E: 1.1615,
-      y: 1.28,
+      y: 1.3,
       c: 0.89,
       p: 0.886,
       r: 0.76,
@@ -143,6 +145,8 @@ export const SOFT_SERIF: Style = {
     f: "tucked",
     e: "wide-eyed",
     t: "wedged",
+    s: "beaked",
+    S: "beaked",
   },
 };
 

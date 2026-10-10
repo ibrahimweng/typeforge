@@ -137,7 +137,7 @@ describe("the Soft Serif", () => {
     expect(SOFT_SERIF.parts.bowl.heftTilt ?? 0).toBe(0);
   });
 
-  it("draws its own a, y and f, and the Serif's forms for everything else", () => {
+  it("draws its own a, e, f, s, S, t and y, and the Serif's forms for everything else", () => {
     expect(SOFT_SERIF.forms).toEqual({
       ...SERIF.forms,
       a: "belted",
@@ -145,6 +145,8 @@ describe("the Soft Serif", () => {
       f: "tucked",
       e: "wide-eyed",
       t: "wedged",
+      s: "beaked",
+      S: "beaked",
     });
     expect(SERIF.forms?.a).toBe("humanist");
     expect(SERIF.forms?.y).toBe("hooked");
