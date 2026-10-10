@@ -15,7 +15,7 @@
  */
 
 import type { GlyphNode, Vec2 } from "@/font/types";
-import { edgeLength, flattenedArea, kappa, splitEdgeAtLength, tangentAt } from "./soft";
+import { edgeLength, flattenedArea, hypot, kappa, splitEdgeAtLength, tangentAt } from "./soft";
 import type { Headed, OffsetEllipse, OffsetSegment, PenReach, SeamMark } from "./sweep";
 import type { SpineSegment, Stroke, Terminal } from "./types";
 
@@ -62,7 +62,7 @@ const offsetEnd = (segment: OffsetSegment): Vec2 =>
 /** Whether an offset piece travels: `moving` in sweep.ts. */
 function moving(segment: OffsetSegment): boolean {
   if (segment.kind === "line") {
-    return Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-6;
+    return hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-6;
   }
   return (
     Math.abs(segment.to - segment.from) > 1e-9 &&
@@ -115,7 +115,7 @@ export function endsShaped(
 /** Whether a spine segment goes anywhere, asked as the aligned cut asks it. */
 function travels(segment: SpineSegment): boolean {
   return segment.kind === "line"
-    ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9
+    ? hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y) > 1e-9
     : Math.abs(segment.endAngle - segment.startAngle) > 1e-9 && segment.radius > 1e-9;
 }
 
@@ -236,32 +236,87 @@ function sampled(piece: OffsetSegment): Vec2[] {
  * inner side out across the outer one near the top, and measured without a
  * sign the points that had gone through stood as far off the outer side as
  * points well inside it, so nothing was held.
+ *
+ * The polyline is handed over as its pieces (`piecesOf`), and `near` names
+ * the piece to measure first -- the one the last point asked about came
+ * nearest, as the points asked about run along the line in turn -- and is
+ * told the one this point came nearest. Every piece is still measured, each
+ * as it always was; measured from near the answer, the pieces further off are
+ * passed over by their squares rather than measured one nearer than the last
+ * all the way along. Two pieces as near as each other answer for the first of
+ * them along the line, whichever was measured first, so the answer is the
+ * same from wherever it starts.
  */
-function standsOff(line: Vec2[], point: Vec2): number {
+function standsOff(pieces: Pieces, point: Vec2, near: { at: number }): number {
+  const { ax, ay, dx, dy, length, count } = pieces;
   let best = Infinity;
   // The square of the nearest so far, with `SQUARED_SLACK`: a piece past it cannot be nearer.
   let past = Infinity;
   let signed = Infinity;
-  for (let k = 1; k < line.length; k++) {
-    const a = line[k - 1];
-    const b = line[k];
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const length = dx * dx + dy * dy;
-    if (!(length > 0)) continue;
-    const t = Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length));
-    const offX = a.x + dx * t - point.x;
-    const offY = a.y + dy * t - point.y;
+  let nearest = -1;
+  const first = near.at >= 0 && near.at < count ? near.at : -1;
+  for (let step = first < 0 ? 0 : -1; step < count; step++) {
+    // The named piece first, then every other in order along the line.
+    const k = step < 0 ? first : step;
+    if (step >= 0 && k === first) continue;
+    const square = length[k];
+    if (!(square > 0)) continue;
+    const t = Math.min(
+      1,
+      Math.max(0, ((point.x - ax[k]) * dx[k] + (point.y - ay[k]) * dy[k]) / square),
+    );
+    const offX = ax[k] + dx[k] * t - point.x;
+    const offY = ay[k] + dy[k] * t - point.y;
     if (offX * offX + offY * offY > past) continue;
-    const distance = Math.hypot(offX, offY);
-    if (distance < best) {
+    const distance = hypot(offX, offY);
+    if (distance < best || (distance === best && k < nearest)) {
       best = distance;
       // Not for a distance so small its square is lost: every piece is then measured.
       past = distance > 1e-100 ? distance * distance * SQUARED_SLACK : Infinity;
-      signed = dx * (point.y - a.y) - dy * (point.x - a.x) < 0 ? -distance : distance;
+      signed = dx[k] * (point.y - ay[k]) - dy[k] * (point.x - ax[k]) < 0 ? -distance : distance;
+      nearest = k;
     }
   }
+  if (nearest >= 0) near.at = nearest;
   return signed;
+}
+
+/**
+ * A polyline's pieces, for `standsOff`: where each starts, how far it runs
+ * and the square of its length, worked out once however many points ask.
+ * Piece `k` runs from point `k` to point `k + 1`.
+ */
+interface Pieces {
+  ax: number[];
+  ay: number[];
+  dx: number[];
+  dy: number[];
+  length: number[];
+  count: number;
+}
+
+function piecesOf(line: Vec2[]): Pieces {
+  const count = Math.max(0, line.length - 1);
+  const pieces: Pieces = {
+    ax: new Array<number>(count).fill(0),
+    ay: new Array<number>(count).fill(0),
+    dx: new Array<number>(count).fill(0),
+    dy: new Array<number>(count).fill(0),
+    length: new Array<number>(count).fill(0),
+    count,
+  };
+  for (let k = 0; k < count; k++) {
+    const a = line[k];
+    const b = line[k + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    pieces.ax[k] = a.x;
+    pieces.ay[k] = a.y;
+    pieces.dx[k] = dx;
+    pieces.dy[k] = dy;
+    pieces.length[k] = dx * dx + dy * dy;
+  }
+  return pieces;
 }
 
 /**
@@ -359,9 +414,9 @@ function tapered(
   const q = atEnd ? ellipseAt(near, near.to) : ellipseAt(near, near.from);
   const p0 = atEnd ? ellipseAt(far, far.from) : ellipseAt(far, far.to);
   const o = atEnd ? offsetEnd(outer[outer.length - 1]) : offsetStart(outer[0]);
-  const width = Math.hypot(o.x - q.x, o.y - q.y);
+  const width = hypot(o.x - q.x, o.y - q.y);
   const slope = ellipseSlope(far, atEnd ? far.from : far.to);
-  const length = Math.hypot(slope.x, slope.y);
+  const length = hypot(slope.x, slope.y);
   if (width < 1e-9 || length < 1e-12) return;
   const along = { x: slope.x / length, y: slope.y / length };
   const off = leftOf(along);
@@ -438,7 +493,19 @@ function tapered(
   const innerLine = [...chain]
     .sort((one, other) => one - other)
     .flatMap((index) => samples.get(index)!);
-  const was = innerPoints.map((point) => inward * standsOff(outerLine, point));
+  const outerPieces = piecesOf(outerLine);
+  /*
+   * Where each point came nearest the outer side when last asked, for the
+   * next asking to start from (see `standsOff`): along the side in turn for
+   * the side as it was, then each point drawn in from where it was.
+   */
+  const nearOf = innerPoints.map(() => ({ at: -1 }));
+  const walked = { at: -1 };
+  const was = innerPoints.map((point, index) => {
+    const gap = inward * standsOff(outerPieces, point, walked);
+    nearOf[index].at = walked.at;
+    return gap;
+  });
   const pinches = (amount: number): boolean => {
     const map = mapFor(amount);
     const drawnIn = (point: Vec2): Vec2 => {
@@ -446,7 +513,7 @@ function tapered(
       return { x: p0.x + v.x, y: p0.y + v.y };
     };
     const gapAt = (index: number): number =>
-      inward * standsOff(outerLine, drawnIn(innerPoints[index]));
+      inward * standsOff(outerPieces, drawnIn(innerPoints[index]), nearOf[index]);
     // The tapered corner, where the end is as wide as it now is: the end of
     // the first piece listed, which is the one at the end, or its start.
     const corner = atEnd ? TAPER_SAMPLES : 0;
@@ -501,8 +568,8 @@ function carried(piece: OffsetEllipse, about: Vec2, map: (v: Vec2) => Vec2): Off
   const f = (u.x - v.y) / 2;
   const g = (u.y + v.x) / 2;
   const h = (u.y - v.x) / 2;
-  const q = Math.hypot(e, h);
-  const r = Math.hypot(f, g);
+  const q = hypot(e, h);
+  const r = hypot(f, g);
   const a1 = Math.atan2(g, f);
   const a2 = Math.atan2(h, e);
   const turn = (a2 + a1) / 2;
@@ -539,17 +606,44 @@ interface Corner {
 
 /**
  * A side of the joined outline, from one node on to another: how many edges
- * it is and how long, along them.
+ * it is, and the least of a reach and 0.45 of how long it is along them.
+ *
+ * Measured edge by edge only as far as it must be. Once 0.45 of the length
+ * so far comes to the reach, the whole side's comes to it too, as a sum of
+ * lengths only grows, so the least is the reach. Measured to the end where
+ * any of its numbers is not finite or so large that a sum of them could
+ * overflow, which could make some edge's length no number at all.
  */
-function sideFrom(nodes: GlyphNode[], from: number, to: number): { edges: number; length: number } {
+function sideFrom(
+  nodes: GlyphNode[],
+  from: number,
+  to: number,
+): { edges: number; least: (reach: number) => number } {
   const count = nodes.length;
   const edges = (to - from + count) % count;
-  let length = 0;
-  for (let step = 0; step < edges; step++) {
-    const index = (from + step) % count;
-    length += edgeLength(nodes[index], nodes[(index + 1) % count]);
+  const plain = (value: number) => Math.abs(value) < 1e300;
+  const handle = (value: Vec2 | null | undefined) =>
+    value === null || value === undefined || (plain(value.x) && plain(value.y));
+  let safe = true;
+  for (let step = 0; step <= edges && safe; step++) {
+    const node = nodes[(from + step) % count];
+    safe =
+      plain(node.point.x) && plain(node.point.y) && handle(node.handleIn) && handle(node.handleOut);
   }
-  return { edges, length };
+  // How many edges are measured so far, and their length.
+  let measured = 0;
+  let length = 0;
+  return {
+    edges,
+    least: (reach) => {
+      while (measured < edges && !(safe && 0.45 * length >= reach)) {
+        const index = (from + measured) % count;
+        length += edgeLength(nodes[index], nodes[(index + 1) % count]);
+        measured += 1;
+      }
+      return measured < edges ? reach : Math.min(reach, 0.45 * length);
+    },
+  };
 }
 
 /**
@@ -583,7 +677,7 @@ function cornersOf(nodes: GlyphNode[], marks: SeamMark[], stroke: Stroke): Corne
     if (!soft || run.first < 0 || run.first === run.last) return;
     const one = nodes[run.first].point;
     const other = nodes[run.last].point;
-    const across = Math.hypot(one.x - other.x, one.y - other.y);
+    const across = hypot(one.x - other.x, one.y - other.y);
     for (const [radius, at, side] of [
       [soft.left, leftAt, left],
       [soft.right, rightAt, right],
@@ -595,7 +689,7 @@ function cornersOf(nodes: GlyphNode[], marks: SeamMark[], stroke: Stroke): Corne
         at,
         // The side arrives at the corner the end's own run begins with.
         sideFirst: at === run.first,
-        side: Math.min(reach, 0.45 * side.length),
+        side: side.least(reach),
         cut: reach,
         walk: side.edges,
       });

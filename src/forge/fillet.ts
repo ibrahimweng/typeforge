@@ -27,14 +27,18 @@
 
 import type { Contour, GlyphNode, Vec2 } from "@/font/types";
 import {
+  type Banded,
+  banded,
   edgeLength,
   type Flat,
   flatten,
+  flattenRows,
+  hypot,
   kappa,
   lineIntersection,
   splitEdgeAtLength,
   tangentAt,
-  windingAt,
+  windingIn,
 } from "./soft";
 import type { Style } from "./style";
 import { leftOf, type PenReach, penReach, reachAlong, segmentEnd, segmentStart } from "./sweep";
@@ -104,6 +108,12 @@ export function withInside(stroke: Stroke, style: Style): Stroke {
 interface Hosts {
   contours: Contour[];
   flat: Flat;
+  /**
+   * The same outlines flattened the same way and filed by height (see
+   * `banded`), for asking what is inside: the same answers as `flat` gives,
+   * each from the few edges at the height asked about.
+   */
+  filed: Banded;
   /** For every polygon point of `flat`, the edge it lies on and how far along it. */
   marks: Array<Array<{ edge: number; t: number }>>;
 }
@@ -129,8 +139,21 @@ function hostsOf(contours: Contour[]): Hosts {
     if (!contour.closed) mark.push({ edge: nodes.length - 2, t: 1 });
     marks.push(mark);
   }
-  return { contours: contours.filter((one) => one.nodes.length > 0), flat, marks };
+  return {
+    contours: contours.filter((one) => one.nodes.length > 0),
+    flat,
+    filed: banded(flattenRows(contours, CHORDS)),
+    marks,
+  };
 }
+
+/**
+ * A little over one. A chord whose squared distance is this much more than
+ * the square of another distance is further off than it, however `hypot`
+ * rounds either: so it can be passed over by its square alone, which costs
+ * far less than measuring it.
+ */
+const SQUARED_SLACK = 1 + 1e-9;
 
 /** An edge of one of the other strokes' outlines, and a place on it. */
 interface HostAt {
@@ -147,6 +170,8 @@ interface HostAt {
 function nearestHost(hosts: Hosts, point: Vec2): HostAt | null {
   let best: HostAt | null = null;
   let bestDistance = Infinity;
+  // The square of the nearest so far, a hair over: a chord past it cannot be nearer.
+  let past = Infinity;
   const grow = 2;
   hosts.flat.polygons.forEach((polygon, index) => {
     if (
@@ -168,9 +193,14 @@ function nearestHost(hosts: Hosts, point: Vec2): HostAt | null {
         length2 > 0
           ? Math.min(1, Math.max(0, ((point.x - a.x) * d.x + (point.y - a.y) * d.y) / length2))
           : 0;
-      const distance = Math.hypot(point.x - (a.x + d.x * s), point.y - (a.y + d.y * s));
+      const offX = point.x - (a.x + d.x * s);
+      const offY = point.y - (a.y + d.y * s);
+      if (offX * offX + offY * offY > past) continue;
+      const distance = hypot(offX, offY);
       if (distance < bestDistance) {
         bestDistance = distance;
+        // Not for a distance so small its square is lost: every chord is then measured.
+        past = distance > 1e-100 ? distance * distance * SQUARED_SLACK : Infinity;
         const here = mark[k];
         const next = mark[(k + 1) % points.length];
         // The chord's far end is the next edge's start where it closes an edge.
@@ -274,7 +304,7 @@ function edgeFrom(edge: [GlyphNode, GlyphNode], t: number, way: number): [GlyphN
 /** The unit tangent and the radius of curvature of an edge at `t`; the radius is infinite on a line. */
 function edgeBend(edge: [GlyphNode, GlyphNode], t: number): { tangent: Vec2; radius: number } {
   const { d1, d2 } = bezierSlopes(edge, t);
-  const speed = Math.hypot(d1.x, d1.y);
+  const speed = hypot(d1.x, d1.y);
   const tangent =
     speed > 1e-12 ? { x: d1.x / speed, y: d1.y / speed } : tangentAt(edge[0], edge[1], t);
   const cross = Math.abs(d1.x * d2.y - d1.y * d2.x);
@@ -324,7 +354,7 @@ interface SidePoint {
 
 function lengthOfSegment(segment: SpineSegment): number {
   if (segment.kind === "line") {
-    return Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
+    return hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y);
   }
   return segment.radius * Math.abs(segment.endAngle - segment.startAngle);
 }
@@ -340,7 +370,7 @@ function straightFrom(stroke: Stroke, atEnd: boolean): boolean {
 function headings(segment: SpineSegment): { start: Vec2; end: Vec2 } {
   if (segment.kind === "line") {
     const d = { x: segment.to.x - segment.from.x, y: segment.to.y - segment.from.y };
-    const length = Math.hypot(d.x, d.y) || 1;
+    const length = hypot(d.x, d.y) || 1;
     const unit = { x: d.x / length, y: d.y / length };
     return { start: unit, end: unit };
   }
@@ -438,7 +468,7 @@ function sideOf(stroke: Stroke, atEnd: boolean, sigma: number, reach: PenReach):
         x: omega * omega * (-R * e.x + sigma * way * pull.x),
         y: omega * omega * (-R * e.y + sigma * way * pull.y),
       };
-      const speed = Math.hypot(d1.x, d1.y);
+      const speed = hypot(d1.x, d1.y);
       const heading = { x: de.x * way, y: de.y * way };
       return {
         point,
@@ -519,7 +549,7 @@ function endFillet(
     const n = leftOf(here.heading);
     return { x: here.point.x - n.x * sigma * NUDGE, y: here.point.y - n.y * sigma * NUDGE };
   };
-  const inside = (u: number): boolean => windingAt(hosts.flat, tested(u)) !== 0;
+  const inside = (u: number): boolean => windingIn(hosts.filed, tested(u)) !== 0;
 
   /*
    * Sampled closer together near the end, where the host is: a hairline bar
@@ -570,10 +600,7 @@ function endFillet(
     t = Math.min(Math.max(t + dt, 0), 1);
   }
   const snapped = side.at(u);
-  const miss = Math.hypot(
-    snapped.point.x - bezierAt(edge, t).x,
-    snapped.point.y - bezierAt(edge, t).y,
-  );
+  const miss = hypot(snapped.point.x - bezierAt(edge, t).x, snapped.point.y - bezierAt(edge, t).y);
   if (!(miss < 1e-3)) {
     u = guess;
     t = host.t;
@@ -628,7 +655,7 @@ function endFillet(
     };
   };
   const { length: L, touching } = heldToCorner(place, corner, along[0].point, most0, alpha);
-  const half = Math.hypot(...asPair(reachAlong(away, reach)));
+  const half = hypot(...asPair(reachAlong(away, reach)));
   const bite = Math.min(4, 0.25 * half);
   return rounding(
     corner,
@@ -715,7 +742,7 @@ function heldToCorner(
 /** How a side bends at a point: its radius, and the way its centre of curvature lies. */
 function curvature(point: SidePoint): { radius: number; toward: Vec2 } {
   const { d1, d2 } = point;
-  const speed = Math.hypot(d1.x, d1.y);
+  const speed = hypot(d1.x, d1.y);
   const cross = d1.x * d2.y - d1.y * d2.x;
   if (Math.abs(cross) < 1e-12 || speed < 1e-12) return { radius: Infinity, toward: { x: 0, y: 0 } };
   const n = leftOf({ x: d1.x / speed, y: d1.y / speed });
@@ -758,7 +785,7 @@ function rounding(
   const crossing = lineIntersection(a, ta, h, th);
   const turn = Math.acos(Math.min(1, Math.max(-1, -ta.x * th.x - ta.y * th.y)));
   const middle = { x: tA.x + tH.x, y: tA.y + tH.y };
-  const length = Math.hypot(middle.x, middle.y) || 1;
+  const length = hypot(middle.x, middle.y) || 1;
   // A bite back from the corner along the hollow's middle, into the ink behind it.
   let tuck = { x: x.x - (middle.x / length) * bite, y: x.y - (middle.y / length) * bite };
   let handleA: Vec2;
@@ -780,7 +807,7 @@ function rounding(
      */
     const chord = { x: (a.x + h.x) / 2, y: (a.y + h.y) / 2 };
     const out = { x: meet.x - chord.x, y: meet.y - chord.y };
-    const reach = Math.hypot(out.x, out.y);
+    const reach = hypot(out.x, out.y);
     if (reach > 1e-9 && out.x * (x.x - chord.x) + out.y * (x.y - chord.y) > 0) {
       const way = { x: out.x / reach, y: out.y / reach };
       const past = Math.max(0.25 * bite, bite - ((meet.x - x.x) * way.x + (meet.y - x.y) * way.y));
@@ -820,14 +847,14 @@ function rounding(
  */
 function behindChords(tuck: Vec2, x: Vec2, a: Vec2, h: Vec2, meet: Vec2, bite: number): Vec2 {
   const unitFrom = (p: Vec2): Vec2 | null => {
-    const d = Math.hypot(p.x - x.x, p.y - x.y);
+    const d = hypot(p.x - x.x, p.y - x.y);
     return d > 1e-9 ? { x: (p.x - x.x) / d, y: (p.y - x.y) / d } : null;
   };
   const toA = unitFrom(a);
   const toH = unitFrom(h);
   if (!toA || !toH) return tuck;
   const middle = { x: toA.x + toH.x, y: toA.y + toH.y };
-  const spread = Math.hypot(middle.x, middle.y);
+  const spread = hypot(middle.x, middle.y);
   if (spread < 1e-9) return tuck;
   const deep = { x: x.x - (middle.x / spread) * bite, y: x.y - (middle.y / spread) * bite };
   const cross = (o: Vec2, d: Vec2, p: Vec2): number => d.x * (p.y - o.y) - d.y * (p.x - o.x);
