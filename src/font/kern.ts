@@ -116,7 +116,7 @@ export function buildGposTable(
   for (const [, group] of [...groups].sort((a, b) => a[0] - b[0])) {
     const subtables = [
       ...splitPairs(group.pairs).map(buildPairPosFormat1),
-      ...assembleGrids(group.classes).map(buildPairPosFormat2),
+      ...assembleGrids(group.classes).flatMap(fitGrid).map(buildPairPosFormat2),
     ];
     if (subtables.length > 0) lookups.push(subtables);
   }
@@ -177,7 +177,7 @@ function buildLookupList(lookups: Uint8Array[][]): Uint8Array {
     lookup.uint16(EXTENSION).uint16(0).uint16(subtables.length);
     let cursor = 6 + subtables.length * 2;
     for (let index = 0; index < subtables.length; index++) {
-      lookup.uint16(cursor);
+      lookup.uint16(offset16(cursor));
       cursor += EXTENSION_RECORD;
     }
     return { header: lookup.toUint8Array(), subtables, recordsAt: 6 + subtables.length * 2 };
@@ -198,7 +198,7 @@ function buildLookupList(lookups: Uint8Array[][]): Uint8Array {
 
   const out = new ByteWriter();
   out.uint16(lookupBytes.length);
-  for (const offset of lookupOffsets) out.uint16(offset);
+  for (const offset of lookupOffsets) out.uint16(offset16(offset));
 
   const payloads: Uint8Array[] = [];
   for (const [index, lookup] of lookupBytes.entries()) {
@@ -221,6 +221,29 @@ function buildLookupList(lookups: Uint8Array[][]): Uint8Array {
 /** Lookup types: 2 positions a pair, 9 wraps another type behind a wide offset. */
 const PAIR_POS = 2;
 const EXTENSION = 9;
+
+/** The furthest a sixteen-bit offset can reach. */
+const MOST_OFFSET = 0xffff;
+
+/**
+ * An offset that is about to be written into sixteen bits, checked first.
+ *
+ * The writer stores the low sixteen bits of whatever it is handed, so an
+ * offset one past the limit does not fail: it wraps, and the table points
+ * into the middle of its own data. That is how the Soft Serif shipped with no
+ * kerning at all -- its class grid put the right-hand class definition at
+ * 66,218 bytes, the field held 682, fontTools read a class definition of
+ * format 0 there and HarfBuzz threw the whole lookup away. Everything above
+ * is laid out so no offset comes near the limit, and this makes sure of it:
+ * a table that cannot be written correctly is refused rather than written
+ * wrong.
+ */
+function offset16(value: number): number {
+  if (value > MOST_OFFSET) {
+    throw new RangeError(`A kerning offset of ${value} bytes does not fit in sixteen bits`);
+  }
+  return value;
+}
 
 /**
  * How much one PairPos format 1 subtable may hold.
@@ -248,6 +271,15 @@ function splitPairs(pairs: ResolvedPair[]): ResolvedPair[][] {
   // pair sets grow with the pairs themselves.
   let size = 10;
   for (const [, list] of [...byFirst].sort((a, b) => a[0] - b[0])) {
+    if (!fitsAlone(list.length)) {
+      // Closes what came before, and each piece is a subtable of its own: two
+      // pieces of one glyph in one subtable would be one pair set again.
+      if (chunk.length > 0) chunks.push(chunk);
+      chunks.push(...piecesOf(list));
+      chunk = [];
+      size = 10;
+      continue;
+    }
     const cost = 6 + list.length * 4;
     if (chunk.length > 0 && size + cost > MOST_PAIR_BYTES) {
       chunks.push(chunk);
@@ -259,6 +291,48 @@ function splitPairs(pairs: ResolvedPair[]): ResolvedPair[][] {
   }
   if (chunk.length > 0) chunks.push(chunk);
   return chunks;
+}
+
+/**
+ * Whether one glyph's pairs fit a subtable of their own.
+ *
+ * Alone, the coverage sits after a ten-byte header, one pair set offset and a
+ * pair set of two bytes and four a pair, and its offset is the field that
+ * runs out first. Sixteen thousand three hundred and eighty pairs for one
+ * glyph is far past anything a font kerns, but a list that long cannot be
+ * cut short, so it is checked rather than assumed.
+ */
+function fitsAlone(pairs: number): boolean {
+  return 10 + 2 + 2 + pairs * 4 <= MOST_OFFSET;
+}
+
+/**
+ * One glyph's pairs, cut into lists that each fit a subtable alone.
+ *
+ * A list of pairs that does not hold a pair lets it fall through to the next
+ * subtable, so one glyph's pairs spread over several subtables in a row kern
+ * exactly as they would in one. Cut in second-glyph order, and never between
+ * two entries for the same second glyph, so whichever of them answered in one
+ * list still answers.
+ */
+function piecesOf(list: ResolvedPair[]): ResolvedPair[][] {
+  const sorted = [...list].sort((a, b) => a.right - b.right);
+  const pieces: ResolvedPair[][] = [];
+  let start = 0;
+  while (start < sorted.length) {
+    let end = start;
+    while (end < sorted.length && fitsAlone(end - start + 1)) end++;
+    if (end < sorted.length) {
+      let cut = end;
+      while (cut > start && sorted[cut].right === sorted[cut - 1].right) cut--;
+      // A run of one second glyph longer than a subtable can hold has nowhere
+      // to be cut, and is cut where it must be.
+      if (cut > start) end = cut;
+    }
+    pieces.push(sorted.slice(start, end));
+    start = end;
+  }
+  return pieces;
 }
 
 /** PairPos format 1: an explicit list of second glyphs per first glyph. */
@@ -291,11 +365,11 @@ function buildPairPosFormat1(pairs: ResolvedPair[]): Uint8Array {
 
   const out = new ByteWriter();
   out.uint16(1); // posFormat
-  out.uint16(coverageOffset);
+  out.uint16(offset16(coverageOffset));
   out.uint16(0x0004); // valueFormat1: XAdvance only
   out.uint16(0); // valueFormat2: nothing on the second glyph
   out.uint16(firstGlyphs.length);
-  for (const offset of pairSetOffsets) out.uint16(offset);
+  for (const offset of pairSetOffsets) out.uint16(offset16(offset));
   for (const set of pairSets) out.bytesFrom(set);
   out.bytesFrom(coverage);
   return out.toUint8Array();
@@ -311,14 +385,16 @@ interface Grid {
 }
 
 /**
- * How many cells one subtable may hold.
+ * A ceiling on the cell a class kern lands in while the grids are packed.
  *
- * The offsets to the coverage and the two class definitions are sixteen bits
- * and they are measured from the start of the subtable, which the value array
- * sits at the front of. Two bytes a cell, so a grid past about thirty-two
- * thousand cells would push those offsets past what they can hold and write a
- * table that points at nothing. Well under it, and a grid that reaches it is
- * split rather than truncated.
+ * It was meant to keep a grid inside what its subtable can address, and it
+ * does not: it is tested against the classes of the kern being placed, not
+ * against the size the grid has grown to, so a grid of 183 left classes by
+ * 172 right ones -- 31,476 cells -- passed it one placement at a time. It is
+ * kept because it decides how grids are packed, and changing it would change
+ * the bytes of every font whose kerning already fits. What actually keeps a
+ * subtable inside its offsets is `fitGrid`, which measures the grid as it will
+ * be written.
  */
 const MOST_CELLS = 28_000;
 
@@ -413,18 +489,127 @@ function assembleGrids(classKerns: ResolvedClassKern[]): Grid[] {
 }
 
 /**
- * PairPos format 2: a value per (left class, right class) cell.
+ * A grid as one or more grids that each fit a subtable, kerning the same.
  *
- * Class 0 means "everything not otherwise listed", so the grid is one row and
- * one column bigger than the class lists and those extra cells hold zero.
+ * A grid that fits is handed back untouched, so a font whose kerning already
+ * fitted writes exactly the bytes it did. One that does not is cut by rows:
+ * runs of left classes, in order, each run its own subtable with only the
+ * right classes its rows kern against. This is what fontTools does with a
+ * grid too big for its offsets, and the reason it is safe is the rule
+ * `assembleGrids` is built around: a grid answers for every left glyph its
+ * coverage names, and only those. Every left glyph is in exactly one row, so
+ * it is covered by exactly one of the pieces, which stand where the grid stood
+ * -- whatever came before the grid in its lookup still comes first, whatever
+ * came after is still reached only by glyphs the grid did not cover, and a
+ * row's own cells are all still there. The right classes a run leaves out are
+ * the ones all its cells hold zero for, and a glyph in no class of the piece
+ * reads class zero, which holds zero too.
+ *
+ * A run is closed when one more row would push the furthest offset past what
+ * sixteen bits hold. A row too big to fit even on its own is shared out by its
+ * glyphs instead, in `splitRow`.
  */
-function buildPairPosFormat2(grid: Grid): Uint8Array {
-  const class1Count = grid.left.length + 1;
-  const class2Count = grid.right.length + 1;
+function fitGrid(grid: Grid): Grid[] {
+  if (fitsFormat2(grid.left, grid.right.length)) return [grid];
 
-  const coverage = buildCoverage([...new Set(grid.left.flat())].sort((a, b) => a - b));
-  const classDef1 = buildClassDef(grid.left);
-  const classDef2 = buildClassDef(grid.right);
+  // The right classes each row kerns against, by what is actually written.
+  const used = grid.left.map((_, index) => {
+    const row = index + 1;
+    const columns: number[] = [];
+    for (let column = 1; column <= grid.right.length; column++) {
+      if (clampInt16(grid.cells.get(`${row},${column}`) ?? 0) !== 0) columns.push(column);
+    }
+    return columns;
+  });
+  const leftOf = (rows: number[]) => rows.map((row) => grid.left[row - 1]);
+
+  const pieces: Grid[] = [];
+  let rows: number[] = [];
+  let columns = new Set<number>();
+  for (let row = 1; row <= grid.left.length; row++) {
+    // A row that kerns against nothing is kept all the same: its glyphs are
+    // still covered, and being covered is what stops the lookup at them.
+    const wider = new Set([...columns, ...used[row - 1]]);
+    if (rows.length > 0 && !fitsFormat2(leftOf([...rows, row]), wider.size)) {
+      pieces.push(piece(grid, rows, columns));
+      rows = [];
+      columns = new Set();
+    }
+    rows.push(row);
+    for (const column of used[row - 1]) columns.add(column);
+  }
+  if (rows.length > 0) pieces.push(piece(grid, rows, columns));
+
+  // Every piece of more than one row fits, or its last row would have started
+  // another. Only a row on its own can still be too big.
+  return pieces.flatMap((one) => (fitsFormat2(one.left, one.right.length) ? [one] : splitRow(one)));
+}
+
+/**
+ * A single row too big for a subtable, as the same row over fewer glyphs.
+ *
+ * What makes one row too big is a left class of thousands of glyphs, whose
+ * coverage and class definition grow with it -- the cells cannot, since
+ * `MOST_CELLS` holds a grid to fourteen thousand right classes, and a row of
+ * that many cells fits with room to spare. So the class's glyphs are shared
+ * out between pieces that each hold the whole row of values: each glyph is
+ * still covered once and still reads the same cells. The count per piece
+ * assumes the worst class definition, a range for every glyph, so every
+ * piece fits whatever ids it is given.
+ */
+function splitRow(grid: Grid): Grid[] {
+  if (grid.left.length !== 1) throw new Error("Only a grid of one row is split by its glyphs");
+  const glyphs = grid.left[0];
+  // The header and cells, then two bytes a glyph of coverage and six of class
+  // definition after their own four-byte headers.
+  const room = MOST_OFFSET - 16 - 2 * (grid.right.length + 1) * 2 - 4 - 4;
+  const most = Math.floor(room / 8);
+  if (most < 1) {
+    throw new RangeError(
+      `A kerning class against ${grid.right.length} right classes does not fit one subtable`,
+    );
+  }
+  const pieces: Grid[] = [];
+  for (let start = 0; start < glyphs.length; start += most) {
+    pieces.push({
+      left: [glyphs.slice(start, start + most)],
+      right: grid.right,
+      cells: grid.cells,
+    });
+  }
+  return pieces;
+}
+
+/** Some rows of a grid and some of its right classes, renumbered from one. */
+function piece(grid: Grid, rows: number[], columns: Set<number>): Grid {
+  const kept = [...columns].sort((a, b) => a - b);
+  const cells = new Map<string, number>();
+  for (const [at, row] of rows.entries()) {
+    for (const [now, column] of kept.entries()) {
+      const value = grid.cells.get(`${row},${column}`);
+      if (value !== undefined) cells.set(`${at + 1},${now + 1}`, value);
+    }
+  }
+  return {
+    left: rows.map((row) => grid.left[row - 1]),
+    right: kept.map((column) => grid.right[column - 1]),
+    cells,
+  };
+}
+
+/**
+ * Where a format 2 subtable's parts go, and the parts themselves.
+ *
+ * From the left classes and the number of right ones, which is all the layout
+ * depends on: the right-hand class definition goes last, so nothing is
+ * measured past it.
+ */
+function layoutFormat2(left: number[][], rightClasses: number) {
+  const class1Count = left.length + 1;
+  const class2Count = rightClasses + 1;
+
+  const coverage = buildCoverage([...new Set(left.flat())].sort((a, b) => a - b));
+  const classDef1 = buildClassDef(left);
 
   // Each cell holds one int16 because valueFormat1 is XAdvance and
   // valueFormat2 is empty.
@@ -433,14 +618,53 @@ function buildPairPosFormat2(grid: Grid): Uint8Array {
   const coverageOffset = headerSize + gridSize;
   const classDef1Offset = coverageOffset + coverage.length;
   const classDef2Offset = classDef1Offset + classDef1.length;
+  return {
+    class1Count,
+    class2Count,
+    coverage,
+    classDef1,
+    coverageOffset,
+    classDef1Offset,
+    classDef2Offset,
+  };
+}
+
+/**
+ * Whether every offset a grid's subtable needs fits sixteen bits.
+ *
+ * The right-hand class definition is written last, so its offset is the
+ * furthest and the only one that needs asking about; the definition itself
+ * may run on past the limit, since nothing points past its start.
+ */
+function fitsFormat2(left: number[][], rightClasses: number): boolean {
+  return layoutFormat2(left, rightClasses).classDef2Offset <= MOST_OFFSET;
+}
+
+/**
+ * PairPos format 2: a value per (left class, right class) cell.
+ *
+ * Class 0 means "everything not otherwise listed", so the grid is one row and
+ * one column bigger than the class lists and those extra cells hold zero.
+ */
+function buildPairPosFormat2(grid: Grid): Uint8Array {
+  const {
+    class1Count,
+    class2Count,
+    coverage,
+    classDef1,
+    coverageOffset,
+    classDef1Offset,
+    classDef2Offset,
+  } = layoutFormat2(grid.left, grid.right.length);
+  const classDef2 = buildClassDef(grid.right);
 
   const out = new ByteWriter();
   out.uint16(2); // posFormat
-  out.uint16(coverageOffset);
+  out.uint16(offset16(coverageOffset));
   out.uint16(0x0004); // valueFormat1: XAdvance
   out.uint16(0); // valueFormat2
-  out.uint16(classDef1Offset);
-  out.uint16(classDef2Offset);
+  out.uint16(offset16(classDef1Offset));
+  out.uint16(offset16(classDef2Offset));
   out.uint16(class1Count);
   out.uint16(class2Count);
   for (let first = 0; first < class1Count; first++) {
