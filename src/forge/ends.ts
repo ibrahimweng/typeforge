@@ -450,7 +450,9 @@ function tapered(
     // The tapered corner, where the end is as wide as it now is: the end of
     // the first piece listed, which is the one at the end, or its start.
     const corner = atEnd ? TAPER_SAMPLES : 0;
-    const left = gapAt(corner);
+    // A chain is whole pieces of TAPER_SAMPLES + 1 points each, so the corner is always one of
+    // them; were it not, no gap could be held against it, as none was before.
+    const left = corner < innerPoints.length ? gapAt(corner) : Number.NaN;
     // Pinched at the first point that comes too near, without measuring the rest.
     for (let index = 0; index < innerPoints.length; index++) {
       const gap = index === corner ? left : gapAt(index);
