@@ -49,6 +49,7 @@ export const SOFT_SERIF: Style = {
   metrics: {
     ...SERIF.metrics,
     dotScale: 1.17,
+    middleArm: 0.69,
     proportions: {
       ...SERIF.metrics.proportions,
       f: 1.108,
@@ -73,8 +74,16 @@ export const SOFT_SERIF: Style = {
       bracket: 0.7,
       tip: 1,
       swell: 0.3,
+      headKeep: true,
+      headDepth: 0.5,
     },
-    shoulder: { ...SERIF.parts.shoulder, rise: 0.3, crest: 0.97, reach: 0.785 },
+    shoulder: {
+      ...SERIF.parts.shoulder,
+      rise: 0.3,
+      crest: 0.97,
+      reach: 0.785,
+      armRise: 0.04,
+    },
     bowl: { ...SERIF.parts.bowl, aperture: 0.9, tail: 0.8, heft: 0.16 },
     terminal: {
       ...SERIF.parts.terminal,

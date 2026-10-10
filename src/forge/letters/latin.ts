@@ -54,6 +54,7 @@ import {
   tReach,
   wallAt,
   widthShare,
+  middleArm,
   middleBar,
   tittle,
 } from "./common";
@@ -184,7 +185,12 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         BUTT,
         f.end,
       ),
-      thin(f, straight(at(crossing, middle), at(stem + reach * 0.86, middle)), BUTT, f.end),
+      thin(
+        f,
+        straight(at(crossing, middle), at(stem + reach * middleArm(f, reach), middle)),
+        BUTT,
+        f.end,
+      ),
       arm(f, stem, stem + reach, f.sits(0, f.bar)),
     ]);
   },
@@ -384,7 +390,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
         belly(f, at(stem, f.cap / 2), wide, radius, 90, 270),
         arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-        arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
+        arm(f, stem, stem + reach * middleArm(f, reach), middleBar(f, f.cap)),
         arm(f, stem, stem + reach, f.sits(0, f.bar)),
       ],
       true,

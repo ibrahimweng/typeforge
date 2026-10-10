@@ -4528,6 +4528,42 @@ export function middleBar(f: Frame, top: number): number {
 }
 
 /**
+ * How far the middle arm of an E reaches against the arms above and below
+ * it, `reach` from the stem's centre: a little short, as every roman E's is,
+ * or as far as the face says (`metrics.middleArm`), held between half of
+ * theirs and all of it. The F's, the Æ's and the Œ's with it. The
+ * Grotesque's E and F are drawn to Geist's measures, every arm its own
+ * length, and keep them.
+ *
+ * Short of half, the middle arm of an E is a spur on the stem and the letter
+ * reads as an L with something caught on it; past the arms either side of
+ * it, as an E with its stem drawn to the wrong side of a bar.
+ *
+ * And never showing less than a third of what they show past the stem. The
+ * share is of the whole reach, from the stem's centre, but the stem covers
+ * the first half-width of every arm, and at a Black that is most of a short
+ * one: held at half its reach, the middle arm of a narrow Black E showed six
+ * units past its stem where the others showed 133, and the letter read as an
+ * L with a stub on it -- the very thing the least was set to keep away. At a
+ * text weight the stem covers little, and half the reach is the least.
+ */
+export function middleArm(f: Frame, reach: number): number {
+  const asked = f.style.metrics.middleArm;
+  if (asked === undefined) return MIDDLE_ARM;
+  // Out past the stem's half-width by a third of what the others show past it.
+  const side = stemSide(f);
+  const third = side + Math.max(0, reach - side) * MIDDLE_ARM_SHOWS;
+  const least = Math.max(0.5, third / Math.max(reach, 1e-9));
+  return Math.min(1, Math.max(least, asked));
+}
+
+/** The least share of what the other arms show past the stem that the middle one shows. */
+const MIDDLE_ARM_SHOWS = 1 / 3;
+
+/** The middle arm of an E against its others, where the face says nothing: see `middleArm`. */
+const MIDDLE_ARM = 0.86;
+
+/**
  * The height of the eye of an e, in a bowl round `centre`.
  *
  * Held clear of the inside of the bowl above and below by the same rule as

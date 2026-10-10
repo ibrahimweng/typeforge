@@ -149,6 +149,15 @@ export interface Metrics {
    */
   xGrows?: { by: number; at: number };
   /**
+   * How far the middle arm of an E reaches against the arms above and below
+   * it, as a share of theirs, 0.5 to one; and the F's, the Æ's and the
+   * Œ's with it. Never so short at a heavy weight that it shows less than a
+   * third of what they show past the stem. The Grotesque's E and F keep the
+   * arms they are measured to. Left out, 0.86, a little short, as a roman
+   * E's is.
+   */
+  middleArm?: number;
+  /**
    * How tall a square dot stands against its width at the Thin and at the
    * Black (by a blackness of `at`): Geist's full stop is a tenth taller than
    * wide at its Thin, square at its Regular and 0.92 as tall at its Black.
@@ -479,6 +488,21 @@ export interface Parts {
      * the arm is `1 + swell` times as wide as its root.
      */
     swell?: number;
+    /**
+     * Whether a stem an arch springs from keeps its head where the arch stops
+     * short of the x-height (`shoulder.crest` below one): stood on the
+     * x-height and wearing the head an i's stem wears, rather than stopped
+     * with its arch, where there is no line to lay a head on. An arch raised
+     * past the x-height takes its stem up with it either way. Left out, the
+     * n's and the m's stems stop with their arches.
+     */
+    headKeep?: boolean;
+    /**
+     * How much deeper a sloped head's flag runs down its stem, as a share
+     * more, nought to one: the flag's depth and the most any head may have
+     * both grown by it. Left out, the head is a text weight's.
+     */
+    headDepth?: number;
   };
   shoulder: {
     /**
@@ -493,6 +517,12 @@ export interface Parts {
      * waist; less stops short of it, which is what a running hand does.
      */
     crest: number;
+    /**
+     * How much lower an r's arm leaves its stem than the n's shoulder, as a
+     * share of the x-height, nought to a tenth: the arm set down whole, its
+     * top running under the x-height. Left out, the r's shoulder is the n's.
+     */
+    armRise?: number;
     /**
      * How much lower the arch leaves the stem, nought to 0.8: the turn up out
      * of the stem grows by this share and the turn down gives up the same.
