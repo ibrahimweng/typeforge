@@ -2387,7 +2387,8 @@ function dropRadius(
   const thins = style.parts.terminal.dropTaper ?? 0;
   const least = thins > 0 ? h * keptOfDrop(thins) : h;
   const size = style.parts.terminal.dropSize;
-  if (size !== undefined && size !== 0) {
+  // Left out, nought, or null as a document can carry it (see `settled` in document.ts).
+  if (typeof size === "number" && size !== 0) {
     const grown = size * (pear?.size ?? 1);
     const wanted = TEAR_SIZE * (1 + grown) * Math.sqrt(stem * style.metrics.unitsPerEm * 0.1);
     const share = Math.min(0.75, 0.45 + 0.3 * Math.max(0, grown));
