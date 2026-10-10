@@ -7,6 +7,7 @@ import { blackness, scriptUnit, type Style } from "../style";
 import type { Spine, Stroke } from "../types";
 import { buried } from "./hints";
 import { curledA, swungY, tuckedF } from "./soft";
+import { beakedS, beltedA, wedgedT, wideE } from "./soft";
 import {
   grotesqueA,
   grotesqueAt,
@@ -2143,6 +2144,50 @@ const SOFT: Array<[LetterName, string, string, string, (style: Style) => Recipe]
   ],
 ];
 for (const [name, id, label, hint, build] of SOFT) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build(style);
+  ALTERNATES[name].push({ id, label, hint, build: drawn });
+}
+
+/*
+ * And the soft text serif's second set: the a whose bowl is a belt, the e
+ * with its eye opened wide, the s with short beaks of its own and the t
+ * under a solid wedge (see `soft.ts`), drawn plain where the first set is.
+ */
+const SOFT_MORE: Array<[LetterName, string, string, string, (style: Style) => Recipe]> = [
+  [
+    "a",
+    "belted",
+    "Belted bowl",
+    "The bowl drawn as one stroke, leaving the stem high as a hairline and coming back into it low.",
+    beltedA,
+  ],
+  [
+    "e",
+    "wide-eyed",
+    "Wide eye",
+    "The old-style e written nearer the upright, its eye opened wide over a lighter bar.",
+    (style) => wideE(style, humanistE),
+  ],
+  [
+    "s",
+    "beaked",
+    "Soft beaks",
+    "The old-style s with its head and foot turning on over into short beaks of their own.",
+    (style) => beakedS(style, humanistS),
+  ],
+  [
+    "t",
+    "wedged",
+    "Solid flag",
+    "Under one solid wedge from the bar's tip to the top of the stem, a little shorter, its tail flicking up.",
+    wedgedT,
+  ],
+];
+for (const [name, id, label, hint, build] of SOFT_MORE) {
   if (!ALTERNATES[name]) ALTERNATES[name] = [];
   const drawn = (style: Style) =>
     (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
