@@ -77,7 +77,9 @@ function unfinished(style: Style): Style {
   const metrics = { ...style.metrics } as unknown as Record<string, unknown>;
   delete metrics.dotScale;
   delete metrics.middleArm;
-  delete metrics.heldPen;
+  // metrics.heldPen stays: it is not a finish but how the pen itself is read
+  // (the s, S, $ and the g's link follow the tilted pen), so PLAIN draws its
+  // pen exactly as the Soft Serif does and excuses nothing the finishes add.
   return {
     ...style,
     parts: parts as unknown as Style["parts"],
