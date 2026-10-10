@@ -18,12 +18,14 @@ import type { Vec2 } from "@/font/types";
 import type { Style } from "./style";
 import {
   cutAlong,
+  ellipseAt,
   type Headed,
   moving,
   type OffsetSegment,
   offsetEnd,
   offsetStart,
   type PenReach,
+  piecesFor,
   reachAlong,
 } from "./sweep";
 import type { Stroke } from "./types";
@@ -96,7 +98,8 @@ export function hefted(
   const shift = heftShift(stroke, reach);
   const plain = side > 0 ? left : right;
   const outer = side > 0 ? right : left;
-  const inner = plain.map((one) => movedBy(one, shift));
+  const fade = stroke.heft?.fade;
+  const inner = fade ? faded(plain, shift, fade) : plain.map((one) => movedBy(one, shift));
   if (!stroke.spine.closed) {
     const most = 2 * Math.hypot(shift.x, shift.y);
     for (const atEnd of [false, true]) {
@@ -121,6 +124,91 @@ export function hefted(
 function cutsItself(terminal: Stroke["start"]): boolean {
   return terminal.kind !== "round" && (terminal.level === true || terminal.aligned === true);
 }
+
+/**
+ * The inner side of a bowl standing against a stem, its heft faded toward
+ * that stem (`Stroke.heft.fade`): moved by the whole of `shift` at the side
+ * of the counter away from the stem, by `1 - share` of it at the stem's own
+ * side, and in between in proportion to how far across the counter it lies.
+ *
+ * One affine map of the whole side -- a shear along `shift` growing across
+ * the counter -- rather than a move piece by piece, so it is as exact as the
+ * plain heft: a line stays a line, an ellipse an ellipse turned and
+ * stretched to its image, and every weld and every smooth join between
+ * pieces holds, since all of them go through the same map. Each piece keeps
+ * its pieces. How far across the counter reaches is measured on the side as
+ * the pen drew it, at a fixed number of points a piece.
+ */
+function faded(
+  plain: OffsetSegment[],
+  shift: Vec2,
+  fade: { side: 1 | -1; share: number },
+): OffsetSegment[] {
+  let low = Infinity;
+  let high = -Infinity;
+  for (const one of plain) {
+    const points =
+      one.kind === "line"
+        ? [one.from, one.to]
+        : Array.from({ length: FADE_SAMPLES + 1 }, (_, k) =>
+            ellipseAt(one, one.from + ((one.to - one.from) * k) / FADE_SAMPLES),
+          );
+    for (const point of points) {
+      low = Math.min(low, point.x);
+      high = Math.max(high, point.x);
+    }
+  }
+  const span = high - low;
+  if (!(span > 1e-6)) return plain.map((one) => movedBy(one, shift));
+  const stem = fade.side < 0 ? low : high;
+  // How much of `shift` a point takes: `a + b x`, `1 - share` at the stem and one across from it.
+  const b = (fade.share * -fade.side) / span;
+  const a = 1 - fade.share - b * stem;
+  const map = (point: Vec2): Vec2 => {
+    const by = a + b * point.x;
+    return { x: point.x + shift.x * by, y: point.y + shift.y * by };
+  };
+  // The map's linear part: the identity, and `shift` grown by `b` for every unit across.
+  const l00 = 1 + shift.x * b;
+  const l10 = shift.y * b;
+  return plain.map((one): OffsetSegment => {
+    if (one.kind === "line") return { kind: "line", from: map(one.from), to: map(one.to) };
+    /*
+     * The ellipse's own axes carried through the map, B = L R(rotation)
+     * diag(rx, ry), and written again as R(rotation') diag(rx', ry') R(turn):
+     * its new axes, and its parameter turned by `turn`, so each of its points
+     * is the image of the point it was.
+     */
+    const cos = Math.cos(one.rotation);
+    const sin = Math.sin(one.rotation);
+    const b00 = l00 * cos * one.rx;
+    const b01 = -l00 * sin * one.ry;
+    const b10 = l10 * cos * one.rx + sin * one.rx;
+    const b11 = -l10 * sin * one.ry + cos * one.ry;
+    const e = (b00 + b11) / 2;
+    const f = (b00 - b11) / 2;
+    const g = (b10 + b01) / 2;
+    const h = (b10 - b01) / 2;
+    const q = Math.hypot(e, h);
+    const r = Math.hypot(f, g);
+    const first = Math.atan2(g, f);
+    const second = Math.atan2(h, e);
+    const turn = (second - first) / 2;
+    return {
+      ...one,
+      centre: map(one.centre),
+      rotation: (second + first) / 2,
+      rx: q + r,
+      ry: q - r,
+      from: one.from + turn,
+      to: one.to + turn,
+      pieces: one.pieces ?? piecesFor(one.to - one.from),
+    };
+  });
+}
+
+/** How many points along each ellipse piece a faded side's reach across is measured at. */
+const FADE_SAMPLES = 32;
 
 /** One side piece moved whole: a run's ends, or an ellipse's centre. */
 function movedBy(one: OffsetSegment, by: Vec2): OffsetSegment {
@@ -206,5 +294,14 @@ function squared(
 export function withHeft(stroke: Stroke, style: Style): Stroke {
   const share = style.parts.bowl.heft ?? 0;
   if (!(share > 0) || !(stroke.spine.closed || stroke.heftable)) return stroke;
-  return { ...stroke, heft: { share, tilt: style.parts.bowl.heftTilt ?? 0 } };
+  const tilt = style.parts.bowl.heftTilt ?? 0;
+  // Faded toward a stem the recipe says the bowl stands against: see `faded`.
+  const fade = style.parts.bowl.heftFade ?? 0;
+  if (fade > 0 && stroke.stemSide !== undefined) {
+    return {
+      ...stroke,
+      heft: { share, tilt, fade: { side: stroke.stemSide, share: Math.min(1, fade) } },
+    };
+  }
+  return { ...stroke, heft: { share, tilt } };
 }

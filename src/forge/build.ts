@@ -45,7 +45,7 @@ import { effectInk, reachesEffects, type Effects } from "./effects";
 import { filletsFor } from "./fillet";
 import { prepared } from "./prepare";
 import { heftShift, innerSide } from "./heft";
-import { type Flat, flatten, kappa, lineIntersection, pointAt } from "./soft";
+import { type Flat, flatten, kappa, lineIntersection, pointAt, windingAt } from "./soft";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
@@ -1385,7 +1385,7 @@ function inkOf(
     ...beaksFor(stroke),
     ...ballsFor(stroke, style, swept, others),
     ...flaresFor(stroke, style),
-    ...teardropsFor(stroke, swept, style),
+    ...teardropsFor(stroke, swept, style, others),
     ...serifsFor(stroke, style, others, swept),
     ...filletsFor(stroke, style, swept, others),
   ];
@@ -1923,7 +1923,9 @@ function dress(
  *   never less than fifteen hundredths; not one cut along a line. A serif
  *   refused on a curve is a cut with a sliver buried in it, and the sliver
  *   would stand out of the tapered side, so it becomes the plain cut it is
- *   drawn as.
+ *   drawn as. An end of an open bowl (`Terminal.blunt`) takes the taper
+ *   less `bowl.blunt` of it, and none at all at one, where it keeps what
+ *   `dress` gave it.
  * - Softened: a radius of `terminal.soft` times the end's full width, as it
  *   is once swelled or tapered. Both corners of a seen plain cut, and of a
  *   serif refused on a curve or one wearing no serif at all; the inside
@@ -1948,8 +1950,16 @@ function softened(
   const { terminal: part, slab, ball, flare } = style.parts;
   const soft = part.soft ?? 0;
   const taper = part.taper ?? 0;
+  const blunt = style.parts.bowl.blunt ?? 0;
   const swell = slab.swell ?? 0;
-  if (!(soft > 0 || taper > 0 || swell > 0)) return dressed;
+  const thins = part.dropTaper ?? 0;
+  if (!(soft > 0 || taper > 0 || swell > 0 || thins > 0)) return dressed;
+  /*
+   * A stroke the face thins into its drop (`terminal.dropTaper`) has the end
+   * the drop hangs on tapered as a seen curved end is: only ever a curved
+   * end, as every drop is, and the same end at every weight.
+   */
+  if (dressed.drop && thins > 0) return { ...dressed, taper: keptOfDrop(thins) };
   if (dressed.drop || dressed.beak || dressed.kind === "round" || dressed.kind === "teardrop") {
     return dressed;
   }
@@ -1994,8 +2004,15 @@ function softened(
     }
   }
 
+  /*
+   * An end of an open bowl gives back what the face asks of the taper
+   * (`bowl.blunt`): the c's tail cut as wide as the pen leaves it, where the
+   * t's tail and the a's foot still thin as they stop. Hinted by the recipe,
+   * so it is the same end at every weight.
+   */
+  const given = undressed.blunt === true ? taper * (1 - Math.min(1, blunt)) : taper;
   if (
-    taper > 0 &&
+    given > 0 &&
     seen &&
     curved &&
     // Not one cut along a line (`aligned`, a grotesque's c): the cut carries
@@ -2007,7 +2024,7 @@ function softened(
     end = {
       ...end,
       kind: end.kind === "slab" ? "butt" : end.kind,
-      taper: Math.max(0.15, 1 - taper),
+      taper: Math.max(0.15, 1 - given),
     };
   }
 
@@ -2356,17 +2373,26 @@ function dropRadius(
 ): number {
   const stem = style.pen.weight;
   const h = halfWidthAcross(stroke, outward);
+  // No less than the end it covers: the stroke's half width, or as much of it
+  // as is left where the stroke thins into its drop (`terminal.dropTaper`).
+  const thins = style.parts.terminal.dropTaper ?? 0;
+  const least = thins > 0 ? h * keptOfDrop(thins) : h;
   const size = style.parts.terminal.dropSize;
   if (size !== undefined && size !== 0) {
     const grown = size * (pear?.size ?? 1);
     const wanted = TEAR_SIZE * (1 + grown) * Math.sqrt(stem * style.metrics.unitsPerEm * 0.1);
     const share = Math.min(0.75, 0.45 + 0.3 * Math.max(0, grown));
     const room = curve > 0 ? h + share * Math.max(0, curve - 2 * h) : wanted;
-    return Math.max(h, Math.min(wanted, room));
+    return Math.max(least, Math.min(wanted, room));
   }
   const wanted = TEAR_SIZE * Math.sqrt(stem * style.metrics.unitsPerEm * 0.1);
   const room = curve > 0 ? h + 0.45 * Math.max(0, curve - 2 * h) : wanted;
-  return Math.max(h, Math.min(wanted, room));
+  return Math.max(least, Math.min(wanted, room));
+}
+
+/** The share of an end's width a stroke keeps where it thins into its drop by `thins`. */
+function keptOfDrop(thins: number): number {
+  return Math.max(0.15, 1 - thins);
 }
 
 /**
@@ -2503,7 +2529,13 @@ const TEAR_PULL = 0.6;
  * A pear that folds gives up its turn and then its hang, each settled into
  * the band afresh, and is never kept folded where one that does not is found.
  */
-function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[] {
+function teardropsFor(
+  stroke: Stroke,
+  swept: Contour[],
+  _style: Style,
+  // The other strokes' ink, which a pear keeps clear of: see `clashesWith`.
+  others: Contour[] = [],
+): Contour[] {
   if (stroke.spine.closed || swept.length === 0) return [];
   const out: Contour[] = [];
   const band = contoursBounds(swept);
@@ -2525,8 +2557,26 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
     const outer = lean < 0 ? shift : { x: -shift.x, y: -shift.y };
     const h = Math.abs(lean);
     const t = outer.x * u.x + outer.y * u.y;
+    /*
+     * Where the face thins the stroke into its drop (a drop's end tapered:
+     * see `softened`), the end as the sweep drew it in, which is the end the
+     * drop has to cover and the edge its neck comes back onto: read off the
+     * stroke's own ink, since how far the taper could draw the side in is the
+     * sweep's to say.
+     */
+    const thinned = terminal.taper !== undefined ? flatten(swept, DIP_CHORDS) : null;
+    const thinKept = thinned
+      ? keptAt(
+          thinned,
+          { x: at.x + outer.x, y: at.y + outer.y },
+          { x: at.x - outer.x, y: at.y - outer.y },
+          u,
+        )
+      : 1;
     // Round enough to take both corners of the end inside it.
-    const least = (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
+    const least = thinned
+      ? ((t * t + h * h) / Math.max(h, 1e-6)) * thinKept + 0.5
+      : (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
     const bend = drop.bend > 0 ? drop.bend : drop.radius * 4;
     const pear = pearAt(stroke, swept, drop, index === 1 ? side : -side, reach);
     /*
@@ -2552,6 +2602,7 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
         close,
         pear && { ...pear, hang, turn },
         lift,
+        thinned,
       );
     // A pear asked for again is the one already made: see `madeOnce`.
     const make = pear ? madeOnce(drawn) : drawn;
@@ -2561,14 +2612,25 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
      * pear with no room brings its ball back in toward the end, giving up its
      * hang, before it is made any smaller.
      */
+    /*
+     * A pear keeps clear of the letter's other strokes by a share of the
+     * end's own half width (`PEAR_CLEAR`), as it keeps to its band: hung
+     * across a closing aperture -- the hood of a 6 and the tail of a 9 at a
+     * Black -- the ball landed on the bowl and shut the opening into a second
+     * counter. Brought in and made smaller as the band asks, never past the
+     * least that covers the end. A plain drop is drawn as it always was.
+     */
+    const clashes =
+      pear && others.length > 0 ? askedOnce(clashesWith(others, h * PEAR_CLEAR)) : () => false;
+    const fits = (shape: Contour) => within(shape, band) && !clashes(shape);
     const settle = (hang: number, turn: number): Settled => {
       let radius = Math.max(drop.radius, least);
       let shape = make(radius, undefined, undefined, hang, turn);
-      for (let tries = 0; pear && hang > 0 && tries < 8 && !within(shape, band); tries++) {
+      for (let tries = 0; pear && hang > 0 && tries < 8 && !fits(shape); tries++) {
         hang *= 0.82;
         shape = make(radius, undefined, undefined, hang, turn);
       }
-      for (let tries = 0; tries < 8 && !within(shape, band); tries++) {
+      for (let tries = 0; tries < 8 && !fits(shape); tries++) {
         radius = Math.max(least, radius * 0.82);
         shape = make(radius, undefined, undefined, hang, turn);
       }
@@ -2727,6 +2789,162 @@ function teardropsFor(stroke: Stroke, swept: Contour[], _style: Style): Contour[
     out.push(contourArea(shape) < 0 ? reverseContour(shape) : shape);
   }
   return out;
+}
+
+/**
+ * How much of an end's width is left where its stroke thins into its drop:
+ * the share of the way from its outer corner to where its inner corner was
+ * that is still inked, a hair back from the cut, found by a fixed number of
+ * halvings. All of it where nothing was drawn in, or where the ink cannot be
+ * read so near the outer corner.
+ */
+function keptAt(ink: Flat, outer: Vec2, inner: Vec2, u: Vec2): number {
+  const at = (share: number): Vec2 => ({
+    x: outer.x + (inner.x - outer.x) * share - u.x * KEPT_BACK,
+    y: outer.y + (inner.y - outer.y) * share - u.y * KEPT_BACK,
+  });
+  if (windingAt(ink, at(1)) !== 0) return 1;
+  // Half of the least a taper keeps, which is inked whatever the taper did.
+  let low = 0.075;
+  if (windingAt(ink, at(low)) === 0) return 1;
+  let high = 1;
+  for (let step = 0; step < KEPT_HALVINGS; step++) {
+    const middle = (low + high) / 2;
+    if (windingAt(ink, at(middle)) !== 0) low = middle;
+    else high = middle;
+  }
+  return high;
+}
+
+/** How far back from the cut an end's kept width is read, in units. */
+const KEPT_BACK = 0.5;
+/** How many halvings find it. */
+const KEPT_HALVINGS = 30;
+
+/**
+ * Where a stroke's inner side has come to, across from the spine point
+ * `spine` along `toward` (the pen's reach to that side): walked out from just
+ * inside the outer edge -- the spine less `toward`, which no taper moves, so
+ * inked however far the inner side was drawn in, where the spine itself can
+ * lie past it -- in fixed steps to as far again as the stroke is wide, then
+ * narrowed by a fixed number of halvings. Where that start is not inked, or
+ * the walk never leaves the ink, the point `toward` reaches to, as on a plain
+ * stroke.
+ */
+function edgeFrom(ink: Flat, spine: Vec2, toward: Vec2): Vec2 {
+  const reach = Math.hypot(toward.x, toward.y);
+  const plain = { x: spine.x + toward.x, y: spine.y + toward.y };
+  if (!(reach > 1e-9)) return plain;
+  const way = { x: toward.x / reach, y: toward.y / reach };
+  // A twentieth of the stroke's width in from its outer edge.
+  const from = { x: spine.x - toward.x * 0.9, y: spine.y - toward.y * 0.9 };
+  if (windingAt(ink, from) === 0) return plain;
+  const at = (k: number): Vec2 => ({ x: from.x + way.x * k, y: from.y + way.y * k });
+  const most = reach * 2.5 + 1;
+  let low = 0;
+  let high = -1;
+  for (let step = 1; step <= EDGE_STEPS; step++) {
+    const k = (most * step) / EDGE_STEPS;
+    if (windingAt(ink, at(k)) === 0) {
+      high = k;
+      break;
+    }
+    low = k;
+  }
+  if (high < 0) return plain;
+  for (let step = 0; step < KEPT_HALVINGS; step++) {
+    const middle = (low + high) / 2;
+    if (windingAt(ink, at(middle)) === 0) high = middle;
+    else low = middle;
+  }
+  return at(low);
+}
+
+/**
+ * Where a drop's closing edge is laid back from on a stroke drawn in toward
+ * its end: halfway from its outer edge -- the spine less `toward`, where no
+ * taper moves it -- to where its inner edge has come to (`meets`). Laid from
+ * the spine, as on a plain stroke, it started from a point the drawn-in side
+ * can come up to or pass, and ran on toward the end across that side,
+ * leaving a sliver of the counter between the drop and the stroke that a
+ * renderer drew as a hairline seam. From the middle of the stroke as it is,
+ * with handles sized to the stroke (`closingHandle`), it runs on round to
+ * the drop's outer corner inside the stroke.
+ */
+function middleOf(spine: Vec2, toward: Vec2, meets: Vec2): Vec2 {
+  return { x: (spine.x - toward.x + meets.x) / 2, y: (spine.y - toward.y + meets.y) / 2 };
+}
+
+/**
+ * The handles of a drop's closing edge on a stroke thinned into it, from
+ * `behind` (the middle of the stroke, `distance` back) leaving along
+ * `leaving` to the drop's outer `corner` arriving along `arriving`: the
+ * length, the same at both ends, that carries the edge's middle to a quarter
+ * of the way in from the outer edge to the inner one as the stroke is drawn
+ * halfway back -- between where it leaves and where it arrives, as its two
+ * ends are. Measured off the stroke's ink, since the taper drew its inner
+ * side; a third of the chord where the two ways agree, and never past six
+ * tenths of it.
+ */
+function closingHandle(
+  ink: Flat,
+  spine: Spine,
+  distance: number,
+  way: number,
+  reach: ReturnType<typeof penReach>,
+  behind: Vec2,
+  corner: Vec2,
+  leaving: Vec2,
+  arriving: Vec2,
+): number {
+  const chord = Math.hypot(corner.x - behind.x, corner.y - behind.y);
+  const apart = { x: leaving.x - arriving.x, y: leaving.y - arriving.y };
+  const spread = apart.x * apart.x + apart.y * apart.y;
+  if (spread < 1e-9) return chord / 3;
+  const half = backFromEnd(spine, distance / 2);
+  const shift = reachAlong({ x: -half.heading.y, y: half.heading.x }, reach);
+  const local = { x: -half.heading.y * way, y: half.heading.x * way };
+  const toward = shift.x * local.x + shift.y * local.y >= 0 ? shift : { x: -shift.x, y: -shift.y };
+  const outer = { x: half.point.x - toward.x, y: half.point.y - toward.y };
+  const inner = edgeFrom(ink, half.point, toward);
+  const aim = { x: outer.x + (inner.x - outer.x) * 0.25, y: outer.y + (inner.y - outer.y) * 0.25 };
+  // A cubic's middle is its chord's middle and three eighths of its handles' difference.
+  const off = { x: aim.x - (behind.x + corner.x) / 2, y: aim.y - (behind.y + corner.y) / 2 };
+  const by = (off.x * apart.x + off.y * apart.y) / (0.375 * spread);
+  if (!Number.isFinite(by)) return chord / 3;
+  return Math.min(chord * 0.6, Math.max(chord * 0.05, by));
+}
+
+/** How many steps out `edgeFrom` walks before it narrows in. */
+const EDGE_STEPS = 32;
+
+/**
+ * How far a pear keeps from the letter's other strokes, against the half
+ * width of the end it finishes: see `teardropsFor`.
+ */
+const PEAR_CLEAR = 0.5;
+
+/**
+ * Whether a drop's seen edges -- the outer side, round the ball and down its
+ * neck -- come within `gap` of the other strokes' ink, or into it: each edge
+ * at a fixed number of points, against those strokes flattened once, when
+ * first asked.
+ */
+function clashesWith(others: Contour[], gap: number): (drop: Contour) => boolean {
+  let ink: Flat | null = null;
+  return (drop) => {
+    ink ??= flatten(others);
+    const points: Vec2[] = [];
+    for (let edge = 0; edge < 3; edge++) {
+      const from = drop.nodes[edge];
+      const to = drop.nodes[edge + 1];
+      for (let step = 0; step <= 12; step++) points.push(pointAt(from, to, step / 12));
+    }
+    const near = edgesNear(ink, points, gap);
+    return points.some(
+      (point) => windingAmong(near.round, point) !== 0 || !deeperThan(near.deep, point, gap),
+    );
+  };
 }
 
 /**
@@ -3081,6 +3299,12 @@ const S_BAR = 0.56;
 /** And the s's: Lora's are 40 on 87, and 76 on 142. */
 const S_BAR_SMALL = 0.5;
 
+/**
+ * How much narrower a bar beak is at its tip than at its root on a face with
+ * soft tips, at the most rounded: see `beaksFor`.
+ */
+const BEAK_NARROW = 0.5;
+
 /** The pen of Lora's Bold, 142 on an x-height of 500, on this face. */
 function boldPen(style: Style): number {
   return (142 * style.metrics.xHeight) / 500;
@@ -3125,21 +3349,30 @@ function beaksFor(stroke: Stroke): Contour[] {
       const inward = curve.toward.x < 0 ? -1 : 1;
       const x = outer.x;
       const x2 = outer.x + inward * beak.bar.width;
+      const soft = beak.tip ?? 0;
+      /*
+       * On a face with soft tips the bar narrows toward its tip, by up to
+       * half its width as the tips are rounded (`BEAK_NARROW`), so it grows
+       * out of the end it hangs from as a beak does rather than standing
+       * beside it: a bar as wide at its rounded tip as at its root read as a
+       * stalk with a knob on it, apart from the s it was hung on.
+       */
+      const tipWidth =
+        soft > 0 ? beak.bar.width * (1 - BEAK_NARROW * Math.min(1, soft)) : beak.bar.width;
       let corners = [
         node({ x, y: beak.bar.from }),
         node({ x, y: tipY }),
-        node({ x: x2, y: tipY }),
+        node({ x: outer.x + inward * tipWidth, y: tipY }),
         node({ x: x2, y: beak.bar.from }),
       ];
       /*
-       * On a face with soft tips, both corners at the bar's tip turned on a
-       * radius as a serif's are: the share of half the bar's width the face
-       * asks for, and never more than most of half its length. Six nodes
-       * rather than four, for the face rather than for the weight.
+       * And both corners at the bar's tip turned on a radius as a serif's
+       * are: the share of half the tip's width the face asks for, and never
+       * more than most of half its length. Six nodes rather than four, for
+       * the face rather than for the weight.
        */
-      const soft = beak.tip ?? 0;
       if (soft > 0) {
-        const radius = Math.min(soft * 0.5 * beak.bar.width, 0.45 * Math.abs(tipY - beak.bar.from));
+        const radius = Math.min(soft * 0.5 * tipWidth, 0.45 * Math.abs(tipY - beak.bar.from));
         corners = roundNodeCorner(corners, 1, radius, radius);
         corners = roundNodeCorner(corners, 3, radius, radius);
       }
@@ -3309,8 +3542,12 @@ function tear(
   pear?: Pear,
   // How far a heft moved the side the drop hangs on: see `heftLift`.
   lift: Vec2 | null = null,
+  // The stroke's ink where it thins into the drop, whose edge the neck comes back onto.
+  thinned: Flat | null = null,
 ): Contour {
-  if (pear) return pearShape(stroke, spine, at, u, n, outer, radius, bend, pull, close, pear);
+  if (pear) {
+    return pearShape(stroke, spine, at, u, n, outer, radius, bend, pull, close, pear, thinned);
+  }
   const k = 0.5523 * radius;
   const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });
   const corner = { x: at.x + outer.x, y: at.y + outer.y };
@@ -3351,6 +3588,14 @@ function tear(
   if (lift) {
     meets = { x: meets.x + lift.x, y: meets.y + lift.y };
     behind = { x: behind.x + lift.x * 0.5, y: behind.y + lift.y * 0.5 };
+  }
+  /*
+   * On a stroke thinning into its drop, onto its edge as it was drawn in, and
+   * closed back from the middle of the stroke as it now is: see `middleOf`.
+   */
+  if (thinned) {
+    meets = edgeFrom(thinned, back.point, toward);
+    behind = middleOf(back.point, toward, meets);
   }
   /*
    * A drop with no room to swell is hardly wider than the stroke, and the
@@ -3428,6 +3673,8 @@ function pearShape(
   pull: number,
   close: boolean,
   pear: Pear,
+  // The stroke's ink where it thins into the drop: see `tear`.
+  thinned: Flat | null = null,
 ): Contour {
   const { hang, turn, neck } = pear;
   const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });
@@ -3468,7 +3715,14 @@ function pearShape(
   const local = { x: -back.heading.y * way, y: back.heading.x * way };
   const toward = dot(shift, local) >= 0 ? shift : { x: -shift.x, y: -shift.y };
   const lift = pear.lift ?? { x: 0, y: 0 };
-  let meets = { x: back.point.x + toward.x + lift.x, y: back.point.y + toward.y + lift.y };
+  /*
+   * Onto the stroke's inner edge, where the heft moved it; and on a stroke
+   * thinning into its drop, onto that edge as the taper drew it in, found
+   * along the same line from the stroke's middle.
+   */
+  let meets = thinned
+    ? edgeFrom(thinned, back.point, toward)
+    : { x: back.point.x + toward.x + lift.x, y: back.point.y + toward.y + lift.y };
   /*
    * And the closing edge from the middle of the stroke as the heft left it,
    * half the lift over its spine. Left on the spine, it was laid from a point
@@ -3476,9 +3730,11 @@ function pearShape(
    * it passed under that side, leaving a sliver of the counter uninked
    * between the drop and the stroke where the neck came onto it.
    */
-  let behind = pear.lift
-    ? { x: back.point.x + lift.x * 0.5, y: back.point.y + lift.y * 0.5 }
-    : back.point;
+  let behind = thinned
+    ? middleOf(back.point, toward, meets)
+    : pear.lift
+      ? { x: back.point.x + lift.x * 0.5, y: back.point.y + lift.y * 0.5 }
+      : back.point;
   // Whether the closing edge runs back along the stroke, or is closed off short.
   let along = true;
   if (Math.hypot(meets.x - centre.x, meets.y - centre.y) < radius * 1.1) {
@@ -3527,7 +3783,28 @@ function pearShape(
   if (neck > 0) {
     const half = Math.abs(dot(outer, n));
     const run = Math.min(distance, 2 * Math.sqrt(Math.max(0, bend * half)));
-    const by = along ? (run / 3) * neck : 0;
+    /*
+     * On a stroke thinned into its drop the closing edge runs down a stroke
+     * that narrows toward its end (see `middleOf`), with little room either
+     * side of it to bow by: so its handles are sized to carry it through the
+     * stroke halfway along, as the stroke is drawn there (see
+     * `closingHandle`), rather than cutting in across the side drawn in
+     * toward it or bowing out past the outer edge.
+     */
+    const reach = thinned
+      ? closingHandle(
+          thinned,
+          spine,
+          distance,
+          way,
+          penReach(stroke.pen),
+          behind,
+          corner,
+          back.heading,
+          u,
+        )
+      : run / 3;
+    const by = along ? reach * neck : 0;
     behindOut = add(behind, back.heading, by);
     cornerIn = add(corner, u, -by);
   }

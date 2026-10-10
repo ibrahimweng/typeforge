@@ -44,7 +44,7 @@ import {
 import { MITER_LIMIT, penReach, piecesFor, reachAlong, sweep } from "../sweep";
 import { contoursIntersect } from "@/font/outline";
 import type { JoinKind, Spine, SpineArc, SpineSegment, Stroke, Terminal } from "../types";
-import { buried, seen } from "./hints";
+import { bowlEnd, buried, seen } from "./hints";
 
 /**
  * A letter, as strokes plus how it should be spaced.
@@ -2705,7 +2705,25 @@ export function pinnedTurn(
 
 export function arch(frame: Frame, fromX: number, height: number): Stroke {
   // Begun buried in the stem, its outer side rounded where it leaves it: see `buried`.
-  return ink(frame, archSpine(frame, fromX, height), buried(frame, { left: 0.6 }), frame.end);
+  return arched(
+    frame,
+    ink(frame, archSpine(frame, fromX, height), buried(frame, { left: 0.6 }), frame.end),
+  );
+}
+
+/**
+ * An arch's run with the pen turned as far further as the face asks for its
+ * shoulders (`shoulder.angle`); the run as it was where the face does not ask.
+ *
+ * A turn of the pen, not of the letter: the skeleton, its pieces and its ends
+ * are the run's own, so the arch has the same points at every weight and only
+ * where its thin and thick fall moves -- the thin carried back toward the
+ * stem it leaves, the weight round onto the shoulder.
+ */
+export function arched(frame: Frame, stroke: Stroke): Stroke {
+  const turned = frame.style.parts.shoulder.angle ?? 0;
+  if (!(turned !== 0) || !Number.isFinite(turned)) return stroke;
+  return inherit(stroke, { ...stroke, pen: { ...stroke.pen, angle: stroke.pen.angle + turned } });
 }
 
 /**
@@ -3425,8 +3443,8 @@ export function openBowl(
   return ink(
     f,
     bowlBetween(centre, halfWidth, halfHeight, 1 - f.square, f.half, from, to + carry, f.curve),
-    f.end,
-    f.end,
+    bowlEnd(f, f.end),
+    bowlEnd(f, f.end),
   );
 }
 

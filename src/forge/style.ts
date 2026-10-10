@@ -529,6 +529,16 @@ export interface Parts {
      * Left out, the arch is drawn as it always was.
      */
     rise?: number;
+    /**
+     * How much further the pen is turned for an arch, in degrees, -45 to 45:
+     * the arches of the n, m and h (and of the letters drawn from them) drawn
+     * with the pen at its own angle plus this, so the arch leaves the stem
+     * thinner and carries its weight further round onto the shoulder, as a
+     * broad nib held steeper for the arches does. The stems, and the r's arm,
+     * which is heavy where it leaves its stem, keep the face's own pen. Left
+     * out, or nought, an arch is drawn with the face's pen.
+     */
+    angle?: number;
   };
   bowl: {
     /**
@@ -568,6 +578,15 @@ export interface Parts {
      */
     oval?: boolean;
     /**
+     * How much of the taper (`terminal.taper`) the ends of an open bowl give
+     * back, nought to one: at one the tail of a c and the foot of a C are cut
+     * as wide as the pen leaves them, the bowl's end standing blunt, while
+     * the hooks and tails of the other letters -- a t's, the foot of an a --
+     * still thin as they stop. Left out, or nought, a bowl's ends taper as
+     * every other end does.
+     */
+    blunt?: number;
+    /**
      * How flat the tail of a c and an e runs, nought to 1.5: its foot laid
      * again on a circle `1 + tail` times as large, tangent where it leaves
      * the bottom. Left out, the tail is the bowl's own.
@@ -584,6 +603,14 @@ export interface Parts {
      * positive to the right, -45 to 45. Read only where `heft` is above nought.
      */
     heftTilt?: number;
+    /**
+     * How far a bowl's heft fades toward the stem it stands against, nought
+     * to one: at one the bowl of a b, d, p or q meets its stem as the pen
+     * drew it and takes its whole heft only at its far side, so the joins
+     * stay light where a written bowl leaves the stem thin. Read only where
+     * `heft` is above nought; left out, or nought, the whole bowl takes it.
+     */
+    heftFade?: number;
   };
   corner: {
     /**
@@ -619,6 +646,15 @@ export interface Parts {
      * inner side drawn in toward the outer so the stroke thins as it stops.
      */
     taper?: number;
+    /**
+     * How far a stroke thins into its drop, nought to 0.85: the end's inner
+     * side drawn in as `taper` draws a seen curved end's, so the drop need
+     * cover only what is left of the end and may be smaller than the stroke
+     * is wide -- a small ball on a stroke that narrows to it, where a drop is
+     * otherwise never less than the stroke's own half width. Left out, or
+     * nought, a drop is hung on the stroke as the pen drew it.
+     */
+    dropTaper?: number;
     /** The drop's size, -0.3 to 0.6: its radius times one more than this. */
     dropSize?: number;
     /** How far the ball of a drop is carried along its axis, nought to 1.5, in its own radii. */

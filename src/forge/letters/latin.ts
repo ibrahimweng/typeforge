@@ -15,6 +15,7 @@ import { lowerLobe, stemArchedInto } from "./greek";
 import {
   arch,
   archSpine,
+  arched,
   arm,
   at,
   belly,
@@ -535,24 +536,28 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const radius = hooks ? room : f.least;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-      ink(
+      // With the pen the face's arches take: see `arched`.
+      arched(
         f,
-        chain(leg, {
-          segments: [
-            {
-              kind: "arc",
-              centre: at(landing - radius, spineEnd(leg).y),
-              radius,
-              startAngle: deg(0),
-              endAngle: deg(hooks ? -95 : 0),
-              sweepPositive: false,
-              pieces: 2,
-            },
-          ],
-          closed: false,
-        }),
-        BUTT,
-        f.end,
+        ink(
+          f,
+          chain(leg, {
+            segments: [
+              {
+                kind: "arc",
+                centre: at(landing - radius, spineEnd(leg).y),
+                radius,
+                startAngle: deg(0),
+                endAngle: deg(hooks ? -95 : 0),
+                sweepPositive: false,
+                pieces: 2,
+              },
+            ],
+            closed: false,
+          }),
+          BUTT,
+          f.end,
+        ),
       ),
     ]);
   },

@@ -10,7 +10,7 @@ import type { Vec2 } from "@/font/types";
 import { spineStart } from "../shapes";
 import { blackness, type Style } from "../style";
 import type { Terminal } from "../types";
-import { buried, heftable } from "./hints";
+import { buried, heftable, stemmed } from "./hints";
 import {
   veeStroke,
   type Frame,
@@ -145,7 +145,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
-        ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
+        stemmed(f, ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)), -1),
       ],
       true,
     );
@@ -174,7 +174,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
      */
     return {
       ...finish(f, [
-        ink(f, ring(f, centre, f.bowl, f.bowlH)),
+        stemmed(f, ink(f, ring(f, centre, f.bowl, f.bowlH)), 1),
         ink(f, straight(at(stem, 0), at(stem, f.asc)), f.end, f.end),
       ]),
       air: 0.95,
@@ -530,7 +530,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       f,
       [
         ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
-        ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)),
+        stemmed(f, ink(f, ring(f, at(stem + f.bowl, f.x / 2), f.bowl, f.bowlH)), -1),
       ],
       true,
     );
@@ -541,7 +541,7 @@ export const LOWERCASE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const centre = at(f.edge + f.bowl, f.x / 2);
     const stem = centre.x + f.bowl;
     return finish(f, [
-      ink(f, ring(f, centre, f.bowl, f.bowlH)),
+      stemmed(f, ink(f, ring(f, centre, f.bowl, f.bowlH)), 1),
       ink(f, straight(at(stem, f.desc), at(stem, f.x)), f.end, f.end),
     ]);
   },
