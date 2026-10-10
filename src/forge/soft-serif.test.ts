@@ -59,10 +59,10 @@ const OWN = Object.entries({
 
 /** The fields that are the soft finishes, by where they live. */
 const FINISHES: Record<string, string[]> = {
-  slab: ["tip", "swell"],
-  shoulder: ["rise"],
-  bowl: ["tail", "heft", "heftTilt"],
-  terminal: ["soft", "taper", "dropSize", "dropHang", "dropCurl", "dropNeck"],
+  slab: ["tip", "swell", "headKeep", "headDepth"],
+  shoulder: ["rise", "armRise", "angle"],
+  bowl: ["tail", "heft", "heftTilt", "heftFade", "blunt"],
+  terminal: ["soft", "taper", "dropSize", "dropHang", "dropCurl", "dropNeck", "dropTaper"],
   corner: ["fillet"],
 };
 
@@ -76,6 +76,8 @@ function unfinished(style: Style): Style {
   }
   const metrics = { ...style.metrics } as unknown as Record<string, unknown>;
   delete metrics.dotScale;
+  delete metrics.middleArm;
+  delete metrics.heldPen;
   return {
     ...style,
     parts: parts as unknown as Style["parts"],
