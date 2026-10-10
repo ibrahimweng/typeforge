@@ -14,6 +14,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { ready } from "@/font/boolean";
+import { contoursIntersect } from "@/font/outline";
 import { drawLetter } from "./build";
 import { formOf, startFrom } from "./document";
 import { readyToShape } from "./layers";
@@ -21,6 +22,7 @@ import { frame } from "./letters/common";
 import { sDidone, textSerif } from "./letters/humanist";
 import { SOFT_SERIF } from "./starts";
 import { BASES, SERIF, type Style } from "./style";
+import { FOLD_WEIGHTS, foldSweep } from "./testing/fold-sweep";
 
 beforeAll(async () => {
   await ready();
@@ -97,5 +99,33 @@ describe("the Serif's s, S and dollar", () => {
     }
     // The field is the one switch: set, the letters are drawn the held way.
     expect(moved.length).toBeGreaterThan(0);
+  });
+});
+
+describe("the pen read as held, folding nothing", () => {
+  it("folds no letter it reaches on the faces the controls are driven on", () => {
+    expect(foldSweep("metrics.heldPen", [true], ["s", "S", "dollar", "g"])).toEqual([]);
+  });
+
+  it("folds none of them on the Serif at a broad nib's contrasts and angles", () => {
+    const folds: string[] = [];
+    for (const [contrast, angle] of [
+      [0.7, 18],
+      [0.75, 18],
+      [0.85, 8],
+      [0.7, -15],
+      [0.65, 30],
+    ]) {
+      for (const weight of FOLD_WEIGHTS) {
+        const style = held(onPen({ ...SERIF, pen: { ...SERIF.pen, weight } }, contrast, angle));
+        for (const name of ["s", "S", "dollar", "g"]) {
+          const form = formOf(startFrom(SERIF), name) || undefined;
+          const drawn = drawLetter(name, style, form)!;
+          if (drawn.contours.some((contour) => contoursIntersect([contour])))
+            folds.push(`${name} at ${contrast}/${angle}, weight ${weight}`);
+        }
+      }
+    }
+    expect(folds).toEqual([]);
   });
 });
