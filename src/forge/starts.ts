@@ -64,6 +64,7 @@ export const SOFT_SERIF: Style = {
     capitalSpacing: 1.5,
     dotScale: 1.195,
     middleArm: 0.69,
+    heldPen: true,
     proportions: {
       ...SERIF.metrics.proportions,
       f: 1.108,
