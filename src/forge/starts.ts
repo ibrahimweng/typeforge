@@ -38,8 +38,17 @@ import { SERIF, type Family, type Style } from "./style";
  *
  * The letter widths, the drops' size and hang, the bowls' heft and aperture,
  * the serifs' depth, the arches' reach, the bars' weight and the dot were then
- * tuned against the text it was drawn to match, a value at a time, keeping a
- * value only where the whole line matched better and no letter much worse.
+ * tuned against the text it was drawn to match, a value at a time (and, where
+ * no single value helped any more, a few at once), keeping a change only where
+ * the whole line matched better and no letter much worse.
+ *
+ * And then its spacing, against the same text set in the face's own advances
+ * and kerning: the sidebearing, and the sides of the letters in that text
+ * (`metrics.sides`, multiples of the sidebearing as the Serif's own table
+ * is), set until each pair stood as far apart as the reference's -- the
+ * Serif's spacing, taken from Lora, ran the lines three to four per cent long
+ * -- and never so that two letters that stood clear of each other came within
+ * a hundredth of an em, nor any that stood nearer came nearer still.
  */
 export const SOFT_SERIF: Style = {
   ...SERIF,
@@ -48,7 +57,12 @@ export const SOFT_SERIF: Style = {
   pen: { ...SERIF.pen, weight: 84, contrast: 0.7, angle: 18 },
   metrics: {
     ...SERIF.metrics,
-    dotScale: 1.17,
+    ascender: 761,
+    descender: -258,
+    overshoot: 15.25,
+    sidebearing: 32,
+    capitalSpacing: 1.5,
+    dotScale: 1.195,
     middleArm: 0.69,
     proportions: {
       ...SERIF.metrics.proportions,
@@ -56,13 +70,28 @@ export const SOFT_SERIF: Style = {
       h: 0.958,
       m: 0.957,
       n: 0.9565,
-      t: 1.09,
-      E: 1.154,
-      y: 1.25,
-      c: 0.86,
+      t: 1.075,
+      E: 1.1615,
+      y: 1.28,
+      c: 0.89,
       p: 0.886,
-      r: 0.79,
-      s: 0.965,
+      r: 0.76,
+      s: 0.935,
+    },
+    sides: {
+      ...SERIF.metrics.sides,
+      a: [1, 0.39],
+      e: [1.19, 1.05],
+      f: [0.94, -0.14],
+      h: [0.96, 0.48],
+      i: [1.06, 0.57],
+      m: [1.16, 0.54],
+      n: [1.065, 0.88],
+      p: [0.45, 1.64],
+      r: [0.96, 0.46],
+      s: [1.58, 1.21],
+      t: [0.22, 0.32],
+      E: [1.22, 1.02],
     },
   },
   parts: {
@@ -70,10 +99,10 @@ export const SOFT_SERIF: Style = {
     slab: {
       ...SERIF.parts.slab,
       projection: 0.85,
-      thickness: 0.45,
-      bracket: 0.7,
+      thickness: 0.55,
+      bracket: 0.65,
       tip: 1,
-      swell: 0.3,
+      swell: 0.25,
       headKeep: true,
       headDepth: 0.5,
     },
@@ -88,23 +117,23 @@ export const SOFT_SERIF: Style = {
     bowl: {
       ...SERIF.parts.bowl,
       aperture: 0.9,
-      tail: 0.8,
-      heft: 0.16,
+      tail: 0.675,
+      heft: 0.17,
       heftFade: 1,
       blunt: 1,
     },
     terminal: {
       ...SERIF.parts.terminal,
       soft: 0.3,
-      taper: 0.5,
+      taper: 0.45,
       dropTaper: 0.7,
-      dropSize: 0.05,
+      dropSize: 0.025,
       dropHang: 0.1,
       dropCurl: 0.6,
       dropNeck: 1,
     },
-    corner: { ...SERIF.parts.corner, fillet: 0.35 },
-    crossbar: { ...SERIF.parts.crossbar, weight: 1.05 },
+    corner: { ...SERIF.parts.corner, fillet: 0.425 },
+    crossbar: { ...SERIF.parts.crossbar, weight: 1.05, height: 0.5125 },
   },
   forms: {
     ...SERIF.forms,

@@ -78,7 +78,7 @@ export const CURLED_BOWL_LIGHT = 0.4;
 export const CURLED_TUCK = 0;
 
 /** The radius the foot curls up through, in stems, at a text weight. */
-export const CURLED_FOOT = 0.7;
+export const CURLED_FOOT = 0.65;
 
 /**
  * How much of that radius a heavy weight gives up, by a heaviness of one,
@@ -235,12 +235,15 @@ export function curledA(style: Style): Recipe {
 // ---------------------------------------------------------------------------
 
 /**
- * How much larger the swung tail's turn is than the hooked y's: a little,
- * so it runs out lower and longer under the line. At half as large again
- * the knee rose and the tail bent through a wide, shallow curve with none
- * of the reference's run along the bottom.
+ * How much larger the swung tail's turn is than the hooked y's: no larger,
+ * at a text weight, where the tail runs out longer under the line by turning
+ * on past the bottom (`SWUNG_END`) and carrying its pear; a heavy weight's
+ * turn is held wider by `SWUNG_LEAST`. Tuned against the reference: a tenth
+ * larger ran the tail out wide of the reference's, and at half as large
+ * again the knee rose and the tail bent through a wide, shallow curve with
+ * none of the reference's run along the bottom.
  */
-export const SWUNG_HOOK = 1.1;
+export const SWUNG_HOOK = 1;
 
 /**
  * The least radius the swung tail is asked to turn through, in half pens,
@@ -275,10 +278,10 @@ export const SWUNG_HANG = 2.5;
 export const SWUNG_SIZE = 1.1;
 
 /**
- * The y of a soft text face: the hooked y's vee, with its tail turning
- * through a wider curve, running out along the bottom and stopping heading
- * left, where a pear on a face that hangs them is carried on out level
- * under the letter before.
+ * The y of a soft text face: the hooked y's vee, with its tail turning on
+ * past the bottom (through a wider curve at a heavy weight), running out
+ * along the bottom and stopping heading left, where a pear on a face that
+ * hangs them is carried on out level under the letter before.
  *
  * The tail keeps the hooked y's construction -- one straight run and then
  * only turns -- so a face that thins its rising arms still finds it (see
@@ -358,13 +361,13 @@ export function swungY(style: Style): Recipe {
  * f's: a little short of it, so the side that stops in the stem's ink, its
  * join rounded, is still the shorter one.
  */
-export const TUCKED_LEFT = 0.95;
+export const TUCKED_LEFT = 0.9625;
 
 /** How far the tucked f's bar reaches out to the right of its stem, against the plain f's. */
 export const TUCKED_RIGHT = 1.1;
 
 /** How much heavier the tucked f's bar is than the face's crossbars. */
-export const TUCKED_BAR = 1.25;
+export const TUCKED_BAR = 1.2;
 
 /**
  * How far under the x-height the tucked f's bar hangs its top, in its own
@@ -538,23 +541,23 @@ function turnedAbout(stroke: Stroke, about: Vec2, radians: number): Stroke {
 // ---------------------------------------------------------------------------
 
 /** How far the belted a's bowl is turned anticlockwise about its centre, in degrees, at a text weight. */
-export const BELTED_TILT = 25;
+export const BELTED_TILT = 25.75;
 
 /** How much of that turn a heavy weight gives up, by a heaviness of one: as the curled a's. */
 export const BELTED_TILT_EASE = 0.5;
 
 /** Where the top of the belted a's bowl stands, in x-heights, before it is turned. */
-export const BELTED_BOWL_TOP = 0.415;
+export const BELTED_BOWL_TOP = 0.405;
 
 /** How much wider than tall the belted a's bowl is drawn, before it is turned. */
-export const BELTED_BOWL_WIDE = 1.4875;
+export const BELTED_BOWL_WIDE = 1.5375;
 
 /**
  * Where on its bowl the belt leaves the stem, in degrees round the bowl
  * before it is turned: short of its top, so turned it leaves the stem running
  * nearly level, the pen's thin way, as a hairline.
  */
-export const BELTED_LEAVES = 55;
+export const BELTED_LEAVES = 56.25;
 
 /**
  * Where on its bowl the belt comes back into the stem, in degrees round the
@@ -575,7 +578,7 @@ export const BELTED_REACH = 1.5;
  * weight, easing to as heavy by a Bold: drawn as one stroke the bowl's heavy
  * side is its own, where the curled a's ring shares the stem's.
  */
-export const BELTED_HEAVIER = 1.12;
+export const BELTED_HEAVIER = 1.1425;
 
 /**
  * The two-storey a of a soft text face with its bowl drawn as one open
@@ -750,10 +753,10 @@ function movedRun(spine: Spine, dx: number, dy: number): Spine {
 export const WIDE_UPRIGHT = 0.25;
 
 /** How heavy the wide-eyed e's bar is against the face's crossbars. */
-export const WIDE_BAR = 0.8;
+export const WIDE_BAR = 0.75;
 
 /** How heavy the wide-eyed e's pen is against the face's. */
-export const WIDE_WEIGHT = 0.96;
+export const WIDE_WEIGHT = 0.9225;
 
 /** How much wider the wide-eyed e is drawn than the face's own e. */
 export const WIDE_WIDTH = 1.03;
