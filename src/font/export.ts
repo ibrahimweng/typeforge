@@ -41,7 +41,7 @@ import {
   type Instance,
   type Master,
 } from "./variable";
-import { buildGposTable, type ResolvedClassKern, type ResolvedPair } from "./kern";
+import { buildGposTable, KerningTooLarge, type ResolvedClassKern, type ResolvedPair } from "./kern";
 import { featuresMatchSource } from "./features";
 import { buildGsubTable, type ChainRule, type GlyphSet, type Ligature } from "./gsub";
 import {
@@ -1075,6 +1075,14 @@ function applyAlternates(
 export const KEPT_FEATURES =
   "The font's own ligatures and alternates were kept as they arrived. Nothing here changed them.";
 
+/**
+ * Said when the kerning on screen is more than a GPOS table can hold.
+ *
+ * The start of the note; what was done instead follows it.
+ */
+export const KERNING_TOO_LARGE =
+  "The kerning on screen is more than a font's positioning table can address, so it is not in the file.";
+
 /** Notes that report what happened rather than anything to act on. */
 export const NEUTRAL_NOTES: ReadonlySet<string> = new Set([KEPT_FEATURES]);
 
@@ -1158,7 +1166,28 @@ function applyKerning(
    */
   tables.delete("kern");
 
-  const gpos = buildGposTable(pairs, classKerns);
+  let gpos: Uint8Array | null;
+  try {
+    gpos = buildGposTable(pairs, classKerns);
+  } catch (error) {
+    /*
+     * Kerning no GPOS can address: thousands of lookups, or thousands of
+     * subtables in one, more than the table's sixteen-bit lists reach. The
+     * writer refuses it rather than write offsets that wrap, and the file goes
+     * out without it rather than not at all -- the trade `replaceKerning`
+     * makes when it cannot merge. A preserving export keeps the file's own
+     * table as it arrived. Anything else thrown is a fault, and stops the
+     * export as it always did.
+     */
+    if (!(error instanceof KerningTooLarge)) throw error;
+    notes.push(
+      tables.has("GPOS")
+        ? `${KERNING_TOO_LARGE} The source font's positioning table was kept as it arrived: ` +
+            "the kerning in the file is the kerning the font came with."
+        : `${KERNING_TOO_LARGE} The file was written without kerning.`,
+    );
+    return;
+  }
   /*
    * Into the font's own GPOS when it has one, rather than over the top of it.
    *
