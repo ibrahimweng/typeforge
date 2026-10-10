@@ -8,6 +8,7 @@ import type { Spine, Stroke } from "../types";
 import { buried } from "./hints";
 import { curledA, swungY, tuckedF } from "./soft";
 import { beakedS, beltedA, wedgedT, wideE } from "./soft";
+import { drawnOE } from "./latin";
 import {
   grotesqueA,
   grotesqueAt,
@@ -2185,6 +2186,33 @@ const SOFT_MORE: Array<[LetterName, string, string, string, (style: Style) => Re
     "Solid flag",
     "Under one solid wedge from the bar's tip to the top of the stem, a little shorter, its tail flicking up.",
     wedgedT,
+  ],
+  /*
+   * The S and the dollar with the s's beaks: the old-style S's head and foot
+   * running on into beaks of their own, and the dollar its stubs through that
+   * S. The dollar draws the S in its own form (see `loraDollar`), and takes the
+   * S's choice of form, so the two are chosen together.
+   */
+  [
+    "S",
+    "beaked",
+    "Soft beaks",
+    "The old-style S with its head and foot turning on over into short beaks of their own.",
+    (style) => beakedS(style, humanistCapitalS),
+  ],
+  [
+    "dollar",
+    "beaked",
+    "Soft beaks",
+    "Its S with soft beaks of its own, a long stub out of its top and one out of its foot.",
+    humanistDollar,
+  ],
+  [
+    "oe",
+    "joined",
+    "One wall",
+    "The o and the e sharing one wall where they meet, never crossing far enough to leave room between.",
+    (style) => drawnOE(style, true),
   ],
 ];
 for (const [name, id, label, hint, build] of SOFT_MORE) {

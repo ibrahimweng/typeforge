@@ -2315,6 +2315,20 @@ export function humanistAmpersand(style: Style): Recipe {
   const turnAt = at(knee.x + foot * Math.cos((40 * Math.PI) / 180), line + foot);
   const heel = at(turnAt.x, line);
   const reach = f.half + (f.end.projection ?? f.half * 0.6);
+  // Reaching back less far at a Black, over a counter that has closed up
+  // under it: carried its full length, its end stood into the bowl's.
+  const asked = armTop.x - reach * (1 - 1.5 * (1 - share));
+  /*
+   * Its ends seen, where the face softens a seen cut, as the face's other
+   * bars' are -- and then the end reaching back held clear of the diagonal,
+   * so it is seen. Carried back over the diagonal on a face with a soft
+   * serif's longer reach, it closed a triangle of paper between the
+   * diagonal, the arm and itself, a pinhole under the bar. Everywhere else
+   * it reaches as far as it always has.
+   */
+  const barEnd = seen(f, BUTT);
+  const barLeft =
+    barEnd === BUTT ? asked : clearOfDiagonal(f, asked, head, from, knee, share, armTop.x);
   return finish(f, [
     lighter(
       ink(
@@ -2360,19 +2374,56 @@ export function humanistAmpersand(style: Style): Recipe {
       ),
       share,
     ),
-    // Reaching back less far at a Black, over a counter that has closed up
-    // under it: carried its full length, its end stood into the bowl's.
-    ink(
-      f,
-      straight(
-        at(armTop.x - reach * (1 - 1.5 * (1 - share)), head),
-        at(armTop.x + reach * 1.1, head),
-      ),
-      BUTT,
-      BUTT,
-    ),
+    ink(f, straight(at(barLeft, head), at(armTop.x + reach * 1.1, head)), barEnd, barEnd),
   ]);
 }
+
+/**
+ * Where the ampersand's bar, at `head`, may start on the left: where it was
+ * asked to, or where its lower corner stands right of the diagonal's upper
+ * edge by `AMP_CLEAR` of a half pen -- measured along the bar's lower edge,
+ * since the diagonal leans back as it rises and that is where the two come
+ * nearest -- and never further right than just inside the arm it stands
+ * on. Only ever moved right, so a bar already clear is left where it was.
+ *
+ * Where the diagonal and the arm leave no room between them for that gap, a
+ * heavy weight's, the corner stops just inside the arm, `AMP_INSIDE` of a
+ * half pen, and the gap under the bar is the diagonal's and the arm's own.
+ * Stopped on the arm's edge itself, its corner met the point where the
+ * diagonal crosses the arm, and the two left a speck of a counter there.
+ */
+function clearOfDiagonal(
+  f: ReturnType<typeof frame>,
+  asked: number,
+  head: number,
+  from: Vec2,
+  knee: Vec2,
+  share: number,
+  arm: number,
+): number {
+  const run = Math.hypot(knee.x - from.x, knee.y - from.y);
+  if (run < 1e-9 || knee.y >= from.y) return asked;
+  const way = at((knee.x - from.x) / run, (knee.y - from.y) / run);
+  // The diagonal and the arm are drawn as light as the loop and the bowl.
+  const light = penReach({ ...f.style.pen, weight: f.style.pen.weight * share });
+  // The diagonal's upper edge: off its spine to the right of a line falling to the right.
+  const off = reachAlong(at(-way.y, way.x), light);
+  const edge = off.x > 0 ? off : at(-off.x, -off.y);
+  // The bar's lower edge, and its lower left corner off the end's middle.
+  const lower = reachAlong(at(0, -1), penReach(f.style.pen));
+  const y = head + lower.y;
+  const across = from.x + edge.x + ((y - from.y - edge.y) / way.y) * way.x;
+  // The arm's left edge, where it stands under the bar.
+  const armLeft = arm - Math.abs(reachAlong(at(1, 0), light).x);
+  const corner = Math.min(across + f.half * AMP_CLEAR, armLeft + f.half * AMP_INSIDE);
+  return Math.max(asked, corner - lower.x);
+}
+
+/** How far the ampersand's bar stops clear of its diagonal, in half pens, where it must: see `clearOfDiagonal`. */
+const AMP_CLEAR = 0.5;
+
+/** And how far inside the arm its corner stops where there is no room for that. */
+const AMP_INSIDE = 0.15;
 
 /** Where the ampersand's arm leaves its bowl, in degrees round from the right. */
 const ARM_LEAVES = -10;

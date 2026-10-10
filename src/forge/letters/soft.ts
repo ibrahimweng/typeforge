@@ -215,6 +215,24 @@ export function curledA(style: Style): Recipe {
     CURLED_END -
     CURLED_END_EASE * Math.min(1, heavy) -
     CURLED_END_EASE * 0.5 * Math.min(1, Math.max(0, heavy - 1) * 2);
+  if (ashen) {
+    // In an ash, the foot left off and the stem stopped in the bowl's
+    // side, at its middle (the ring is drawn about the origin): see `beltedA`.
+    const middle = f.dip(0) - box.yMin;
+    const bottom = Math.min(Math.max(middle, ashFloor(f)), crown - f.half * 0.5);
+    return finish(f, [
+      bowlStroke,
+      ink(
+        f,
+        chain(
+          straight(at(stem, bottom), at(stem, crown)),
+          inPieces(turn(at(stem - over, crown), over, 0, end), 2),
+        ),
+        BUTT,
+        f.end,
+      ),
+    ]);
+  }
   return finish(f, [
     bowlStroke,
     ink(
@@ -685,6 +703,24 @@ export function beltedA(style: Style): Recipe {
     CURLED_END -
     CURLED_END_EASE * Math.min(1, heavy) -
     CURLED_END_EASE * 0.5 * Math.min(1, Math.max(0, heavy - 1) * 2);
+  const arch = inPieces(turn(at(stem - over, crown), over, 0, end), 2);
+  if (ashen) {
+    /*
+     * In an ash the e's bowl stands where the foot would curl, and the foot
+     * is left off: the stem comes down only as far as it takes to bury the
+     * belt's end, stopping inside the e's bowl, which carries the letter on
+     * round to the line. Curled on under it, the foot stood out of the
+     * bottom of the e's bowl as a lump on the line.
+     */
+    const joined = at(to.x + joins.x * on, to.y + joins.y * on);
+    const low = Math.abs(reachAlong(at(-joins.y, joins.x), penReach(beltPen)).y);
+    const under = joined.y - low - f.half * 0.2;
+    const bottom = Math.min(Math.max(under, ashFloor(f)), crown - f.half * 0.5);
+    return finish(f, [
+      bowlStroke,
+      ink(f, chain(straight(at(stem, bottom), at(stem, crown)), arch), BUTT, f.end),
+    ]);
+  }
   return finish(f, [
     bowlStroke,
     ink(
@@ -692,12 +728,38 @@ export function beltedA(style: Style): Recipe {
       chain(
         inPieces(turn(at(stem + rf, foot), rf, footFrom, 180), 2),
         straight(at(stem, foot), at(stem, crown)),
-        inPieces(turn(at(stem - over, crown), over, 0, end), 2),
+        arch,
       ),
       f.end,
       f.end,
     ),
   ]);
+}
+
+/**
+ * The lowest an ash's a stops its stem: where the corners of its cut, which
+ * an angled pen slopes, stay over the line's dip.
+ */
+function ashFloor(f: ReturnType<typeof frame>): number {
+  return f.dip(0) + Math.abs(reachAlong(at(-1, 0), penReach(f.style.pen)).y);
+}
+
+/** Whether the a being drawn is an ash's: see `inAsh`. */
+let ashen = false;
+
+/**
+ * Draws the a as an ash draws it, beside the e it shares its stem with: the
+ * belted a leaves its foot off there (see `beltedA`). Every other a, and
+ * every other letter, is drawn as it is anywhere else.
+ */
+export function inAsh<T>(draw: () => T): T {
+  const was = ashen;
+  ashen = true;
+  try {
+    return draw();
+  } finally {
+    ashen = was;
+  }
 }
 
 /**
@@ -762,11 +824,26 @@ export const WIDE_WEIGHT = 0.9225;
 export const WIDE_WIDTH = 1.03;
 
 /**
+ * The least the wide-eyed e's bar stands, top to bottom, against the face's
+ * hairline: the depth the face's own pen draws a level stroke at, the depth
+ * of the o's crown and the H's bar.
+ *
+ * Asked only as light as `WIDE_BAR` of a crossbar on the e's lighter, more
+ * upright pen, the Soft Serif's bar stood 21 units deep where its o's crown
+ * is 28 and its H's bar 32 -- the lightest stroke in the face, and at 11 and
+ * 12 pixels on a screen of one pixel to the point it fell out of the letter
+ * altogether, and the e read as a c. Never lighter than the face's own
+ * hairline, it stays in the letter wherever the face's hairlines do.
+ */
+export const WIDE_BAR_LEAST = 1;
+
+/**
  * The e of a soft text face: the old-style e (`humanistE`, handed in as
  * `drawE`) written with its pen held nearer the upright, a little lighter and
  * a little wider, and with a lighter bar, so its eye opens wider -- light
  * along the bar and over the top, its right side no heavier than a stem --
- * and its weight sits in its sides.
+ * and its weight sits in its sides. The bar is never lighter than the face's
+ * hairline (`WIDE_BAR_LEAST`).
  *
  * The whole letter is drawn with that pen and that bar, not changed after,
  * so the bar still meets the bowl along the bowl's own edge and the bowl's
@@ -774,13 +851,30 @@ export const WIDE_WIDTH = 1.03;
  */
 export function wideE(style: Style, drawE: (style: Style) => Recipe): Recipe {
   const { pen, parts, metrics } = style;
+  const upright = {
+    ...pen,
+    weight: pen.weight * WIDE_WEIGHT,
+    angle: pen.angle * (1 - WIDE_UPRIGHT),
+  };
+  /*
+   * How deep a level stroke stands, per share of its own pen's weight: the
+   * face's hairline on its own pen, and the bar's on the e's. Both are the
+   * pen's reach straight up, so the share that stands as deep as the
+   * hairline is their ratio, at every weight.
+   */
+  const deep = (one: typeof pen) => Math.abs(reachAlong(at(0, 1), penReach(one)).y);
+  const hairline = deep(pen) * WIDE_BAR_LEAST;
+  const least = deep(upright) > 0 ? hairline / deep(upright) : 0;
   return drawE({
     ...style,
-    pen: { ...pen, weight: pen.weight * WIDE_WEIGHT, angle: pen.angle * (1 - WIDE_UPRIGHT) },
+    pen: upright,
     metrics: { ...metrics, width: metrics.width * WIDE_WIDTH },
     parts: {
       ...parts,
-      crossbar: { ...parts.crossbar, weight: parts.crossbar.weight * WIDE_BAR },
+      crossbar: {
+        ...parts.crossbar,
+        weight: Math.max(parts.crossbar.weight * WIDE_BAR, least),
+      },
     },
   });
 }
@@ -911,22 +1005,40 @@ export const WEDGED_TAIL_WIDE = 0.9;
 export const WEDGED_BAR = 1.35;
 
 /**
+ * The furthest the wedge reaches back along the bar from the stem's left
+ * side, in the stem's own widths: at a text weight further than the bar
+ * does, so the wedge runs out to the bar's tip, and at a light one less, so
+ * the wedge is drawn with the pen rather than at one size for every pen.
+ * Run out to the bar's tip at every weight, the Thin's wedge was the same
+ * solid flag as the Regular's on a stem a third as heavy.
+ */
+export const WEDGED_REACH = 1.1;
+
+/**
  * The t of a soft text face, under one solid wedge: the old-style t's stem
  * and bar, a little shorter, its tail flicking up further, and its flag a
- * straight stroke from the bar's left tip to the stem's top whose outside is
- * the one line the head is cut along -- the stem's own top sloping down the
- * same line -- and which is heavy enough to fill the corner between the bar
- * and the stem, so the head is solid where the old-style flag, bowed over
- * that corner, left a triangle of paper in it.
+ * straight stroke from the bar to the stem's top whose outside is the one
+ * line the head is cut along -- the stem's own top sloping down the same
+ * line -- and which is heavy enough to fill the corner between the bar and
+ * the stem, so the head is solid where the old-style flag, bowed over that
+ * corner, left a triangle of paper in it.
+ *
+ * The line runs from the bar's foot at its left tip -- or at a light weight
+ * further in, no more than `WEDGED_REACH` of the stem's width from the
+ * stem, the bar running on out past the wedge -- to the stem's top right
+ * corner. The wedge's tip and that corner are rounded as the face rounds a
+ * seen cut's corners.
  *
  * The flag is laid off that line by half its own width, so its outside edge
- * runs through the bar's tip and the stem's top right corner exactly. It is
- * cut level along the bar's foot, and upright just inside the stem's right
- * side, where its corners stand one over the other in the stem's ink however
- * wide it has to be -- a Thin's stem is far narrower than the corner it
- * fills -- so neither of its ends is seen. The bar starts under the flag,
- * where the line crosses its top. Every size here is arithmetic on the
- * frame, so the letter keeps its points at every weight.
+ * runs along it exactly. It is cut level along the bar's foot, and upright
+ * inside the stem, short of the corner by as much as the corner's rounding
+ * takes off the line, where its corners stand one over the other in the
+ * stem's ink however wide it has to be -- a Thin's stem is far narrower than
+ * the corner it fills -- so its end is never seen. The bar starts where the
+ * line crosses its top when the wedge reaches its tip, under the flag, and
+ * keeps that much of itself beyond the line where the wedge stops short.
+ * Every size here is arithmetic on the frame, so the letter keeps its points
+ * at every weight.
  */
 export function wedgedT(style: Style): Recipe {
   const f = frame(style);
@@ -950,12 +1062,16 @@ export function wedgedT(style: Style): Recipe {
   const foot = barY - barHalf;
   const barTop = barY + barHalf;
   /*
-   * The line the head is cut along: from the bar's foot at its left tip to
-   * the stem's top right corner. `along` runs up it, `inward` off it into
-   * the letter.
+   * Where the wedge leaves the bar: its tip, or no further from the stem
+   * than `WEDGED_REACH` of the stem's width.
+   */
+  const from = Math.max(barLeft, stemLeft - (stemRight - stemLeft) * WEDGED_REACH);
+  /*
+   * The line the head is cut along: from the bar's foot there to the stem's
+   * top right corner. `along` runs up it, `inward` off it into the letter.
    */
   const rise = Math.max(top - foot, f.least);
-  const run = Math.max(stemRight - barLeft, f.least);
+  const run = Math.max(stemRight - from, f.least);
   const length = Math.hypot(run, rise);
   const along = at(run / length, rise / length);
   const inward = at(along.y, -along.x);
@@ -963,13 +1079,47 @@ export function wedgedT(style: Style): Recipe {
   // The stem's top falls along it, from its right corner to its left side.
   const sink = (stemRight - stemLeft) * tan;
   /*
-   * The flag as wide across as it takes to cover the corner where the bar's
-   * top meets the stem's left side, and to stand over the bar's end under
-   * the line.
+   * The tips as round as the face rounds a seen cut's corners
+   * (`terminal.soft`, a share of the end's full width): the wedge's, as the
+   * bar's own end would be, and the stem's top right corner, rounded here
+   * since `softened` leaves a sloped cut sharp. None on a face that does not
+   * soften its cuts.
+   */
+  const soft = f.style.parts.terminal.soft ?? 0;
+  const tipRound = soft * 2 * barHalf;
+  const apexRound = soft * 2 * stemHalf;
+  /*
+   * The bar from where the line crosses its top -- under the flag where the
+   * wedge runs out to the bar's tip -- or as far beyond the wedge as the
+   * wedge stops short of the tip, out past the stem.
    */
   const margin = f.half * 0.15;
-  const corner = (stemLeft - barLeft) * inward.x + (barTop - foot) * inward.y;
-  const wide = Math.max(corner, (barTop - foot) * along.x) + margin;
+  const under = barLeft + (barTop - foot) / tan + margin;
+  /*
+   * The flag as wide across as it takes to cover the corner where the bar's
+   * top meets the stem's left side, to stand over the bar's end under the
+   * line, and to lay its foot along the bar's past that end's rounded corner.
+   */
+  const corner = (stemLeft - from) * inward.x + (barTop - foot) * inward.y;
+  const filling = Math.max(corner, (barTop - foot) * along.x) + margin;
+  /*
+   * It stops inside the stem, short of the stem's rounded corner by as much
+   * as the rounding takes off the line -- but never so short that its level
+   * foot would run on past its upright end, which folds it.
+   */
+  const stop = Math.min(
+    Math.max(
+      stemRight - margin - (apexRound + margin) * along.x,
+      stemLeft + margin,
+      from + filling / along.y + margin,
+    ),
+    stemRight - margin,
+  );
+  // And its foot laid along the bar's past the bar's end, where it has the length for it.
+  const wide = Math.max(
+    filling,
+    Math.min(under + tipRound + margin * 2 - from, stop - margin - from) * along.y,
+  );
   /*
    * Drawn with a round nib that wide, since it is a wedge filled in rather
    * than a stroke of the pen. That also keeps it whole on a face that draws
@@ -977,11 +1127,9 @@ export function wedgedT(style: Style): Recipe {
    * a nib with no thin way has nothing to be thinned to.
    */
   const flagPen = { weight: wide, contrast: 0, angle: pen.angle };
-  // Its spine, half its width in off the line, from the bar's foot to just
-  // inside the stem's right side.
-  const off = at(barLeft + (inward.x * wide) / 2, foot + (inward.y * wide) / 2);
+  // Its spine, half its width in off the line, from the bar's foot to its stop.
+  const off = at(from + (inward.x * wide) / 2, foot + (inward.y * wide) / 2);
   const start = at(off.x + ((foot - off.y) / along.y) * along.x, foot);
-  const stop = stemRight - margin;
   const end = at(stop, off.y + ((stop - off.x) / along.x) * along.y);
   /*
    * Cut upright there: on a round nib that is the square cut turned by the
@@ -991,12 +1139,20 @@ export function wedgedT(style: Style): Recipe {
    * corners and the flag keeps its points.
    */
   const upright: Terminal = { kind: "angled", angle: (Math.atan2(rise, run) * 180) / Math.PI };
-  const inked = ink(f, straight(start, end), LEVEL, upright);
+  /*
+   * Its tip -- the outside corner of its level cut, the left of the way it
+   * runs -- rounded. Only that corner: the cut's other corner lies along the
+   * bar's foot, and rounded it left a dent there.
+   */
+  const tip: Terminal = tipRound > 0 ? { ...LEVEL, soft: { left: tipRound } } : LEVEL;
+  const inked = ink(f, straight(start, end), tip, upright);
   const flag = inherit(inked, { ...inked, pen: flagPen });
-  // The bar, from under the flag where the line crosses its top, out past the stem.
-  const under = barLeft + (barTop - foot) / tan + margin;
+  // The bar cut at both ends as a crossbar is.
   const cut: Terminal =
     f.plain.kind === "angled" || f.plain.kind === "round" ? f.plain : { ...f.plain, level: true };
+  // The stem's head, its right corner -- the left of a stem travelling down -- rounded.
+  const head: Terminal =
+    apexRound > 0 ? { ...LEVEL, sink, soft: { left: apexRound } } : { ...LEVEL, sink };
   return finish(f, [
     ink(
       f,
@@ -1004,10 +1160,10 @@ export function wedgedT(style: Style): Recipe {
         straight(at(stem, top), at(stem, f.dip(0) + radius)),
         inPieces(turn(at(stem + radius, f.dip(0) + radius), radius, 180, WEDGED_TAIL), 2),
       ),
-      seen(f, { ...LEVEL, sink }),
+      seen(f, head),
       f.end,
     ),
     flag,
-    bar(f, barShare, straight(at(under, barY), at(stem + reach, barY)), BUTT, seen(f, cut)),
+    bar(f, barShare, straight(at(under, barY), at(stem + reach, barY)), seen(f, cut), seen(f, cut)),
   ]);
 }

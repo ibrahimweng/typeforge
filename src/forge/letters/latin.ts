@@ -9,9 +9,11 @@
 import { LETTERS, recipeOf } from "../letters";
 import { movedSpine } from "../script";
 import { spineEnd, spineStart } from "../shapes";
+import { penReach, reachAlong } from "../sweep";
 import type { Style } from "../style";
 import type { Stroke } from "../types";
 import { lowerLobe, stemArchedInto } from "./greek";
+import { inAsh } from "./soft";
 import {
   arch,
   archSpine,
@@ -21,6 +23,7 @@ import {
   belly,
   lobe,
   bend,
+  bendWidth,
   borrowing,
   bowed,
   BUTT,
@@ -145,6 +148,67 @@ const OE_LEAST = 1.25;
  */
 const OE_LEAST_CONDENSED = 1.4;
 
+/**
+ * The ligature in lowercase, which is the ae with an o where the a is: the
+ * o's ring, and the e's belt and bar beside it, set half the o's width
+ * further on, so the e's side crosses into the o.
+ *
+ * Joined (`joinedOE`), the e is set no further into the o than keeps the two
+ * sides one wall: crossed further, on a light pen the room between the two
+ * sides opened into a lens, which the e's bar split into two slits.
+ */
+export function drawnOE(style: Style, joined: boolean): Recipe {
+  const f = frame(style);
+  /*
+   * And never so narrow that the first bowl's counter is under a quarter of
+   * a stem across (two fifths on a Condensed: `OE_LEAST_CONDENSED`): narrowed by the share on a narrow face at a heavy weight
+   * (the Technical's at 260), it came down to the pen's own round and the o
+   * closed to a slit.
+   */
+  const bowl = Math.max(
+    f.bowl * 0.68,
+    f.least,
+    f.half * (widthShare(f.style) < 1 ? OE_LEAST_CONDENSED : OE_LEAST),
+  );
+  const first = at(f.edge + bowl, f.x / 2);
+  const second = joined
+    ? at(first.x + joinedOE(f, bowl), f.x / 2)
+    : at(first.x + bowl * 2, f.x / 2);
+
+  const eye = eyeOf(f, second);
+  const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
+  const opens = (Math.asin(rise) * 180) / Math.PI;
+  const belt = bend(f, second, f.bowlH, opens, opens + 300);
+
+  return finish(
+    f,
+    [
+      ink(f, ring(f, first, bowl, f.bowlH)),
+      // From the middle of the wall, not its inside edge: see `wallAt`.
+      thin(f, straight(at(wallAt(f, second, opens), eye), spineStart(belt))),
+      ink(f, belt, BUTT, f.end),
+    ],
+    true,
+  );
+}
+
+/** How much of the two walls' width the joined œ lets its e's side cross into its o's: see `joinedOE`. */
+const OE_JOIN = 0.8;
+
+/**
+ * How far right of the o's centre the joined œ sets its e's: half the o's
+ * width again, as the ligature always has it, unless that crosses the e's
+ * side further into the o's than `OE_JOIN` of the two walls' width, where it
+ * stops there. Past that the two sides stand apart inside the overlap and
+ * leave a counter between them.
+ */
+function joinedOE(f: ReturnType<typeof frame>, bowl: number): number {
+  const side = bendWidth(f, f.bowlH);
+  const wall = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
+  const crossed = Math.min(side - bowl, OE_JOIN * 2 * wall);
+  return bowl + side - crossed;
+}
+
 export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // -------------------------------------------------------------------------
   // The letters that are not a letter with a mark on it
@@ -214,7 +278,8 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       metrics: { ...f.style.metrics, width: f.style.metrics.width * 0.84 },
     };
     const e = borrowedAs("e", narrow, undefined);
-    const a = borrowedAs("a", narrow, form);
+    // Drawn as an ash's a: a foot curling up out of the a would run into the e.
+    const a = inAsh(() => borrowedAs("a", narrow, form));
     // The a's stem: the rightmost upright in it.
     let stem = -Infinity;
     for (const stroke of a) {
@@ -405,38 +470,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
    * width read as two letters that have collided, and the pair has to read as
    * one letter with two counters.
    */
-  oe: (style) => {
-    const f = frame(style);
-    /*
-     * And never so narrow that the first bowl's counter is under a quarter of
-     * a stem across (two fifths on a Condensed: `OE_LEAST_CONDENSED`): narrowed by the share on a narrow face at a heavy weight
-     * (the Technical's at 260), it came down to the pen's own round and the o
-     * closed to a slit.
-     */
-    const bowl = Math.max(
-      f.bowl * 0.68,
-      f.least,
-      f.half * (widthShare(f.style) < 1 ? OE_LEAST_CONDENSED : OE_LEAST),
-    );
-    const first = at(f.edge + bowl, f.x / 2);
-    const second = at(first.x + bowl * 2, f.x / 2);
-
-    const eye = eyeOf(f, second);
-    const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
-    const opens = (Math.asin(rise) * 180) / Math.PI;
-    const belt = bend(f, second, f.bowlH, opens, opens + 300);
-
-    return finish(
-      f,
-      [
-        ink(f, ring(f, first, bowl, f.bowlH)),
-        // From the middle of the wall, not its inside edge: see `wallAt`.
-        thin(f, straight(at(wallAt(f, second, opens), eye), spineStart(belt))),
-        ink(f, belt, BUTT, f.end),
-      ],
-      true,
-    );
-  },
+  oe: (style) => drawnOE(style, false),
 
   /**
    * The Dutch digraph, which is one character and two letters.
