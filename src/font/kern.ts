@@ -237,12 +237,33 @@ const MOST_OFFSET = 0xffff;
  * is laid out so no offset comes near the limit, and this makes sure of it:
  * a table that cannot be written correctly is refused rather than written
  * wrong.
+ *
+ * The subtables are all cut to fit, so what is left to refuse is a lookup list
+ * no layout can address: lookups and their extension records coming to more
+ * than the sixteen-bit offsets reach, which takes some 3,600 lookups, or 6,500
+ * subtables in one. Splitting a lookup would change what it means -- two
+ * lookups both apply where one applied once -- so that is refused too, and
+ * the export catches the refusal.
  */
 function offset16(value: number): number {
   if (value > MOST_OFFSET) {
-    throw new RangeError(`A kerning offset of ${value} bytes does not fit in sixteen bits`);
+    throw new KerningTooLarge(`A kerning offset of ${value} bytes does not fit in sixteen bits`);
   }
   return value;
+}
+
+/**
+ * Kerning that cannot be written as a GPOS table at all.
+ *
+ * Thrown in place of a table whose offsets would wrap. Its own type, so the
+ * export can tell this -- something about the kerning, which a file can go
+ * out without -- from a fault that should stop it.
+ */
+export class KerningTooLarge extends RangeError {
+  constructor(message: string) {
+    super(message);
+    this.name = "KerningTooLarge";
+  }
 }
 
 /**
@@ -508,6 +529,12 @@ function assembleGrids(classKerns: ResolvedClassKern[]): Grid[] {
  * A run is closed when one more row would push the furthest offset past what
  * sixteen bits hold. A row too big to fit even on its own is shared out by its
  * glyphs instead, in `splitRow`.
+ *
+ * The run's size is kept as a running count, row by row, rather than by
+ * building its coverage and class definition again for every row it might
+ * take: that rebuilt every glyph of the run once per row, so the time grew
+ * with the square of the rows. The counts are exact, not estimates -- see
+ * `rowSize` -- so the cuts fall where measuring the built parts puts them.
  */
 function fitGrid(grid: Grid): Grid[] {
   if (fitsFormat2(grid.left, grid.right.length)) return [grid];
@@ -521,22 +548,31 @@ function fitGrid(grid: Grid): Grid[] {
     }
     return columns;
   });
-  const leftOf = (rows: number[]) => rows.map((row) => grid.left[row - 1]);
+  const sizes = grid.left.map(rowSize);
 
   const pieces: Grid[] = [];
   let rows: number[] = [];
   let columns = new Set<number>();
+  let glyphs = 0;
+  let ranges = 0;
   for (let row = 1; row <= grid.left.length; row++) {
     // A row that kerns against nothing is kept all the same: its glyphs are
     // still covered, and being covered is what stops the lookup at them.
-    const wider = new Set([...columns, ...used[row - 1]]);
-    if (rows.length > 0 && !fitsFormat2(leftOf([...rows, row]), wider.size)) {
+    const size = sizes[row - 1];
+    let wider = columns.size;
+    for (const column of used[row - 1]) if (!columns.has(column)) wider++;
+    const reach = classDef2At(rows.length + 1, wider, glyphs + size.glyphs, ranges + size.ranges);
+    if (rows.length > 0 && reach > MOST_OFFSET) {
       pieces.push(piece(grid, rows, columns));
       rows = [];
       columns = new Set();
+      glyphs = 0;
+      ranges = 0;
     }
     rows.push(row);
     for (const column of used[row - 1]) columns.add(column);
+    glyphs += size.glyphs;
+    ranges += size.ranges;
   }
   if (rows.length > 0) pieces.push(piece(grid, rows, columns));
 
@@ -565,7 +601,7 @@ function splitRow(grid: Grid): Grid[] {
   const room = MOST_OFFSET - 16 - 2 * (grid.right.length + 1) * 2 - 4 - 4;
   const most = Math.floor(room / 8);
   if (most < 1) {
-    throw new RangeError(
+    throw new KerningTooLarge(
       `A kerning class against ${grid.right.length} right classes does not fit one subtable`,
     );
   }
@@ -578,6 +614,40 @@ function splitRow(grid: Grid): Grid[] {
     });
   }
   return pieces;
+}
+
+/**
+ * What one left class adds to its subtable's coverage and class definition.
+ *
+ * The coverage holds each glyph once, two bytes each. The class definition
+ * holds a range for every run of consecutive glyph ids that share a class, six
+ * bytes each, and two classes of one subtable never share a run: their class
+ * values differ, and their glyphs never meet, because a grid's left classes
+ * have no glyph in common -- that is what `assembleGrids` packs them by. So a
+ * class's ranges are the runs in its own glyphs alone, whichever classes it is
+ * written beside, and the counts of a run of classes are the sums of theirs.
+ * Repeated ids are counted once, as `buildCoverage` and `buildClassDef` both
+ * write them once.
+ */
+function rowSize(glyphs: number[]): { glyphs: number; ranges: number } {
+  const sorted = [...new Set(glyphs)].sort((a, b) => a - b);
+  let ranges = 0;
+  for (const [index, glyph] of sorted.entries()) {
+    if (index === 0 || glyph !== sorted[index - 1] + 1) ranges++;
+  }
+  return { glyphs: sorted.length, ranges };
+}
+
+/**
+ * Where a format 2 subtable's right-hand class definition starts, from counts.
+ *
+ * The same sum `layoutFormat2` makes from the built parts: the sixteen-byte
+ * header, two bytes a cell including the class 0 row and column, the coverage
+ * (four bytes, then two a glyph) and the left class definition (four bytes,
+ * then six a range).
+ */
+function classDef2At(leftClasses: number, rightClasses: number, glyphs: number, ranges: number) {
+  return 16 + (leftClasses + 1) * (rightClasses + 1) * 2 + 4 + glyphs * 2 + 4 + ranges * 6;
 }
 
 /** Some rows of a grid and some of its right classes, renumbered from one. */
