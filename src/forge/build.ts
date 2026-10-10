@@ -45,7 +45,16 @@ import { effectInk, reachesEffects, type Effects } from "./effects";
 import { filletsFor } from "./fillet";
 import { prepared } from "./prepare";
 import { heftShift, innerSide } from "./heft";
-import { type Flat, flatten, kappa, lineIntersection, pointAt, windingAt } from "./soft";
+import {
+  type Banded,
+  banded,
+  type Flat,
+  flatten,
+  kappa,
+  lineIntersection,
+  pointAt,
+  windingIn,
+} from "./soft";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
@@ -2541,6 +2550,21 @@ function teardropsFor(
   const band = contoursBounds(swept);
   const reach = penReach(stroke.pen);
   const ends = endsOf(stroke);
+  /*
+   * The stroke's ink flattened, and sorted for asking how it winds round a
+   * point (see `banded`), each made once for the stroke whichever of its
+   * drops asks first: the same numbers, however many ask.
+   */
+  let flat: Flat | null = null;
+  const flattened = (): Flat => {
+    flat ??= flatten(swept, DIP_CHORDS);
+    return flat;
+  };
+  let bands: Banded | null = null;
+  const sorted = (): Banded => {
+    bands ??= banded(flattened());
+    return bands;
+  };
   for (const index of [0, 1] as const) {
     const [terminal, at, outward] = ends[index];
     if (terminal.kind !== "teardrop" || terminal.open !== true) continue;
@@ -2564,7 +2588,7 @@ function teardropsFor(
      * stroke's own ink, since how far the taper could draw the side in is the
      * sweep's to say.
      */
-    const thinned = terminal.taper !== undefined ? flatten(swept, DIP_CHORDS) : null;
+    const thinned = terminal.taper !== undefined ? sorted() : null;
     const thinKept = thinned
       ? keptAt(
           thinned,
@@ -2578,7 +2602,7 @@ function teardropsFor(
       ? ((t * t + h * h) / Math.max(h, 1e-6)) * thinKept + 0.5
       : (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
     const bend = drop.bend > 0 ? drop.bend : drop.radius * 4;
-    const pear = pearAt(stroke, swept, drop, index === 1 ? side : -side, reach);
+    const pear = pearAt(stroke, flattened, drop, index === 1 ? side : -side, reach);
     /*
      * A plain drop on a bottom-heavy bowl meets the inner side where the heft
      * moved it, as a pear does (see `heftLift`): left on the side as it was
@@ -2798,19 +2822,19 @@ function teardropsFor(
  * halvings. All of it where nothing was drawn in, or where the ink cannot be
  * read so near the outer corner.
  */
-function keptAt(ink: Flat, outer: Vec2, inner: Vec2, u: Vec2): number {
+function keptAt(ink: Banded, outer: Vec2, inner: Vec2, u: Vec2): number {
   const at = (share: number): Vec2 => ({
     x: outer.x + (inner.x - outer.x) * share - u.x * KEPT_BACK,
     y: outer.y + (inner.y - outer.y) * share - u.y * KEPT_BACK,
   });
-  if (windingAt(ink, at(1)) !== 0) return 1;
+  if (windingIn(ink, at(1)) !== 0) return 1;
   // Half of the least a taper keeps, which is inked whatever the taper did.
   let low = 0.075;
-  if (windingAt(ink, at(low)) === 0) return 1;
+  if (windingIn(ink, at(low)) === 0) return 1;
   let high = 1;
   for (let step = 0; step < KEPT_HALVINGS; step++) {
     const middle = (low + high) / 2;
-    if (windingAt(ink, at(middle)) !== 0) low = middle;
+    if (windingIn(ink, at(middle)) !== 0) low = middle;
     else high = middle;
   }
   return high;
@@ -2830,22 +2854,63 @@ const KEPT_HALVINGS = 30;
  * narrowed by a fixed number of halvings. Where that start is not inked, or
  * the walk never leaves the ink, the point `toward` reaches to, as on a plain
  * stroke.
+ *
+ * Asked again with the same four numbers of the same ink, it hands back what
+ * it found before (see `askedBefore`): a pear settling into its band, and the
+ * ladder in `teardropsFor` trying its neck one way and another, asks the same
+ * question over and over, and at a Black most of the pears tried share a
+ * handful of distances back along the stroke.
  */
-function edgeFrom(ink: Flat, spine: Vec2, toward: Vec2): Vec2 {
+function edgeFrom(ink: Banded, spine: Vec2, toward: Vec2): Vec2 {
+  const found = askedBefore(EDGES, ink, spine, toward, () => edgeFound(ink, spine, toward));
+  return { x: found.x, y: found.y };
+}
+
+/** What `edgeFrom` found on each ink, by what it was asked. */
+const EDGES = new WeakMap<object, Array<{ asked: number[]; answer: Vec2 }>>();
+
+/**
+ * The answer kept on `ink` for these two points, to the last bit (nought
+ * kept apart from less than nought), or the one `find` gives, kept.
+ */
+function askedBefore<T>(
+  kept: WeakMap<object, Array<{ asked: number[]; answer: T }>>,
+  ink: object,
+  one: Vec2,
+  other: Vec2,
+  find: () => T,
+): T {
+  let answers = kept.get(ink);
+  if (answers === undefined) {
+    answers = [];
+    kept.set(ink, answers);
+  }
+  const asked = [one.x, one.y, other.x, other.y];
+  const before = answers.find((answer) =>
+    answer.asked.every((value, at) => Object.is(value, asked[at])),
+  );
+  if (before) return before.answer;
+  const answer = find();
+  answers.push({ asked, answer });
+  return answer;
+}
+
+/** `edgeFrom`, worked out. */
+function edgeFound(ink: Banded, spine: Vec2, toward: Vec2): Vec2 {
   const reach = Math.hypot(toward.x, toward.y);
   const plain = { x: spine.x + toward.x, y: spine.y + toward.y };
   if (!(reach > 1e-9)) return plain;
   const way = { x: toward.x / reach, y: toward.y / reach };
   // A twentieth of the stroke's width in from its outer edge.
   const from = { x: spine.x - toward.x * 0.9, y: spine.y - toward.y * 0.9 };
-  if (windingAt(ink, from) === 0) return plain;
+  if (windingIn(ink, from) === 0) return plain;
   const at = (k: number): Vec2 => ({ x: from.x + way.x * k, y: from.y + way.y * k });
   const most = reach * 2.5 + 1;
   let low = 0;
   let high = -1;
   for (let step = 1; step <= EDGE_STEPS; step++) {
     const k = (most * step) / EDGE_STEPS;
-    if (windingAt(ink, at(k)) === 0) {
+    if (windingIn(ink, at(k)) === 0) {
       high = k;
       break;
     }
@@ -2854,7 +2919,7 @@ function edgeFrom(ink: Flat, spine: Vec2, toward: Vec2): Vec2 {
   if (high < 0) return plain;
   for (let step = 0; step < KEPT_HALVINGS; step++) {
     const middle = (low + high) / 2;
-    if (windingAt(ink, at(middle)) === 0) high = middle;
+    if (windingIn(ink, at(middle)) === 0) high = middle;
     else low = middle;
   }
   return at(low);
@@ -2887,7 +2952,7 @@ function middleOf(spine: Vec2, toward: Vec2, meets: Vec2): Vec2 {
  * tenths of it.
  */
 function closingHandle(
-  ink: Flat,
+  ink: Banded,
   spine: Spine,
   distance: number,
   way: number,
@@ -3025,7 +3090,8 @@ interface Pear {
  */
 function pearAt(
   stroke: Stroke,
-  swept: Contour[],
+  // The stroke's ink, flattened, asked for only where the pear has a neck.
+  flattened: () => Flat,
   drop: NonNullable<Terminal["drop"]>,
   side: number,
   reach: ReturnType<typeof penReach>,
@@ -3035,7 +3101,7 @@ function pearAt(
   }
   const lift = heftLift(stroke, side, reach);
   const neck = drop.neck ?? 0;
-  const ink = neck > 0 ? flatten(swept, DIP_CHORDS) : null;
+  const ink = neck > 0 ? flattened() : null;
   return { hang: drop.hang ?? 0, turn: drop.turn ?? 0, neck, lift, ink };
 }
 
@@ -3236,8 +3302,19 @@ const BEND_REACH = 6;
  * one over the radius of the circle through that nearest corner of it and
  * the two `BEND_REACH` units either way along it -- positive where it bends
  * round toward `inside`, negative where away.
+ *
+ * Asked again with the same numbers of the same ink, what it found before:
+ * see `edgeFrom`.
  */
 function bendOf(ink: Flat, point: Vec2, inside: Vec2): number {
+  return askedBefore(BENDS, ink, point, inside, () => bendFound(ink, point, inside));
+}
+
+/** What `bendOf` found on each ink, by what it was asked. */
+const BENDS = new WeakMap<object, Array<{ asked: number[]; answer: number }>>();
+
+/** `bendOf`, worked out. */
+function bendFound(ink: Flat, point: Vec2, inside: Vec2): number {
   let best = Infinity;
   // The square of the nearest so far, with `SQUARED_SLACK`: a corner past it cannot be nearer.
   let past = Infinity;
@@ -3543,7 +3620,7 @@ function tear(
   // How far a heft moved the side the drop hangs on: see `heftLift`.
   lift: Vec2 | null = null,
   // The stroke's ink where it thins into the drop, whose edge the neck comes back onto.
-  thinned: Flat | null = null,
+  thinned: Banded | null = null,
 ): Contour {
   if (pear) {
     return pearShape(stroke, spine, at, u, n, outer, radius, bend, pull, close, pear, thinned);
@@ -3674,7 +3751,7 @@ function pearShape(
   close: boolean,
   pear: Pear,
   // The stroke's ink where it thins into the drop: see `tear`.
-  thinned: Flat | null = null,
+  thinned: Banded | null = null,
 ): Contour {
   const { hang, turn, neck } = pear;
   const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });

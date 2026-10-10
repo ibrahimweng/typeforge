@@ -239,6 +239,8 @@ function sampled(piece: OffsetSegment): Vec2[] {
  */
 function standsOff(line: Vec2[], point: Vec2): number {
   let best = Infinity;
+  // The square of the nearest so far, with `SQUARED_SLACK`: a piece past it cannot be nearer.
+  let past = Infinity;
   let signed = Infinity;
   for (let k = 1; k < line.length; k++) {
     const a = line[k - 1];
@@ -248,27 +250,42 @@ function standsOff(line: Vec2[], point: Vec2): number {
     const length = dx * dx + dy * dy;
     if (!(length > 0)) continue;
     const t = Math.min(1, Math.max(0, ((point.x - a.x) * dx + (point.y - a.y) * dy) / length));
-    const distance = Math.hypot(a.x + dx * t - point.x, a.y + dy * t - point.y);
+    const offX = a.x + dx * t - point.x;
+    const offY = a.y + dy * t - point.y;
+    if (offX * offX + offY * offY > past) continue;
+    const distance = Math.hypot(offX, offY);
     if (distance < best) {
       best = distance;
+      // Not for a distance so small its square is lost: every piece is then measured.
+      past = distance > 1e-100 ? distance * distance * SQUARED_SLACK : Infinity;
       signed = dx * (point.y - a.y) - dy * (point.x - a.x) < 0 ? -distance : distance;
     }
   }
   return signed;
 }
 
+/**
+ * A little over one. A point whose squared distance is this much more than
+ * the square of another distance is further off than it, however `Math.hypot`
+ * rounds either: so it can be passed over by its square alone, which costs
+ * far less than measuring it.
+ */
+const SQUARED_SLACK = 1 + 1e-9;
+
 /** Whether two polylines cross, touching at an end not counted. */
 function crossing(one: Vec2[], other: Vec2[]): boolean {
   for (let i = 1; i < one.length; i++) {
     const a = one[i - 1];
-    const r = { x: one[i].x - a.x, y: one[i].y - a.y };
+    const rx = one[i].x - a.x;
+    const ry = one[i].y - a.y;
     for (let j = 1; j < other.length; j++) {
       const c = other[j - 1];
-      const s = { x: other[j].x - c.x, y: other[j].y - c.y };
-      const den = r.x * s.y - r.y * s.x;
+      const sx = other[j].x - c.x;
+      const sy = other[j].y - c.y;
+      const den = rx * sy - ry * sx;
       if (Math.abs(den) < 1e-12) continue;
-      const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / den;
-      const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+      const t = ((c.x - a.x) * sy - (c.y - a.y) * sx) / den;
+      const u = ((c.x - a.x) * ry - (c.y - a.y) * rx) / den;
       if (t > 1e-9 && t < 1 - 1e-9 && u > 1e-9 && u < 1 - 1e-9) return true;
     }
   }
@@ -426,11 +443,17 @@ function tapered(
       const v = map({ x: point.x - p0.x, y: point.y - p0.y });
       return { x: p0.x + v.x, y: p0.y + v.y };
     };
-    const gaps = innerPoints.map((point) => inward * standsOff(outerLine, drawnIn(point)));
+    const gapAt = (index: number): number =>
+      inward * standsOff(outerLine, drawnIn(innerPoints[index]));
     // The tapered corner, where the end is as wide as it now is: the end of
     // the first piece listed, which is the one at the end, or its start.
-    const left = gaps[atEnd ? TAPER_SAMPLES : 0];
-    if (gaps.some((gap, index) => gap < Math.min(was[index], left) * TAPER_PINCH)) return true;
+    const corner = atEnd ? TAPER_SAMPLES : 0;
+    const left = gapAt(corner);
+    // Pinched at the first point that comes too near, without measuring the rest.
+    for (let index = 0; index < innerPoints.length; index++) {
+      const gap = index === corner ? left : gapAt(index);
+      if (gap < Math.min(was[index], left) * TAPER_PINCH) return true;
+    }
     // And the inner side, drawn in, against the outer one and the end across
     // from the outer corner to the inner one.
     const inside = innerLine.map(drawnIn);
