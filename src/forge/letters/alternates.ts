@@ -5,6 +5,9 @@ import { alongSpine, bowlBetween, bowlPoint, roundCorners, spineEnd, spineStart 
 import { penReach, reachAlong } from "../sweep";
 import { blackness, scriptUnit, type Style } from "../style";
 import type { Spine, Stroke } from "../types";
+import { buried } from "./hints";
+import { curledA, swungY, tuckedF } from "./soft";
+import { beakedS, beltedA, wedgedT, wideE } from "./soft";
 import {
   grotesqueA,
   grotesqueAt,
@@ -1304,8 +1307,10 @@ export const ALTERNATES: Record<LetterName, Alternate[]> = {
            * The left arm stops inside the tail, just above where the two
            * spines cross. Carried on past them, its square end stood out of
            * the right side of the tail as a spur at every weight.
+           *
+           * Its join with the tail rounded on the crotch side: see `buried`.
            */
-          ink(f, straight(at(left, f.x), stop), f.end, BUTT),
+          ink(f, straight(at(left, f.x), stop), f.end, buried(f, { left: 1.5 })),
           ink(
             f,
             chain(straight(top, knee), {
@@ -2105,4 +2110,108 @@ for (const name of WRITTEN_CAPITALS) {
       return { ...plain, strokes: [...plain.strokes, swash] };
     },
   });
+}
+
+/*
+ * The soft text serif's own letters, offered on every face: see `soft.ts`.
+ *
+ * Drawn plain where a humanist form would be -- on a joined face, or with a
+ * pen held near the upright -- for the same reason: a leaning bowl and a
+ * swinging tail are a broad nib's shapes, and a joined face's letters are
+ * written to hand on to each other at their edges.
+ */
+const SOFT: Array<[LetterName, string, string, string, (style: Style) => Recipe]> = [
+  [
+    "a",
+    "curled",
+    "Curled foot",
+    "The bowl leaning back into the stem, and the stem's foot curling up where a serif would stand.",
+    curledA,
+  ],
+  [
+    "y",
+    "swung",
+    "Swung tail",
+    "The tail turning wide under the line and running out level to the left.",
+    swungY,
+  ],
+  [
+    "f",
+    "tucked",
+    "Tucked bar",
+    "The bar barely reaching back past the stem, and running out to the right.",
+    tuckedF,
+  ],
+];
+for (const [name, id, label, hint, build] of SOFT) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build(style);
+  ALTERNATES[name].push({ id, label, hint, build: drawn });
+}
+
+/*
+ * And the soft text serif's second set: the a whose bowl is a belt, the e
+ * with its eye opened wide, the s with short beaks of its own and the t
+ * under a solid wedge (see `soft.ts`), drawn plain where the first set is.
+ */
+const SOFT_MORE: Array<[LetterName, string, string, string, (style: Style) => Recipe]> = [
+  [
+    "a",
+    "belted",
+    "Belted bowl",
+    "The bowl drawn as one stroke, leaving the stem high as a hairline and coming back into it low.",
+    beltedA,
+  ],
+  [
+    "e",
+    "wide-eyed",
+    "Wide eye",
+    "The old-style e written nearer the upright, its eye opened wide over a lighter bar.",
+    (style) => wideE(style, humanistE),
+  ],
+  [
+    "s",
+    "beaked",
+    "Soft beaks",
+    "The old-style s with its head and foot turning on over into short beaks of their own.",
+    (style) => beakedS(style, humanistS),
+  ],
+  [
+    "t",
+    "wedged",
+    "Solid flag",
+    "Under one solid wedge from the bar's tip to the top of the stem, a little shorter, its tail flicking up.",
+    wedgedT,
+  ],
+  /*
+   * The S and the dollar with the s's beaks: the old-style S's head and foot
+   * running on into beaks of their own, and the dollar its stubs through that
+   * S. The dollar draws the S in its own form (see `loraDollar`), and takes the
+   * S's choice of form, so the two are chosen together.
+   */
+  [
+    "S",
+    "beaked",
+    "Soft beaks",
+    "The old-style S with its head and foot turning on over into short beaks of their own.",
+    (style) => beakedS(style, humanistCapitalS),
+  ],
+  [
+    "dollar",
+    "beaked",
+    "Soft beaks",
+    "Its S with soft beaks of its own, a long stub out of its top and one out of its foot.",
+    humanistDollar,
+  ],
+];
+for (const [name, id, label, hint, build] of SOFT_MORE) {
+  if (!ALTERNATES[name]) ALTERNATES[name] = [];
+  const drawn = (style: Style) =>
+    (style.parts.script.on || Math.abs(Math.abs(style.pen.angle) - 90) < 30) && LETTERS[name]
+      ? LETTERS[name](style)
+      : build(style);
+  ALTERNATES[name].push({ id, label, hint, build: drawn });
 }

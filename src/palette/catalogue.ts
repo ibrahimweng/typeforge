@@ -32,6 +32,7 @@ import {
 import type { CastName } from "@/forge/cast";
 import type { CutName } from "@/forge/cut";
 import { BASES } from "@/forge/style";
+import { STARTS } from "@/forge/starts";
 import type { Mode } from "@/App";
 import type { ViewId } from "@/state/store";
 import type { Entry, EntryKind } from "./search";
@@ -181,6 +182,8 @@ export interface ForgeShell {
   castOf: (cast: CastName, key: string) => number | string | boolean;
   setCast: (cast: CastName, key: string, value: number | string | boolean, done: boolean) => void;
   startFromBase: (name: string) => void;
+  /** Start from one of the faces drawn on a base, by its id: see `STARTS`. */
+  startFromFace: (id: string) => void;
   chooseAlternate: (letter: string, form: string) => void;
 }
 
@@ -482,6 +485,23 @@ export function catalogue(shell: Shell): Item[] {
       run: () => {
         shell.setMode("forge");
         shell.startFromBase(base.name);
+      },
+    });
+  }
+  // And the faces drawn on them, which start the same way and lose the same work.
+  for (const start of STARTS) {
+    add({
+      id: `start:${start.id}`,
+      kind: "face",
+      group: "Start from a face",
+      label: start.label,
+      hint: start.style.blurb ?? `Start drawing from the ${start.label}.`,
+      also: ["base", "style", "starting point", "preset", start.base],
+      where: "Drawing a font",
+      destructive: true,
+      run: () => {
+        shell.setMode("forge");
+        shell.startFromFace(start.id);
       },
     });
   }

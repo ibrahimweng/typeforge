@@ -107,6 +107,27 @@ export const PART_SPECS: PartSpec[] = [
         max: 1.45,
         step: 0.005,
       },
+      /*
+       * The soft finishes, last in the part and left out of every base, so a
+       * face that has never been given one opens with the slider at nought
+       * and draws exactly as it always did.
+       */
+      {
+        key: "tail",
+        label: "Flat tail",
+        hint: "How long and flat the foot of a c runs out before it stops, and the foot of an e drawn as a pen draws it. The curve after the bottom of the bowl is laid again on wider circles, so the tail sweeps out along the line instead of turning back up. Nought is the bowl's own curve.",
+        min: 0,
+        max: 1.5,
+        step: 0.05,
+      },
+      {
+        key: "heft",
+        label: "Heft",
+        hint: "How far the colour of a bowl sinks toward its foot. The inside of an o, a c or an e moves up, so the stroke runs thinner over the top and heavier along the bottom, which is how a letter cut for text sits on its line. Nought keeps the counter centred in the pen's stroke.",
+        min: 0,
+        max: 0.5,
+        step: 0.02,
+      },
     ],
   },
   {
@@ -135,6 +156,14 @@ export const PART_SPECS: PartSpec[] = [
           { value: "round", label: "Round", hint: "The pen itself, turned about the corner." },
           { value: "bevel", label: "Cut", hint: "Taken straight across." },
         ],
+      },
+      {
+        key: "fillet",
+        label: "Inside rounding",
+        hint: "How far the hollow on the inside of a join is filled on a curve, in stems: where the arms of an E leave the stem, where the arch of an n leaves its stem, inside the turn of a z. Not the rounding above, which bends the stroke itself; this fills only the notch two edges make, and nought leaves it sharp.",
+        min: 0,
+        max: 1,
+        step: 0.05,
       },
     ],
   },
@@ -181,6 +210,14 @@ export const PART_SPECS: PartSpec[] = [
         min: 0.8,
         max: 1.05,
         step: 0.005,
+      },
+      {
+        key: "rise",
+        label: "Rise",
+        hint: "How low the arch of an n, an m, an h or an r climbs out of its stem. The turn up out of the stem grows by this share and the turn down gives up the same, so the arch leaves the stem lower and falls to the next one more steeply, as a pen does. Nought is the arch the springing draws.",
+        min: 0,
+        max: 0.8,
+        step: 0.05,
       },
     ],
   },
@@ -254,6 +291,22 @@ export const PART_SPECS: PartSpec[] = [
           },
         ],
       },
+      {
+        key: "tip",
+        label: "Soft tips",
+        hint: "How far the corners where a serif stops are turned on a curve, as a share of the depth of its tip. Nought leaves them cut square; one rounds the end of the bar right over, the way type looks once it has been printed from. Reaches the beaks on the arms of an E and the flag on the head of an n as well.",
+        min: 0,
+        max: 1,
+        step: 0.05,
+      },
+      {
+        key: "swell",
+        label: "Arm flare",
+        hint: "How much wider the arms of an E, an F, an L, a T and a Z grow on their way out to the beak at their end, against where they leave the stem. Nought keeps the two edges of an arm parallel.",
+        min: 0,
+        max: 0.6,
+        step: 0.05,
+      },
     ],
   },
   {
@@ -287,6 +340,22 @@ export const PART_SPECS: PartSpec[] = [
         min: -30,
         max: 30,
         step: 0.5,
+      },
+      {
+        key: "soft",
+        label: "Softened cuts",
+        hint: "How far the corners of an end that is cut and left showing are rounded, as a share of the end's full width: every stroke end of a sans, and on a serif face the bar of a t or an f and whatever a serif leaves bare. Nought leaves them square and a half turns the end into a half circle. An end buried in another stroke is never touched.",
+        min: 0,
+        max: 0.5,
+        step: 0.05,
+      },
+      {
+        key: "taper",
+        label: "Taper",
+        hint: "How much of a curved end's width is taken away as it stops, drawn in from the inside of the curve, so the ends of a c, an e or an s thin out instead of stopping at full stroke. Ends finished with a teardrop, a ball or a flare keep their own shape.",
+        min: 0,
+        max: 0.85,
+        step: 0.05,
       },
     ],
   },

@@ -11,7 +11,7 @@ import type { Vec2 } from "@/font/types";
 import { spineEnd } from "../shapes";
 import { stemBlack, type Style } from "../style";
 import { penReach, reachAlong, sweep } from "../sweep";
-import type { Stroke } from "../types";
+import type { Stroke, Terminal } from "../types";
 import {
   drops,
   arm,
@@ -21,10 +21,12 @@ import {
   penHeld,
   widthShare,
   BUTT,
+  bookish,
   chain,
   corner,
   figureWidth,
   heavyFigure,
+  heaviness,
   finish,
   frame,
   ink,
@@ -302,9 +304,25 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const up = edge.y > 0 ? edge : { x: -edge.x, y: -edge.y };
     const flank = Math.abs(reachAlong(at(1, 0), pen).x);
     const start = at(stem - flank - up.x, f.cap - up.y);
+    /*
+     * That start is a reach under the cap line, and on a text serif's nib held
+     * at an angle -- eighteen degrees with contrast 0.7 -- the reach across
+     * the diagonal runs so nearly level that it lands within a unit of the
+     * line at some weights and widths, where it is cut level, and not at the
+     * rest. With the same points either way (`Terminal.keepsPoints`). Asked on
+     * a text serif only: the written hands' fours and the Didone's small ones
+     * in the fractions are cut level at some masters too, and are drawn as
+     * they always were.
+     */
+    const textSerif = bookish(f) && f.style.parts.slab.shape === "wedge";
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
-      ink(f, chain(straight(start, meet), straight(meet, end)), BUTT, f.end),
+      ink(
+        f,
+        chain(straight(start, meet), straight(meet, end)),
+        textSerif ? KEEPS_POINTS : BUTT,
+        f.end,
+      ),
     ]);
   },
 
@@ -465,7 +483,14 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
           chain(
             // Stopped further round on a face that hangs a drop there, so the
             // drop hangs at the top right, not down into the counter.
-            bend(f, at(centre.x, hood), radius, drops(f) ? SIX_DROP : 60, 180, wide),
+            bend(
+              f,
+              at(centre.x, hood),
+              radius,
+              drops(f) ? pearRound(f, SIX_DROP, 60) : 60,
+              180,
+              wide,
+            ),
             straight(at(centre.x - wide, hood), at(centre.x - wide, centre.y)),
           ),
           f.end,
@@ -561,9 +586,18 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
             straight(at(centre.x + wide, centre.y), at(centre.x + wide, foot)),
             // And carried further round where it ends in a drop, which then
             // sits up off the line clear of the bowl, as Lora's does.
-            bend(f, at(centre.x, foot), radius, 0, drops(f) ? NINE_DROP : -120, wide),
+            bend(
+              f,
+              at(centre.x, foot),
+              radius,
+              0,
+              drops(f) ? pearRound(f, NINE_DROP, -120) : -120,
+              wide,
+            ),
           ),
-          BUTT,
+          // Begun inside the bowl, at its middle, which moves with the pen and
+          // can pass within a unit of the x-height: see `Terminal.keepsPoints`.
+          KEEPS_POINTS,
           f.end,
         ),
       ],
@@ -572,6 +606,33 @@ export const FIGURE_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   },
 };
 
+/** A plain cut with a square cut's points whether or not it is cut level: see `Terminal.keepsPoints`. */
+const KEEPS_POINTS: Terminal = { ...BUTT, keepsPoints: true };
+
 /** Where a six's hood starts, and a nine's tail stops, on a face whose figures end in drops. */
 const SIX_DROP = 35;
 const NINE_DROP = -145;
+
+/**
+ * Where a six's hood starts, or a nine's tail stops, on a face whose drops
+ * are pears (`terminal.dropHang`, `dropCurl`, `dropNeck`): as far round as a
+ * drop asks (`dropped`) to the Black, and from there brought back to where a
+ * plain cut stops (`plain`) by the heaviest pen.
+ *
+ * A pear turns toward plumb and hangs its ball down into the counter, and
+ * past the Black the end it hangs from is too wide for the ball to be any
+ * smaller than the end: carried as far round as the plain drop's, the hood's
+ * ball landed on the bowl and closed the six's opening into a second counter
+ * over the first -- and the nine's the same, under its bowl. Stopped sooner,
+ * the end stands clear of the bowl and the opening stays open. A plain drop,
+ * and every pear to the Black, stops where it always did.
+ */
+function pearRound(f: ReturnType<typeof frame>, dropped: number, plain: number): number {
+  const { dropHang = 0, dropCurl = 0, dropNeck = 0 } = f.style.parts.terminal;
+  if (!(dropHang > 0 || dropCurl > 0 || dropNeck > 0)) return dropped;
+  const past = Math.min(1, Math.max(0, (heaviness(f) - HOOK_BACK_FROM) / (1.5 - HOOK_BACK_FROM)));
+  return dropped + (plain - dropped) * past;
+}
+
+/** How heavy a pear's figure is, as `heaviness` counts it, before its hook is brought back: a pen of 190. */
+const HOOK_BACK_FROM = 0.9;

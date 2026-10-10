@@ -23,6 +23,8 @@ import { contoursBounds, inkRunsAt } from "@/font/geometry";
 import { contoursIntersect } from "@/font/outline";
 import type { Vec2 } from "@/font/types";
 import type { Spine, Stroke, Terminal } from "../types";
+import { flatten, windingAt } from "../soft";
+import { heftable, seen } from "./hints";
 import {
   arm,
   bendWidth,
@@ -66,6 +68,7 @@ import {
   tStem,
   uses,
   bookish,
+  tailed,
 } from "./common";
 
 /** How much further round the e's tail runs than the construction's, in degrees. */
@@ -116,7 +119,14 @@ export function humanistE(style: Style): Recipe {
   const f = frame(style);
   const past = textSerif(f) ? Math.min(1, Math.max(0, (heaviness(f) - 1) / 0.5)) : 0;
   if (past > 0) drawn = eyed(style, height, E_LIFT * past);
-  return drawn.recipe;
+  // The belt's foot laid flatter where the face asks for that: see `tailed`.
+  const tail = 1 + (style.parts.bowl.tail ?? 0);
+  return tail > 1
+    ? {
+        ...drawn.recipe,
+        strokes: drawn.recipe.strokes.map((one, index) => (index === 1 ? tailed(one, tail) : one)),
+      }
+    : drawn.recipe;
 }
 
 /** Whether a face is a text serif's -- wedge serifs on a pen with contrast. */
@@ -243,7 +253,7 @@ function eyed(
       ...drawn,
       strokes: [
         drawnBar,
-        inherit(belt, { ...belt, spine: tail, start: bowlStart, end: foot }),
+        heftable(f, inherit(belt, { ...belt, spine: tail, start: bowlStart, end: foot })),
         ...rest,
       ],
     },
@@ -343,8 +353,9 @@ export function humanistT(style: Style): Recipe {
   const stemLeft = stem - stemHalf;
   const stemRight = stem + stemHalf;
   // The flag's pen, and how far across it reaches from its spine along a row.
+  // Its end at the head seen, though nothing marks it open: see `seen`.
   const flagOf = (share: number) =>
-    lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, LEVEL), share);
+    lighter(ink(f, straight(at(barLeft, bar), at(stem, top)), LEVEL, seen(f, LEVEL)), share);
   /*
    * The arc leaves the bar flatter than its chord and reaches the head
    * steeper, each by the angle its sag turns it through, and a pen crosses a
@@ -438,7 +449,7 @@ export function humanistT(style: Style): Recipe {
         // Round the foot and on up into the tail, as Lora's is.
         inPieces(turn(at(stem + radius, f.dip(0) + radius), radius, 180, 305), 2),
       ),
-      { ...LEVEL, sink },
+      seen(f, { ...LEVEL, sink }),
       f.end,
     ),
     wedge,
@@ -654,10 +665,13 @@ export function humanistC(style: Style): Recipe {
   const f = frame(style);
   const centre = at(f.edge + f.bowl, f.x / 2);
   const closer = -C_CLOSE * Math.min(1, heaviness(f));
-  return swollen(
+  const drawn = swollen(
     style,
-    finish(f, [openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, closer)], true),
+    finish(f, [heftable(f, openBowl(f, centre, f.bowl, f.bowlH, 55, 305, 0, closer))], true),
   );
+  // Its foot laid flatter where the face asks for that, once swollen: see `tailed`.
+  const tail = 1 + (style.parts.bowl.tail ?? 0);
+  return tail > 1 ? { ...drawn, strokes: drawn.strokes.map((one) => tailed(one, tail)) } : drawn;
 }
 
 /** How many half-pens nearer the c's two ends stand at a Black than the plain c's. */
@@ -738,7 +752,6 @@ export function humanistG(style: Style): Recipe {
   const loop = at(left + loopHalf, bottom + loopH);
   const roundness = 1 - f.square;
   const leaves = bowlPoint(upper, upperW, upperH, roundness, f.half, 260 - 25 * heavy, f.curve);
-  const lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
   // The ear, out of the bowl's top right, up over the x-height and down into its drop.
   const from = bowlPoint(upper, upperW, upperH, roundness, f.half, 22, f.curve);
   // A text serif's reaching as far as Lora's past its narrower loop, as far
@@ -748,41 +761,78 @@ export function humanistG(style: Style): Recipe {
     upper.x + upperW + Math.max(f.bowl * 0.45, f.half * 1.6) + earOut,
     f.x + f.x * 0.1,
   );
+  const bowlStroke = lighter(ink(f, ring(f, upper, upperW, upperH)), 1 - 0.12 * heavy);
+  /*
+   * Lighter still at a heavy weight, as Lora Bold's loop is -- sides of
+   * a hundred on a stem of 142 -- and laid out for the pen it is drawn
+   * with: laid out for the stem's, its ends were turned no rounder than
+   * the stem's pen needs, and inside the lighter one the counter came to
+   * a corner at each end.
+   */
+  const drawnLoop = lighter(ink(f, ring(f, loop, loopHalf, loopH)), loopShare);
+  const loopStroke = inherit(drawnLoop, {
+    ...drawnLoop,
+    spine: bowl(loop, loopHalf, loopH, roundness, drawnLoop.pen.weight / 2, f.curve),
+  });
+  // In two pieces at every weight, however little a heavy one turns.
+  const linkSpine = (to: Vec2): Spine =>
+    inPieces(bowed(f, leaves, to, -Math.max(LINK_BOW - 0.12 * heavy, 0.06)), 2);
+  const linkShare = 0.45 + 0.15 * heavy;
+  /*
+   * The link is aimed at the loop laid out for the stem's pen, and the loop
+   * drawn is laid out for its own lighter one, so at a heavy weight the link
+   * lands out toward the loop's outer edge rather than on its middle. Its end
+   * is cut square with the pen, and on a pen whose cut runs along that edge --
+   * held at eighteen degrees with contrast 0.7 -- the cut lay a quarter of a
+   * unit outside it at 194 and width 100, and the g came in two pieces. On a
+   * face that reads its pen as held (`metrics.heldPen`), where the link does
+   * not reach, it is aimed at the middle of the loop as drawn; where it does
+   * it is aimed as it always was. Asked of the run before it is inked, so it
+   * is inked once whatever the answer. Every other face aims it as it always
+   * did, and never sweeps the two runs to ask.
+   */
+  let lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
+  if (f.style.metrics.heldPen === true) {
+    const aimed: Stroke = {
+      spine: linkSpine(lands),
+      pen: { ...f.style.pen, weight: f.style.pen.weight * linkShare },
+      start: BUTT,
+      end: BUTT,
+      join: f.style.parts.corner.join,
+    };
+    if (!meets(aimed, loopStroke)) {
+      lands = bowlPoint(loop, loopHalf, loopH, roundness, drawnLoop.pen.weight / 2, 140, f.curve);
+    }
+  }
   return {
     ...finish(
       f,
       [
-        lighter(ink(f, ring(f, upper, upperW, upperH)), 1 - 0.12 * heavy),
-        /*
-         * Lighter still at a heavy weight, as Lora Bold's loop is -- sides of
-         * a hundred on a stem of 142 -- and laid out for the pen it is drawn
-         * with: laid out for the stem's, its ends were turned no rounder than
-         * the stem's pen needs, and inside the lighter one the counter came to
-         * a corner at each end.
-         */
-        (() => {
-          const drawn = lighter(ink(f, ring(f, loop, loopHalf, loopH)), loopShare);
-          return inherit(drawn, {
-            ...drawn,
-            spine: bowl(loop, loopHalf, loopH, roundness, drawn.pen.weight / 2, f.curve),
-          });
-        })(),
-        lighter(
-          // In two pieces at every weight, however little a heavy one turns.
-          ink(
-            f,
-            inPieces(bowed(f, leaves, lands, -Math.max(LINK_BOW - 0.12 * heavy, 0.06)), 2),
-            BUTT,
-            BUTT,
-          ),
-          0.45 + 0.15 * heavy,
-        ),
+        bowlStroke,
+        loopStroke,
+        lighter(ink(f, linkSpine(lands), BUTT, BUTT), linkShare),
         lighter(ink(f, inPieces(bowed(f, from, earEnd, EAR_BOW), 2), BUTT, f.end), 0.72),
       ],
       true,
     ),
     air: 0.2,
   };
+}
+
+/**
+ * Whether one run's ink reaches another's: a point of its swept outline inside
+ * the other's outer edge, or a point of that edge inside it.
+ */
+function meets(one: Stroke, other: Stroke): boolean {
+  const [mine] = sweep(one);
+  const [outside] = sweep(other);
+  if (!mine || !outside) return true;
+  const a = flatten([mine]);
+  const b = flatten([outside]);
+  return (
+    a.polygons.some((polygon) => polygon.points.some((point) => windingAt(b, point) !== 0)) ||
+    b.polygons.some((polygon) => polygon.points.some((point) => windingAt(a, point) !== 0))
+  );
 }
 
 /** How far the g's link swings out to the left of its chord. */
@@ -1441,7 +1491,10 @@ function metHairline(stroke: Stroke, hairlines: Stroke[]): Stroke {
     const angle = (Math.atan(slide / pen.across) * 180) / Math.PI;
     return inherit(stroke, {
       ...stroke,
-      end: { kind: "angled", angle },
+      // Still buried, so a join the recipe asked to have rounded still is: see `buried`.
+      end: stroke.end.fillet
+        ? { kind: "angled", angle, fillet: stroke.end.fillet }
+        : { kind: "angled", angle },
     });
   }
   return stroke;
@@ -1566,7 +1619,7 @@ function bookSpine(
    * slope took so little of the pen across it that the bowls outweighed it.
    * A Bodoni's spine is the heaviest stroke in its S.
    */
-  const didone = Math.max(0, f.style.pen.contrast - 0.6) / 0.2;
+  const didone = sDidone(f);
   const roundest = half * (1.05 + 0.45 * Math.min(1, didone));
   /*
    * A text serif's spine lies flatter, and is held to it: Lora's crosses its
@@ -1671,6 +1724,39 @@ function bookSpine(
     straight(at(lowerX, bottom), at(footX, bottom)),
     turn(at(footX, bottom + end), end, -90, fromAngle - 180),
   );
+}
+
+/**
+ * How far toward a didone's the s and the S are drawn: nought at a contrast
+ * of 0.6 and one at 0.8, and past it as far again (see `bookSpine`, which
+ * holds what it reads to one where it must).
+ *
+ * On a text serif that says its pen is read as held (`metrics.heldPen`), the
+ * contrast is read across the pen as it is held -- its level runs against
+ * its uprights -- rather than off the pen's own. A didone's pen stands
+ * upright, and all of its contrast lies between the two; a broad nib held at
+ * an angle carries some of its thin into the uprights and some of its weight
+ * into the level runs, and draws a text face's s at the same number. Read off
+ * the pen's own, the Soft Serif's -- 0.7, held at eighteen degrees, which is
+ * 0.61 across -- was half a didone's: its s and S were let off the widening a
+ * text serif's take past the Bold and their spines left to lie as flat as
+ * they would, and at 194 and 260 both leaned like an italic, the S's upper
+ * counter cut to a notch. Upright, the two are one number.
+ *
+ * Every other face reads the pen's own, as it always did, at every contrast
+ * and angle: the Serif's own pen is not past the 0.6 either way, but its
+ * contrast slider is, and read across the pen its s, S and dollar moved as
+ * the slider went past 0.6.
+ */
+export function sDidone(f: ReturnType<typeof frame>): number {
+  const { contrast, angle } = f.style.pen;
+  if (!textSerif(f) || f.style.metrics.heldPen !== true) return Math.max(0, contrast - 0.6) / 0.2;
+  const thin = 1 - Math.min(Math.max(contrast, 0), 0.95);
+  const turned = (angle * Math.PI) / 180;
+  const sin2 = Math.sin(turned) ** 2;
+  const cos2 = Math.cos(turned) ** 2;
+  const across = 1 - (sin2 + thin * cos2) / (cos2 + thin * sin2);
+  return Math.max(0, across - 0.6) / 0.2;
 }
 
 /**
@@ -1787,7 +1873,7 @@ function bookS(style: Style, capital: boolean): Recipe {
    */
   // And eased out as the contrast rises into a didone's, as the rest of the
   // s is: held on there, the s at 260 jumped wider step by step.
-  const toDidone = Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
+  const toDidone = Math.min(1, sDidone(f));
   const past = textSerif(f) ? Math.min(1, Math.max(0, heaviness(f) - 0.5)) * (1 - toDidone) : 0;
   // The capital a little narrower on its height, as Lora's S is.
   const width =
@@ -1824,9 +1910,7 @@ function bookS(style: Style, capital: boolean): Recipe {
   const level = 1 - S_LIGHTER * heavy * beyond;
   // A didone's s as it was: see `S_UPRIGHT`.
   const upright =
-    S_UPRIGHT +
-    (capital ? 0 : past * S_HEAVY_UPRIGHT) +
-    (S_DIDONE_UPRIGHT - S_UPRIGHT) * Math.min(1, Math.max(0, f.style.pen.contrast - 0.6) / 0.2);
+    S_UPRIGHT + (capital ? 0 : past * S_HEAVY_UPRIGHT) + (S_DIDONE_UPRIGHT - S_UPRIGHT) * toDidone;
   return finish(
     f,
     [
@@ -2238,6 +2322,20 @@ export function humanistAmpersand(style: Style): Recipe {
   const turnAt = at(knee.x + foot * Math.cos((40 * Math.PI) / 180), line + foot);
   const heel = at(turnAt.x, line);
   const reach = f.half + (f.end.projection ?? f.half * 0.6);
+  // Reaching back less far at a Black, over a counter that has closed up
+  // under it: carried its full length, its end stood into the bowl's.
+  const asked = armTop.x - reach * (1 - 1.5 * (1 - share));
+  /*
+   * Its ends seen, where the face softens a seen cut, as the face's other
+   * bars' are -- and then the end reaching back held clear of the diagonal,
+   * so it is seen. Carried back over the diagonal on a face with a soft
+   * serif's longer reach, it closed a triangle of paper between the
+   * diagonal, the arm and itself, a pinhole under the bar. Everywhere else
+   * it reaches as far as it always has.
+   */
+  const barEnd = seen(f, BUTT);
+  const barLeft =
+    barEnd === BUTT ? asked : clearOfDiagonal(f, asked, head, from, knee, share, armTop.x);
   return finish(f, [
     lighter(
       ink(
@@ -2283,19 +2381,56 @@ export function humanistAmpersand(style: Style): Recipe {
       ),
       share,
     ),
-    // Reaching back less far at a Black, over a counter that has closed up
-    // under it: carried its full length, its end stood into the bowl's.
-    ink(
-      f,
-      straight(
-        at(armTop.x - reach * (1 - 1.5 * (1 - share)), head),
-        at(armTop.x + reach * 1.1, head),
-      ),
-      BUTT,
-      BUTT,
-    ),
+    ink(f, straight(at(barLeft, head), at(armTop.x + reach * 1.1, head)), barEnd, barEnd),
   ]);
 }
+
+/**
+ * Where the ampersand's bar, at `head`, may start on the left: where it was
+ * asked to, or where its lower corner stands right of the diagonal's upper
+ * edge by `AMP_CLEAR` of a half pen -- measured along the bar's lower edge,
+ * since the diagonal leans back as it rises and that is where the two come
+ * nearest -- and never further right than just inside the arm it stands
+ * on. Only ever moved right, so a bar already clear is left where it was.
+ *
+ * Where the diagonal and the arm leave no room between them for that gap, a
+ * heavy weight's, the corner stops just inside the arm, `AMP_INSIDE` of a
+ * half pen, and the gap under the bar is the diagonal's and the arm's own.
+ * Stopped on the arm's edge itself, its corner met the point where the
+ * diagonal crosses the arm, and the two left a speck of a counter there.
+ */
+function clearOfDiagonal(
+  f: ReturnType<typeof frame>,
+  asked: number,
+  head: number,
+  from: Vec2,
+  knee: Vec2,
+  share: number,
+  arm: number,
+): number {
+  const run = Math.hypot(knee.x - from.x, knee.y - from.y);
+  if (run < 1e-9 || knee.y >= from.y) return asked;
+  const way = at((knee.x - from.x) / run, (knee.y - from.y) / run);
+  // The diagonal and the arm are drawn as light as the loop and the bowl.
+  const light = penReach({ ...f.style.pen, weight: f.style.pen.weight * share });
+  // The diagonal's upper edge: off its spine to the right of a line falling to the right.
+  const off = reachAlong(at(-way.y, way.x), light);
+  const edge = off.x > 0 ? off : at(-off.x, -off.y);
+  // The bar's lower edge, and its lower left corner off the end's middle.
+  const lower = reachAlong(at(0, -1), penReach(f.style.pen));
+  const y = head + lower.y;
+  const across = from.x + edge.x + ((y - from.y - edge.y) / way.y) * way.x;
+  // The arm's left edge, where it stands under the bar.
+  const armLeft = arm - Math.abs(reachAlong(at(1, 0), light).x);
+  const corner = Math.min(across + f.half * AMP_CLEAR, armLeft + f.half * AMP_INSIDE);
+  return Math.max(asked, corner - lower.x);
+}
+
+/** How far the ampersand's bar stops clear of its diagonal, in half pens, where it must: see `clearOfDiagonal`. */
+const AMP_CLEAR = 0.5;
+
+/** And how far inside the arm its corner stops where there is no room for that. */
+const AMP_INSIDE = 0.15;
 
 /** Where the ampersand's arm leaves its bowl, in degrees round from the right. */
 const ARM_LEAVES = -10;

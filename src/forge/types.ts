@@ -164,10 +164,37 @@ export interface Terminal {
    * needed to.
    */
   open?: boolean;
+  /**
+   * On a stroke's start: cut level or square as its line and its pen decide,
+   * but drawn with the points a square cut has, in the order a square cut
+   * has them, either way.
+   *
+   * A level cut on a straight end stands in for the last node of each side
+   * rather than following it (see `sweep`), and at the start that leaves its
+   * left corner at the end of the outline where a square cut's is welded to
+   * the front: the same points, begun one along. Whether an end is cut level
+   * is asked of where it lands, to within a unit of a line, and a few ends
+   * are set near a line by the pen rather than written on it -- the four's
+   * diagonal starts a reach of the pen under the cap line, the nine's tail at
+   * the middle of its bowl -- and on a nib held at eighteen degrees with
+   * contrast 0.7 those land inside that unit at some weights and widths and
+   * outside it at others. Begun one along at some masters and not at the
+   * rest, neither letter could ride a weight axis. Only the order changes:
+   * the cut is drawn as it was. Set by a letter's recipe, on ends that are
+   * never seen and so never softened.
+   */
+  keepsPoints?: true;
   /** For `angled`, degrees away from square. Ignored otherwise. */
   angle?: number;
   /** For `slab`: how far the bar reaches past the stroke on each side. */
   projection?: number;
+  /**
+   * For `slab`: how far each wing reaches past the stroke, as a share of the
+   * reach the serif is given, named against the way the stroke travels; a
+   * wing left out reaches the whole way. Set by a letter's recipe -- the swung
+   * y's arms, whose outer wings are short -- and never by the face.
+   */
+  wings?: { left?: number; right?: number };
   /** For `slab`: how far the bar reaches back along the stroke. */
   thickness?: number;
   /**
@@ -213,7 +240,21 @@ export interface Terminal {
    * right). Settled before the stroke is pulled back to make room for it, so a
    * pull that swallows the last of a curve does not lose the drop.
    */
-  drop?: { radius: number; bend: number; side: number };
+  drop?: {
+    radius: number;
+    bend: number;
+    side: number;
+    /**
+     * How far the ball is carried along the pear's axis, in drop radii (the
+     * style's `terminal.dropHang`, times the end's `pear.hang`). Set only
+     * where a drop field is on; left out, the drop is drawn as it always was.
+     */
+    hang?: number;
+    /** How far the pear's axis turns from the end's heading toward plumb, in radians. */
+    turn?: number;
+    /** How far the neck blends toward a departure of matching curvature, nought to one. */
+    neck?: number;
+  };
   /**
    * For `slab`: an end that is cut plain rather than serifed -- one stopping in
    * mid-air at an angle, as the neck of a question mark and the flag of a one
@@ -236,7 +277,71 @@ export interface Terminal {
      * and the S's, as Lora draws them.
      */
     bar?: { width: number; from: number };
+    /** The serif's tip rounding (`Terminal.tip`), carried onto the beak. */
+    tip?: number;
   };
+
+  /*
+   * The soft finishes, every one of them optional and absent unless its own
+   * field of the style is above nought: a terminal without them is drawn
+   * exactly as it was before they existed. Sides are named against the way
+   * the stroke travels -- `left` is the left of its direction of travel, in
+   * font units that run up -- whichever end they are on. Which of them are
+   * present decides how many nodes an end has, so they are settled from the
+   * style and the skeleton only, never from the pen.
+   */
+
+  /**
+   * For `slab`: the share of the serif's tip depth that is rounded, copied
+   * from `parts.slab.tip` by `terminalFor` where it is above nought.
+   */
+  tip?: number;
+  /**
+   * The radius each corner of a seen cut is rounded by, in font units: one
+   * added node a corner. Set by `softened` when the end is dressed.
+   */
+  soft?: { left?: number; right?: number };
+  /**
+   * A cut that is seen though it is not `open` -- the ends of a crossbar, the
+   * flag and the top of a t -- hinted by the recipe so a softened finish can
+   * reach it. Only ever set where `terminal.soft` or `terminal.taper` is on.
+   */
+  seen?: true;
+  /**
+   * How much wider the stroke is at this end than at the root of its last
+   * straight piece, as a factor of its half width: the flared arm of a beak.
+   */
+  swell?: number;
+  /**
+   * Which side of a swelled end grows, against the way the stroke travels:
+   * one for its left, minus one for its right; left out, both do. An arm
+   * lying along a line keeps its edge on the line and flares away from it
+   * into its beak, as the top and foot of an E do, where a middle arm flares
+   * both ways. Set with `swell`, and only read with it.
+   */
+  swellSide?: 1 | -1;
+  /**
+   * The share of the stroke's width kept at a seen curved end, from 0.15 to
+   * one: the inner side is drawn in toward the outer.
+   */
+  taper?: number;
+  /**
+   * An end of an open bowl -- the c's, the C's, the G's -- hinted by the
+   * recipe, which gives back `bowl.blunt` of the taper. Only ever set where
+   * that field is on.
+   */
+  blunt?: true;
+  /**
+   * On a butt end buried in another stroke: how much of an inside rounding
+   * each side gets where it leaves that stroke, as a share of the style's
+   * `corner.fillet`. Only ever set where that field is on.
+   */
+  fillet?: { left?: number; right?: number };
+  /**
+   * This end's own multipliers on the face's pear drop: its size, how far it
+   * hangs and how far it curls. Set by a letter's recipe.
+   */
+  pear?: { size?: number; hang?: number; curl?: number };
 }
 
 /**
@@ -316,6 +421,48 @@ export interface Stroke {
    * since. Left out, a stroke is finished as part of the glyph it is in.
    */
   setAs?: { name: string; style: Style; dx: number; dy: number };
+
+  /*
+   * The soft finishes again, on the stroke rather than on one end. Absent
+   * unless the style's own field is above nought, as on the terminal.
+   */
+
+  /**
+   * An open bowl that takes the style's `bowl.heft` -- the c, the belt of an
+   * e -- hinted by the recipe. Closed spines take it without being told.
+   */
+  heftable?: true;
+  /**
+   * The bowl's inner side moved off its centre-line by `share` of the
+   * stroke's width, toward `tilt` degrees from straight up (positive to the
+   * right): thinner at the top, heavier at the foot. Set by `withHeft`.
+   */
+  heft?: {
+    share: number;
+    tilt: number;
+    /**
+     * Faded toward the stem the bowl stands against (`stemSide`), by `share`
+     * of it at that side: see `bowl.heftFade`. Left out, the heft is even.
+     */
+    fade?: { side: 1 | -1; share: number };
+  };
+  /**
+   * Which side of a bowl its stem stands on -- minus one for the left, as a
+   * b's and a p's do, one for the right, as a d's and a q's -- hinted by the
+   * recipe. Only ever set where `bowl.heft` and `bowl.heftFade` are both on.
+   */
+  stemSide?: 1 | -1;
+  /**
+   * The radius the inside of a corner within this stroke is rounded by, as a
+   * share of `pen.weight`. Set by `withInside`.
+   */
+  inside?: number;
+  /**
+   * Inside roundings where this stroke crosses another with no end buried in
+   * it -- the bowl of a p against its stem -- each nearest the point given,
+   * at a share of the style's `corner.fillet`.
+   */
+  crossFillets?: Array<{ near: Vec2; share: number }>;
 }
 
 export const BUTT: Terminal = { kind: "butt" };

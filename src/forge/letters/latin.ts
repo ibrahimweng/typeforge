@@ -9,17 +9,21 @@
 import { LETTERS, recipeOf } from "../letters";
 import { movedSpine } from "../script";
 import { spineEnd, spineStart } from "../shapes";
+import { penReach, reachAlong } from "../sweep";
 import type { Style } from "../style";
 import type { Stroke } from "../types";
 import { lowerLobe, stemArchedInto } from "./greek";
+import { inAsh } from "./soft";
 import {
   arch,
   archSpine,
+  arched,
   arm,
   at,
   belly,
   lobe,
   bend,
+  bendWidth,
   borrowing,
   bowed,
   BUTT,
@@ -54,6 +58,7 @@ import {
   tReach,
   wallAt,
   widthShare,
+  middleArm,
   middleBar,
   tittle,
 } from "./common";
@@ -143,6 +148,66 @@ const OE_LEAST = 1.25;
  */
 const OE_LEAST_CONDENSED = 1.4;
 
+/**
+ * The ligature in lowercase, which is the ae with an o where the a is: the
+ * o's ring, and the e's belt and bar beside it, set half the o's width
+ * further on, so the e's side crosses into the o.
+ *
+ * On a face that keeps the two sides one wall (`metrics.oeWall`), the e is
+ * set no further into the o than that (`oneWall`): crossed further, on a
+ * light pen the room between the two sides opened into a lens, which the e's
+ * bar split into two slits.
+ */
+function drawnOE(style: Style): Recipe {
+  const f = frame(style);
+  /*
+   * And never so narrow that the first bowl's counter is under a quarter of
+   * a stem across (two fifths on a Condensed: `OE_LEAST_CONDENSED`): narrowed by the share on a narrow face at a heavy weight
+   * (the Technical's at 260), it came down to the pen's own round and the o
+   * closed to a slit.
+   */
+  const bowl = Math.max(
+    f.bowl * 0.68,
+    f.least,
+    f.half * (widthShare(f.style) < 1 ? OE_LEAST_CONDENSED : OE_LEAST),
+  );
+  const first = at(f.edge + bowl, f.x / 2);
+  const wall = f.style.metrics.oeWall;
+  const second =
+    typeof wall === "number" && wall > 0
+      ? at(first.x + oneWall(f, bowl, wall), f.x / 2)
+      : at(first.x + bowl * 2, f.x / 2);
+
+  const eye = eyeOf(f, second);
+  const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
+  const opens = (Math.asin(rise) * 180) / Math.PI;
+  const belt = bend(f, second, f.bowlH, opens, opens + 300);
+
+  return finish(
+    f,
+    [
+      ink(f, ring(f, first, bowl, f.bowlH)),
+      // From the middle of the wall, not its inside edge: see `wallAt`.
+      thin(f, straight(at(wallAt(f, second, opens), eye), spineStart(belt))),
+      ink(f, belt, BUTT, f.end),
+    ],
+    true,
+  );
+}
+
+/**
+ * How far right of the o's centre the oe sets its e's on a face that keeps
+ * the two sides one wall: half the o's width again, as the ligature always
+ * has it, unless that crosses the e's side further into the o's than
+ * `share` of the two sides' width together, where it stops there.
+ */
+function oneWall(f: ReturnType<typeof frame>, bowl: number, share: number): number {
+  const side = bendWidth(f, f.bowlH);
+  const wall = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
+  const crossed = Math.min(side - bowl, Math.min(1, Math.max(0.5, share)) * 2 * wall);
+  return bowl + side - crossed;
+}
+
 export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
   // -------------------------------------------------------------------------
   // The letters that are not a letter with a mark on it
@@ -184,7 +249,12 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         BUTT,
         f.end,
       ),
-      thin(f, straight(at(crossing, middle), at(stem + reach * 0.86, middle)), BUTT, f.end),
+      thin(
+        f,
+        straight(at(crossing, middle), at(stem + reach * middleArm(f, reach), middle)),
+        BUTT,
+        f.end,
+      ),
       arm(f, stem, stem + reach, f.sits(0, f.bar)),
     ]);
   },
@@ -207,7 +277,8 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
       metrics: { ...f.style.metrics, width: f.style.metrics.width * 0.84 },
     };
     const e = borrowedAs("e", narrow, undefined);
-    const a = borrowedAs("a", narrow, form);
+    // Drawn as an ash's a: a foot curling up out of the a would run into the e.
+    const a = inAsh(() => borrowedAs("a", narrow, form));
     // The a's stem: the rightmost upright in it.
     let stem = -Infinity;
     for (const stroke of a) {
@@ -384,7 +455,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
         ink(f, straight(at(stem, 0), at(stem, f.cap)), f.end, f.end),
         belly(f, at(stem, f.cap / 2), wide, radius, 90, 270),
         arm(f, stem, stem + reach, f.hangs(f.cap, f.bar)),
-        arm(f, stem, stem + reach * 0.86, middleBar(f, f.cap)),
+        arm(f, stem, stem + reach * middleArm(f, reach), middleBar(f, f.cap)),
         arm(f, stem, stem + reach, f.sits(0, f.bar)),
       ],
       true,
@@ -398,38 +469,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
    * width read as two letters that have collided, and the pair has to read as
    * one letter with two counters.
    */
-  oe: (style) => {
-    const f = frame(style);
-    /*
-     * And never so narrow that the first bowl's counter is under a quarter of
-     * a stem across (two fifths on a Condensed: `OE_LEAST_CONDENSED`): narrowed by the share on a narrow face at a heavy weight
-     * (the Technical's at 260), it came down to the pen's own round and the o
-     * closed to a slit.
-     */
-    const bowl = Math.max(
-      f.bowl * 0.68,
-      f.least,
-      f.half * (widthShare(f.style) < 1 ? OE_LEAST_CONDENSED : OE_LEAST),
-    );
-    const first = at(f.edge + bowl, f.x / 2);
-    const second = at(first.x + bowl * 2, f.x / 2);
-
-    const eye = eyeOf(f, second);
-    const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
-    const opens = (Math.asin(rise) * 180) / Math.PI;
-    const belt = bend(f, second, f.bowlH, opens, opens + 300);
-
-    return finish(
-      f,
-      [
-        ink(f, ring(f, first, bowl, f.bowlH)),
-        // From the middle of the wall, not its inside edge: see `wallAt`.
-        thin(f, straight(at(wallAt(f, second, opens), eye), spineStart(belt))),
-        ink(f, belt, BUTT, f.end),
-      ],
-      true,
-    );
-  },
+  oe: drawnOE,
 
   /**
    * The Dutch digraph, which is one character and two letters.
@@ -529,24 +569,28 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
     const radius = hooks ? room : f.least;
     return finish(f, [
       ink(f, straight(at(stem, 0), at(stem, f.x)), f.end, f.end),
-      ink(
+      // With the pen the face's arches take: see `arched`.
+      arched(
         f,
-        chain(leg, {
-          segments: [
-            {
-              kind: "arc",
-              centre: at(landing - radius, spineEnd(leg).y),
-              radius,
-              startAngle: deg(0),
-              endAngle: deg(hooks ? -95 : 0),
-              sweepPositive: false,
-              pieces: 2,
-            },
-          ],
-          closed: false,
-        }),
-        BUTT,
-        f.end,
+        ink(
+          f,
+          chain(leg, {
+            segments: [
+              {
+                kind: "arc",
+                centre: at(landing - radius, spineEnd(leg).y),
+                radius,
+                startAngle: deg(0),
+                endAngle: deg(hooks ? -95 : 0),
+                sweepPositive: false,
+                pieces: 2,
+              },
+            ],
+            closed: false,
+          }),
+          BUTT,
+          f.end,
+        ),
       ),
     ]);
   },
