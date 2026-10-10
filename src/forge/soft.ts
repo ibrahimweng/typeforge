@@ -416,6 +416,125 @@ export function windingAt(flat: Flat, point: Vec2): number {
 }
 
 /**
+ * Twice the signed area of the polygon `flatten` makes of one closed contour,
+ * summed over its edges in the order it lays its points, the edge back from
+ * the last to the first coming last, without making the polygon: the same
+ * sum, to the last bit, of the same numbers.
+ */
+export function flattenedArea(contour: Contour, chords = 12): number {
+  const { nodes } = contour;
+  if (nodes.length === 0) return 0;
+  const weights = weightsOf(chords);
+  let area = 0;
+  let firstX = 0;
+  let firstY = 0;
+  let lastX = 0;
+  let lastY = 0;
+  let any = false;
+  const add = (x: number, y: number) => {
+    if (any) area += lastX * y - x * lastY;
+    else {
+      firstX = x;
+      firstY = y;
+      any = true;
+    }
+    lastX = x;
+    lastY = y;
+  };
+  const edges = contour.closed ? nodes.length : nodes.length - 1;
+  for (let edge = 0; edge < edges; edge++) {
+    const from = nodes[edge];
+    const to = nodes[(edge + 1) % nodes.length];
+    add(from.point.x, from.point.y);
+    if (isLine(from, to)) continue;
+    const [p0, p1, p2, p3] = cubicOf(from, to);
+    for (let step = 1; step < chords; step++) {
+      const a = weights[step * 4];
+      const b = weights[step * 4 + 1];
+      const c = weights[step * 4 + 2];
+      const d = weights[step * 4 + 3];
+      add(a * p0.x + b * p1.x + c * p2.x + d * p3.x, a * p0.y + b * p1.y + c * p2.y + d * p3.y);
+    }
+  }
+  if (!contour.closed) add(nodes[nodes.length - 1].point.x, nodes[nodes.length - 1].point.y);
+  // And back round to the first, as the polygon closes.
+  if (any) area += lastX * firstY - firstX * lastY;
+  return area;
+}
+
+/**
+ * An outline flattened as `flatten` flattens it, each polygon's points kept
+ * as two rows of numbers rather than as points: the same numbers in the same
+ * order, and the same box, for asking many questions of one outline without
+ * making an object of every point.
+ */
+export interface Rows {
+  polygons: Array<{
+    xs: Float64Array;
+    ys: Float64Array;
+    xMin: number;
+    yMin: number;
+    xMax: number;
+    yMax: number;
+  }>;
+}
+
+/** `flatten`, into rows: see `Rows`. */
+export function flattenRows(contours: Contour[], chords = 12): Rows {
+  const polygons: Rows["polygons"] = [];
+  const weights = weightsOf(chords);
+  for (const contour of contours) {
+    const { nodes } = contour;
+    if (nodes.length === 0) continue;
+    const edges = contour.closed ? nodes.length : nodes.length - 1;
+    // How many points: one for each edge's first node, the steps between on a curve, and an open end.
+    let count = contour.closed ? 0 : 1;
+    for (let edge = 0; edge < edges; edge++) {
+      const from = nodes[edge];
+      const to = nodes[(edge + 1) % nodes.length];
+      count += isLine(from, to) ? 1 : 1 + Math.max(0, Math.ceil(chords) - 1);
+    }
+    const xs = new Float64Array(count);
+    const ys = new Float64Array(count);
+    let at = 0;
+    for (let edge = 0; edge < edges; edge++) {
+      const from = nodes[edge];
+      const to = nodes[(edge + 1) % nodes.length];
+      xs[at] = from.point.x;
+      ys[at] = from.point.y;
+      at += 1;
+      if (isLine(from, to)) continue;
+      const [p0, p1, p2, p3] = cubicOf(from, to);
+      for (let step = 1; step < chords; step++) {
+        const a = weights[step * 4];
+        const b = weights[step * 4 + 1];
+        const c = weights[step * 4 + 2];
+        const d = weights[step * 4 + 3];
+        xs[at] = a * p0.x + b * p1.x + c * p2.x + d * p3.x;
+        ys[at] = a * p0.y + b * p1.y + c * p2.y + d * p3.y;
+        at += 1;
+      }
+    }
+    if (!contour.closed) {
+      xs[at] = nodes[nodes.length - 1].point.x;
+      ys[at] = nodes[nodes.length - 1].point.y;
+    }
+    let xMin = Infinity;
+    let yMin = Infinity;
+    let xMax = -Infinity;
+    let yMax = -Infinity;
+    for (let k = 0; k < count; k++) {
+      xMin = Math.min(xMin, xs[k]);
+      yMin = Math.min(yMin, ys[k]);
+      xMax = Math.max(xMax, xs[k]);
+      yMax = Math.max(yMax, ys[k]);
+    }
+    polygons.push({ xs, ys, xMin, yMin, xMax, yMax });
+  }
+  return { polygons };
+}
+
+/**
  * A flattened outline made ready to be asked how it winds round many points
  * (see `banded`): each polygon's edges sorted into bands by height.
  */
@@ -427,7 +546,7 @@ export interface Banded {
     xMax: number;
     yMax: number;
     /** The polygon walked whole, as `windingAt` walks it, where any of its numbers is not finite. */
-    whole: Vec2[] | null;
+    whole: { xs: Float64Array; ys: Float64Array } | null;
     /** The least and the most height of any edge that is not level. */
     low: number;
     high: number;
@@ -452,33 +571,30 @@ function bandAt(y: number, low: number, step: number, count: number): number {
   return count === 1 ? 0 : Math.min(count - 1, Math.max(0, Math.floor((y - low) / step)));
 }
 
+/** Each point's band, for `banded`: kept between calls, and grown as it must be. */
+let BANDS_OF = new Int32Array(0);
+
 /**
- * An outline flattened by `flatten`, sorted for `windingIn`: every edge that
- * is not level filed under each band of height it spans, so a point is asked
- * only of the edges in its own band. An edge winds round a point only where
- * the point's height lies from its lower end up to (not including) its upper
- * one, and the band a height falls in never decreases as the height rises,
- * so every edge that could count for a point is in that point's band, and
- * each is counted there with the very numbers `windingAt` counts it with: the
- * same winding, to the last bit, for many fewer edges walked.
+ * An outline flattened by `flattenRows`, sorted for `windingIn`: every edge
+ * that is not level filed under each band of height it spans, so a point is
+ * asked only of the edges in its own band. An edge winds round a point only
+ * where the point's height lies from its lower end up to (not including) its
+ * upper one, and the band a height falls in never decreases as the height
+ * rises, so every edge that could count for a point is in that point's band,
+ * and each is counted there with the very numbers `windingAt` counts it with:
+ * the same winding, to the last bit, for many fewer edges walked.
  */
-export function banded(flat: Flat): Banded {
+export function banded(flat: Rows): Banded {
   const polygons: Banded["polygons"] = [];
   for (const polygon of flat.polygons) {
-    const { points, xMin, yMin, xMax, yMax } = polygon;
-    const length = points.length;
-    // The numbers, read off the points once.
-    const xs = new Float64Array(length);
-    const ys = new Float64Array(length);
+    const { xs, ys, xMin, yMin, xMax, yMax } = polygon;
+    const length = xs.length;
     let finite = true;
     for (let k = 0; k < length; k++) {
-      const { x, y } = points[k];
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      if (!Number.isFinite(xs[k]) || !Number.isFinite(ys[k])) {
         finite = false;
         break;
       }
-      xs[k] = x;
-      ys[k] = y;
     }
     let low = Infinity;
     let high = -Infinity;
@@ -501,7 +617,7 @@ export function banded(flat: Flat): Banded {
         yMin,
         xMax,
         yMax,
-        whole: finite ? null : points,
+        whole: finite ? null : { xs, ys },
         low: Infinity,
         high: -Infinity,
         count: 0,
@@ -522,7 +638,8 @@ export function banded(flat: Flat): Banded {
      * the band of an edge's lower end is the lesser of its two ends' bands,
      * and of its upper end the greater.
      */
-    const bandOf = new Int32Array(length);
+    if (BANDS_OF.length < length) BANDS_OF = new Int32Array(length * 2);
+    const bandOf = BANDS_OF;
     for (let k = 0; k < length; k++) bandOf[k] = bandAt(ys[k], low, step, count);
     // How many edges each band holds, then where each band starts.
     const starts = new Int32Array(count + 1);
@@ -566,7 +683,20 @@ export function windingIn(flat: Banded, point: Vec2): number {
   for (const polygon of flat.polygons) {
     if (x < polygon.xMin || x > polygon.xMax || y < polygon.yMin || y > polygon.yMax) continue;
     if (polygon.whole) {
-      winding += windingAt({ polygons: [{ ...polygon, points: polygon.whole }] }, point);
+      // Every edge, as `windingAt` walks them.
+      const { xs, ys } = polygon.whole;
+      for (let k = 0; k < xs.length; k++) {
+        const after = (k + 1) % xs.length;
+        const ax = xs[k];
+        const ay = ys[k];
+        const bx = xs[after];
+        const by = ys[after];
+        if (ay <= y) {
+          if (by > y && (bx - ax) * (y - ay) - (x - ax) * (by - ay) > 0) winding += 1;
+        } else if (by <= y && (bx - ax) * (y - ay) - (x - ax) * (by - ay) < 0) {
+          winding -= 1;
+        }
+      }
       continue;
     }
     // No edge spans a height outside these, nor a height that is no number.

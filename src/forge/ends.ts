@@ -15,7 +15,7 @@
  */
 
 import type { GlyphNode, Vec2 } from "@/font/types";
-import { edgeLength, flatten, kappa, splitEdgeAtLength, tangentAt } from "./soft";
+import { edgeLength, flattenedArea, kappa, splitEdgeAtLength, tangentAt } from "./soft";
 import type { Headed, OffsetEllipse, OffsetSegment, PenReach, SeamMark } from "./sweep";
 import type { SpineSegment, Stroke, Terminal } from "./types";
 
@@ -431,11 +431,13 @@ function tapered(
   const outerLine = beside.flatMap((piece) => sampled(piece));
   // Toward the centre of the curve is the left of the outer side anticlockwise.
   const inward = segment.segment.sweepPositive ? 1 : -1;
-  const innerPoints = chain.flatMap((index) => sampled(inner[index]));
+  // Each piece of the chain sampled once, for both of the lists below: nothing changes them.
+  const samples = new Map(chain.map((index) => [index, sampled(inner[index])]));
+  const innerPoints = chain.flatMap((index) => samples.get(index)!);
   // The same side again as one line, walked the way the stroke travels.
   const innerLine = [...chain]
     .sort((one, other) => one - other)
-    .flatMap((index) => sampled(inner[index]));
+    .flatMap((index) => samples.get(index)!);
   const was = innerPoints.map((point) => inward * standsOff(outerLine, point));
   const pinches = (amount: number): boolean => {
     const map = mapFor(amount);
@@ -778,13 +780,7 @@ export function softCorners(given: GlyphNode[], marks: SeamMark[], stroke: Strok
   if (corners.length === 0) return given;
   corners.sort((one, other) => other.at - one.at);
   // Which way the outline runs round, by its area: its corners turn that way.
-  const [ring] = flatten([{ nodes, closed: true }]).polygons;
-  let area = 0;
-  for (let k = 0; k < ring.points.length; k++) {
-    const p = ring.points[k];
-    const q = ring.points[(k + 1) % ring.points.length];
-    area += p.x * q.y - q.x * p.y;
-  }
+  const area = flattenedArea({ nodes, closed: true });
   const winding = area < 0 ? -1 : 1;
   let out = nodes;
   for (const corner of corners) {

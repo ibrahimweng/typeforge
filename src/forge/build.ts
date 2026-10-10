@@ -48,11 +48,11 @@ import { heftShift, innerSide } from "./heft";
 import {
   type Banded,
   banded,
-  type Flat,
-  flatten,
+  flattenRows,
   kappa,
   lineIntersection,
   pointAt,
+  type Rows,
   windingIn,
 } from "./soft";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
@@ -2556,9 +2556,9 @@ function teardropsFor(
    * point (see `banded`), each made once for the stroke whichever of its
    * drops asks first: the same numbers, however many ask.
    */
-  let flat: Flat | null = null;
-  const flattened = (): Flat => {
-    flat ??= flatten(swept, DIP_CHORDS);
+  let flat: Rows | null = null;
+  const flattened = (): Rows => {
+    flat ??= flattenRows(swept, DIP_CHORDS);
     return flat;
   };
   let bands: Banded | null = null;
@@ -2997,9 +2997,9 @@ const PEAR_CLEAR = 0.5;
  * first asked.
  */
 function clashesWith(others: Contour[], gap: number): (drop: Contour) => boolean {
-  let ink: Flat | null = null;
+  let ink: Rows | null = null;
   return (drop) => {
-    ink ??= flatten(others);
+    ink ??= flattenRows(others);
     const points: Vec2[] = [];
     for (let edge = 0; edge < 3; edge++) {
       const from = drop.nodes[edge];
@@ -3078,7 +3078,7 @@ interface Pear {
    * The stroke's own ink, flattened, where the pear has a neck: what the neck
    * leaves the stroke along and must not dip into.
    */
-  ink: Flat | null;
+  ink: Rows | null;
 }
 
 /**
@@ -3092,7 +3092,7 @@ interface Pear {
 function pearAt(
   stroke: Stroke,
   // The stroke's ink, flattened, asked for only where the pear has a neck.
-  flattened: () => Flat,
+  flattened: () => Rows,
   drop: NonNullable<Terminal["drop"]>,
   side: number,
   reach: ReturnType<typeof penReach>,
@@ -3141,7 +3141,7 @@ const DIP_DEPTH = 0.5;
  * the edges that could answer for some point of the neck (`edgesNear`), not
  * of the whole stroke: the neck is short and the stroke long.
  */
-function dipsInto(ink: Flat): (drop: Contour) => boolean {
+function dipsInto(ink: Rows): (drop: Contour) => boolean {
   return (drop) => {
     const top = drop.nodes[2];
     const meets = drop.nodes[3];
@@ -3174,7 +3174,7 @@ interface Near {
  * any rounding in finding the nearest point on it. Every other edge is kept,
  * and one that is no number is never "wholly" anywhere, so it is kept too.
  */
-function edgesNear(ink: Flat, points: Vec2[], depth: number): Near {
+function edgesNear(ink: Rows, points: Vec2[], depth: number): Near {
   let xMin = Infinity;
   let yMin = Infinity;
   let xMax = -Infinity;
@@ -3190,23 +3190,26 @@ function edgesNear(ink: Flat, points: Vec2[], depth: number): Near {
   const round: Near["round"] = [];
   const deep: number[] = [];
   for (const polygon of ink.polygons) {
-    const { points: ring } = polygon;
+    const { xs, ys } = polygon;
     const edges: number[] = [];
-    for (let k = 0; k < ring.length; k++) {
-      const a = ring[k];
-      const b = ring[(k + 1) % ring.length];
-      const low = Math.min(a.y, b.y);
-      const high = Math.max(a.y, b.y);
-      if (!(high < yMin || low > yMax)) edges.push(a.x, a.y, b.x, b.y);
+    for (let k = 0; k < xs.length; k++) {
+      const after = (k + 1) % xs.length;
+      const ax = xs[k];
+      const ay = ys[k];
+      const bx = xs[after];
+      const by = ys[after];
+      const low = Math.min(ay, by);
+      const high = Math.max(ay, by);
+      if (!(high < yMin || low > yMax)) edges.push(ax, ay, bx, by);
       if (
         !(
           high < yMin - reach ||
           low > yMax + reach ||
-          Math.max(a.x, b.x) < xMin - reach ||
-          Math.min(a.x, b.x) > xMax + reach
+          Math.max(ax, bx) < xMin - reach ||
+          Math.min(ax, bx) > xMax + reach
         )
       ) {
-        deep.push(a.x, a.y, b.x, b.y);
+        deep.push(ax, ay, bx, by);
       }
     }
     round.push({
@@ -3307,7 +3310,7 @@ const BEND_REACH = 6;
  * Asked again with the same numbers of the same ink, what it found before:
  * see `edgeFrom`.
  */
-function bendOf(ink: Flat, point: Vec2, inside: Vec2): number {
+function bendOf(ink: Rows, point: Vec2, inside: Vec2): number {
   return askedBefore(BENDS, ink, point, inside, () => bendFound(ink, point, inside));
 }
 
@@ -3315,28 +3318,31 @@ function bendOf(ink: Flat, point: Vec2, inside: Vec2): number {
 const BENDS = new WeakMap<object, Array<{ asked: number[]; answer: number }>>();
 
 /** `bendOf`, worked out. */
-function bendFound(ink: Flat, point: Vec2, inside: Vec2): number {
+function bendFound(ink: Rows, point: Vec2, inside: Vec2): number {
   let best = Infinity;
   // The square of the nearest so far, with `SQUARED_SLACK`: a corner past it cannot be nearer.
   let past = Infinity;
-  let polygon: Vec2[] = [];
+  let xs: Float64Array = new Float64Array(0);
+  let ys: Float64Array = xs;
   let at = 0;
-  for (const { points } of ink.polygons) {
-    for (let k = 0; k < points.length; k++) {
-      const dx = points[k].x - point.x;
-      const dy = points[k].y - point.y;
+  for (const polygon of ink.polygons) {
+    const length = polygon.xs.length;
+    for (let k = 0; k < length; k++) {
+      const dx = polygon.xs[k] - point.x;
+      const dy = polygon.ys[k] - point.y;
       if (dx * dx + dy * dy > past) continue;
       const far = Math.hypot(dx, dy);
       if (far < best) {
         best = far;
         // Not for a distance so small its square is lost: every corner is then measured.
         past = far > 1e-100 ? far * far * SQUARED_SLACK : Infinity;
-        polygon = points;
+        xs = polygon.xs;
+        ys = polygon.ys;
         at = k;
       }
     }
   }
-  const count = polygon.length;
+  const count = xs.length;
   if (count < 3) return 0;
   // Walked a fixed way round, never past the whole outline.
   const walk = (way: number): Vec2 => {
@@ -3344,13 +3350,13 @@ function bendFound(ink: Flat, point: Vec2, inside: Vec2): number {
     let gone = 0;
     for (let step = 0; step < count - 1 && gone < BEND_REACH; step++) {
       const next = (k + way + count) % count;
-      gone += Math.hypot(polygon[next].x - polygon[k].x, polygon[next].y - polygon[k].y);
+      gone += Math.hypot(xs[next] - xs[k], ys[next] - ys[k]);
       k = next;
     }
-    return polygon[k];
+    return { x: xs[k], y: ys[k] };
   };
   const before = walk(-1);
-  const here = polygon[at];
+  const here = { x: xs[at], y: ys[at] };
   const after = walk(1);
   const one = { x: here.x - before.x, y: here.y - before.y };
   const two = { x: after.x - here.x, y: after.y - here.y };

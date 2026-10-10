@@ -23,7 +23,16 @@ import { widthedStyle } from "./family";
 import { readyToShape } from "./layers";
 import { everyFormOf, recipeOf } from "./letters";
 import { openWaveBook, type WaveBook } from "./shapes";
-import { banded, flatten, windingAt, windingIn } from "./soft";
+import {
+  banded,
+  type Flat,
+  flatten,
+  flattenedArea,
+  flattenRows,
+  type Rows,
+  windingAt,
+  windingIn,
+} from "./soft";
 import { SOFT_SERIF } from "./starts";
 import type { Style } from "./style";
 import { sweep } from "./sweep";
@@ -129,6 +138,80 @@ describe("a stroke's outline handed on to its own ink, with the later soft field
 });
 
 describe("the sorted ink a thinned drop is measured against", () => {
+  /** A flattened outline's points as rows of numbers, its boxes as they were. */
+  function rowsOf(flat: Flat): Rows {
+    return {
+      polygons: flat.polygons.map(({ points, xMin, yMin, xMax, yMax }) => ({
+        xs: Float64Array.from(points, (point) => point.x),
+        ys: Float64Array.from(points, (point) => point.y),
+        xMin,
+        yMin,
+        xMax,
+        yMax,
+      })),
+    };
+  }
+
+  /** The strokes of the letters that hang drops, swept, at a light, a regular and a black pen. */
+  function strokes(): Array<[string, Contour[]]> {
+    const out: Array<[string, Contour[]]> = [];
+    for (const pen of [30, 84, 260]) {
+      const style: Style = { ...SOFT_SERIF, pen: { ...SOFT_SERIF.pen, weight: pen } };
+      for (const name of ["a", "c", "f", "g", "j", "r", "y", "s", "S", "six", "nine", "o", "O"]) {
+        const recipe = recipeOf(name, SOFT_SERIF.forms?.[name] ?? "")!(style);
+        recipe.strokes.forEach((stroke, index) => {
+          const swept = sweep(stroke);
+          if (swept.length > 0) out.push([`${name} stroke ${index} at ${pen}`, swept]);
+        });
+      }
+    }
+    return out;
+  }
+
+  it("measures the area of the polygon flatten makes, to the last bit, without making it", () => {
+    const wrong: string[] = [];
+    for (const [label, swept] of strokes()) {
+      for (const contour of swept) {
+        // As softCorners summed it, over the polygon of the contour closed.
+        const closed = { nodes: contour.nodes, closed: true };
+        const [ring] = flatten([closed]).polygons;
+        let area = 0;
+        for (let k = 0; k < ring.points.length; k++) {
+          const p = ring.points[k];
+          const q = ring.points[(k + 1) % ring.points.length];
+          area += p.x * q.y - q.x * p.y;
+        }
+        if (!Object.is(flattenedArea(closed), area)) wrong.push(label);
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it("is flattened into rows as flatten flattens it, every number and box the same", () => {
+    const wrong: string[] = [];
+    for (const [label, swept] of strokes()) {
+      for (const chords of [12, 48]) {
+        const flat = flatten(swept, chords);
+        const rows = flattenRows(swept, chords);
+        if (rows.polygons.length !== flat.polygons.length) wrong.push(`${label}: polygons`);
+        flat.polygons.forEach((polygon, index) => {
+          const row = rows.polygons[index];
+          const same =
+            row !== undefined &&
+            row.xs.length === polygon.points.length &&
+            polygon.points.every(
+              (point, k) => Object.is(point.x, row.xs[k]) && Object.is(point.y, row.ys[k]),
+            ) &&
+            Object.is(row.xMin, polygon.xMin) &&
+            Object.is(row.yMin, polygon.yMin) &&
+            Object.is(row.xMax, polygon.xMax) &&
+            Object.is(row.yMax, polygon.yMax);
+          if (!same) wrong.push(`${label} (${chords}): polygon ${index}`);
+        });
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
   /** Points over and round an outline's box: a grid, every point of it, and each a hair off. */
   function probes(contours: Contour[]): Array<{ x: number; y: number }> {
     const flat = flatten(contours, 48);
@@ -149,22 +232,14 @@ describe("the sorted ink a thinned drop is measured against", () => {
 
   it("winds round every point as the ink it was sorted from, on the strokes of the drop letters", () => {
     const wrong: string[] = [];
-    for (const pen of [30, 84, 260]) {
-      const style: Style = { ...SOFT_SERIF, pen: { ...SOFT_SERIF.pen, weight: pen } };
-      for (const name of ["a", "c", "f", "g", "j", "r", "y", "s", "S", "six", "nine", "o", "O"]) {
-        const recipe = recipeOf(name, SOFT_SERIF.forms?.[name] ?? "")!(style);
-        recipe.strokes.forEach((stroke, index) => {
-          const swept = sweep(stroke);
-          if (swept.length === 0) return;
-          for (const chords of [12, 48]) {
-            const flat = flatten(swept, chords);
-            const sorted = banded(flat);
-            for (const point of probes(swept)) {
-              if (windingIn(sorted, point) !== windingAt(flat, point))
-                wrong.push(`${name} stroke ${index} at ${pen} (${chords}): ${point.x},${point.y}`);
-            }
-          }
-        });
+    for (const [label, swept] of strokes()) {
+      for (const chords of [12, 48]) {
+        const flat = flatten(swept, chords);
+        const sorted = banded(flattenRows(swept, chords));
+        for (const point of probes(swept)) {
+          if (windingIn(sorted, point) !== windingAt(flat, point))
+            wrong.push(`${label} (${chords}): ${point.x},${point.y}`);
+        }
       }
     }
     expect(wrong.slice(0, 20)).toEqual([]);
@@ -264,7 +339,7 @@ describe("the sorted ink a thinned drop is measured against", () => {
     const wrong: string[] = [];
     shapes.forEach((polygons, index) => {
       const flat = { polygons };
-      const sorted = banded(flat);
+      const sorted = banded(rowsOf(flat));
       const points: Array<{ x: number; y: number }> = [];
       for (let x = -3; x <= 18; x += 0.5) for (let y = -3; y <= 66; y += 0.5) points.push({ x, y });
       for (const one of polygons.flatMap((p) => p.points)) points.push(one);
