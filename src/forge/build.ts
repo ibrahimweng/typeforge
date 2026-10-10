@@ -45,7 +45,19 @@ import { effectInk, reachesEffects, type Effects } from "./effects";
 import { filletsFor } from "./fillet";
 import { prepared } from "./prepare";
 import { heftShift, innerSide } from "./heft";
-import { type Flat, flatten, kappa, lineIntersection, pointAt, windingAt } from "./soft";
+import {
+  type Banded,
+  bandAt,
+  banded,
+  flattenRows,
+  hypot,
+  kappa,
+  lineIntersection,
+  type Numbers,
+  pointAt,
+  type Rows,
+  windingIn,
+} from "./soft";
 import { hairlineWeight, risesSteeply, splitVees } from "./letters/humanist";
 import { reaches, scaleOf, type Cuts } from "./cut";
 import { shapedInk } from "./layers";
@@ -2378,7 +2390,8 @@ function dropRadius(
   const thins = style.parts.terminal.dropTaper ?? 0;
   const least = thins > 0 ? h * keptOfDrop(thins) : h;
   const size = style.parts.terminal.dropSize;
-  if (size !== undefined && size !== 0) {
+  // Left out, nought, or null as a document can carry it (see `settled` in document.ts).
+  if (typeof size === "number" && size !== 0) {
     const grown = size * (pear?.size ?? 1);
     const wanted = TEAR_SIZE * (1 + grown) * Math.sqrt(stem * style.metrics.unitsPerEm * 0.1);
     const share = Math.min(0.75, 0.45 + 0.3 * Math.max(0, grown));
@@ -2541,6 +2554,21 @@ function teardropsFor(
   const band = contoursBounds(swept);
   const reach = penReach(stroke.pen);
   const ends = endsOf(stroke);
+  /*
+   * The stroke's ink flattened, and sorted for asking how it winds round a
+   * point (see `banded`), each made once for the stroke whichever of its
+   * drops asks first: the same numbers, however many ask.
+   */
+  let flat: Rows | null = null;
+  const flattened = (): Rows => {
+    flat ??= flattenRows(swept, DIP_CHORDS);
+    return flat;
+  };
+  let bands: Banded | null = null;
+  const sorted = (): Banded => {
+    bands ??= banded(flattened());
+    return bands;
+  };
   for (const index of [0, 1] as const) {
     const [terminal, at, outward] = ends[index];
     if (terminal.kind !== "teardrop" || terminal.open !== true) continue;
@@ -2564,7 +2592,7 @@ function teardropsFor(
      * stroke's own ink, since how far the taper could draw the side in is the
      * sweep's to say.
      */
-    const thinned = terminal.taper !== undefined ? flatten(swept, DIP_CHORDS) : null;
+    const thinned = terminal.taper !== undefined ? sorted() : null;
     const thinKept = thinned
       ? keptAt(
           thinned,
@@ -2578,7 +2606,7 @@ function teardropsFor(
       ? ((t * t + h * h) / Math.max(h, 1e-6)) * thinKept + 0.5
       : (t * t + h * h) / Math.max(h, 1e-6) + 0.5;
     const bend = drop.bend > 0 ? drop.bend : drop.radius * 4;
-    const pear = pearAt(stroke, swept, drop, index === 1 ? side : -side, reach);
+    const pear = pearAt(stroke, sorted, drop, index === 1 ? side : -side, reach);
     /*
      * A plain drop on a bottom-heavy bowl meets the inner side where the heft
      * moved it, as a pear does (see `heftLift`): left on the side as it was
@@ -2671,7 +2699,8 @@ function teardropsFor(
           })),
         },
       ]) || contoursIntersect([drop]);
-    const folds = pear ? askedOnce(crosses) : crosses;
+    // A pear's asked without making the rounded copy: the same answer (see `foldsEither`).
+    const folds = pear ? askedOnce(foldsEither) : crosses;
     const again: Array<[number, boolean]> = [
       // The tail left the stroke less steeply, then closed back onto its own
       // foot, whose edge it cannot then rise over.
@@ -2792,25 +2821,104 @@ function teardropsFor(
 }
 
 /**
+ * Whether a drop folds, as `crosses` in `teardropsFor` asks it: `contoursIntersect`
+ * of the drop as it will be stored, on the unit grid, or failing that of the
+ * drop as drawn. Asked without making the rounded copy, its segments or the
+ * samples along its curves as objects -- the same samples by the same sums,
+ * the same segments of no length left out, and the same pairs asked the same
+ * way -- so the same answer for much less made.
+ */
+function foldsEither(drop: Contour): boolean {
+  return selfCrossing(drop, true) || selfCrossing(drop, false);
+}
+
+/** `contoursIntersect([contour])`, on the unit grid where `grid` is set: see `foldsEither`. */
+function selfCrossing(contour: Contour, grid: boolean): boolean {
+  const { nodes, closed } = contour;
+  if (nodes.length < 2) return false;
+  const at = (value: number) => (grid ? Math.round(value) : value);
+  // Each segment that goes anywhere, from (ax, ay) to (bx, by).
+  const ax: number[] = [];
+  const ay: number[] = [];
+  const bx: number[] = [];
+  const by: number[] = [];
+  const add = (fromX: number, fromY: number, toX: number, toY: number) => {
+    if (hypot(toX - fromX, toY - fromY) > 1e-9) {
+      ax.push(fromX);
+      ay.push(fromY);
+      bx.push(toX);
+      by.push(toY);
+    }
+  };
+  const last = closed ? nodes.length : nodes.length - 1;
+  for (let i = 0; i < last; i++) {
+    const a = nodes[i];
+    const b = nodes[(i + 1) % nodes.length];
+    const fromX = at(a.point.x);
+    const fromY = at(a.point.y);
+    const toX = at(b.point.x);
+    const toY = at(b.point.y);
+    if (!a.handleOut && !b.handleIn) {
+      add(fromX, fromY, toX, toY);
+      continue;
+    }
+    const one = a.handleOut ?? a.point;
+    const two = b.handleIn ?? b.point;
+    const c1x = at(one.x);
+    const c1y = at(one.y);
+    const c2x = at(two.x);
+    const c2y = at(two.y);
+    // Sampled in six, by the sums `contoursIntersect` samples a curve with.
+    let previousX = fromX;
+    let previousY = fromY;
+    for (let step = 1; step <= 6; step++) {
+      const t = step / 6;
+      const u = 1 - t;
+      const x = u * u * u * fromX + 3 * u * u * t * c1x + 3 * u * t * t * c2x + t * t * t * toX;
+      const y = u * u * u * fromY + 3 * u * u * t * c1y + 3 * u * t * t * c2y + t * t * t * toY;
+      add(previousX, previousY, x, y);
+      previousX = x;
+      previousY = y;
+    }
+  }
+  const count = ax.length;
+  if (count > 600) return false;
+  for (let i = 0; i < count; i++) {
+    for (let j = i + 2; j < count; j++) {
+      // Neighbouring segments share an endpoint, which is not a crossing.
+      if (i === 0 && j === count - 1) continue;
+      // Strictly across each other's lines both ways, as `segmentsCross` asks.
+      const d1 = (bx[i] - ax[i]) * (ay[j] - ay[i]) - (by[i] - ay[i]) * (ax[j] - ax[i]);
+      const d2 = (bx[i] - ax[i]) * (by[j] - ay[i]) - (by[i] - ay[i]) * (bx[j] - ax[i]);
+      if (!((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))) continue;
+      const d3 = (bx[j] - ax[j]) * (ay[i] - ay[j]) - (by[j] - ay[j]) * (ax[i] - ax[j]);
+      const d4 = (bx[j] - ax[j]) * (by[i] - ay[j]) - (by[j] - ay[j]) * (bx[i] - ax[j]);
+      if ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0)) return true;
+    }
+  }
+  return false;
+}
+
+/**
  * How much of an end's width is left where its stroke thins into its drop:
  * the share of the way from its outer corner to where its inner corner was
  * that is still inked, a hair back from the cut, found by a fixed number of
  * halvings. All of it where nothing was drawn in, or where the ink cannot be
  * read so near the outer corner.
  */
-function keptAt(ink: Flat, outer: Vec2, inner: Vec2, u: Vec2): number {
+function keptAt(ink: Banded, outer: Vec2, inner: Vec2, u: Vec2): number {
   const at = (share: number): Vec2 => ({
     x: outer.x + (inner.x - outer.x) * share - u.x * KEPT_BACK,
     y: outer.y + (inner.y - outer.y) * share - u.y * KEPT_BACK,
   });
-  if (windingAt(ink, at(1)) !== 0) return 1;
+  if (windingIn(ink, at(1)) !== 0) return 1;
   // Half of the least a taper keeps, which is inked whatever the taper did.
   let low = 0.075;
-  if (windingAt(ink, at(low)) === 0) return 1;
+  if (windingIn(ink, at(low)) === 0) return 1;
   let high = 1;
   for (let step = 0; step < KEPT_HALVINGS; step++) {
     const middle = (low + high) / 2;
-    if (windingAt(ink, at(middle)) !== 0) low = middle;
+    if (windingIn(ink, at(middle)) !== 0) low = middle;
     else high = middle;
   }
   return high;
@@ -2830,22 +2938,63 @@ const KEPT_HALVINGS = 30;
  * narrowed by a fixed number of halvings. Where that start is not inked, or
  * the walk never leaves the ink, the point `toward` reaches to, as on a plain
  * stroke.
+ *
+ * Asked again with the same four numbers of the same ink, it hands back what
+ * it found before (see `askedBefore`): a pear settling into its band, and the
+ * ladder in `teardropsFor` trying its neck one way and another, asks the same
+ * question over and over, and at a Black most of the pears tried share a
+ * handful of distances back along the stroke.
  */
-function edgeFrom(ink: Flat, spine: Vec2, toward: Vec2): Vec2 {
-  const reach = Math.hypot(toward.x, toward.y);
+function edgeFrom(ink: Banded, spine: Vec2, toward: Vec2): Vec2 {
+  const found = askedBefore(EDGES, ink, spine, toward, () => edgeFound(ink, spine, toward));
+  return { x: found.x, y: found.y };
+}
+
+/** What `edgeFrom` found on each ink, by what it was asked. */
+const EDGES = new WeakMap<object, Array<{ asked: number[]; answer: Vec2 }>>();
+
+/**
+ * The answer kept on `ink` for these two points, to the last bit (nought
+ * kept apart from less than nought), or the one `find` gives, kept.
+ */
+function askedBefore<T>(
+  kept: WeakMap<object, Array<{ asked: number[]; answer: T }>>,
+  ink: object,
+  one: Vec2,
+  other: Vec2,
+  find: () => T,
+): T {
+  let answers = kept.get(ink);
+  if (answers === undefined) {
+    answers = [];
+    kept.set(ink, answers);
+  }
+  const asked = [one.x, one.y, other.x, other.y];
+  const before = answers.find((answer) =>
+    answer.asked.every((value, at) => Object.is(value, asked[at])),
+  );
+  if (before) return before.answer;
+  const answer = find();
+  answers.push({ asked, answer });
+  return answer;
+}
+
+/** `edgeFrom`, worked out. */
+function edgeFound(ink: Banded, spine: Vec2, toward: Vec2): Vec2 {
+  const reach = hypot(toward.x, toward.y);
   const plain = { x: spine.x + toward.x, y: spine.y + toward.y };
   if (!(reach > 1e-9)) return plain;
   const way = { x: toward.x / reach, y: toward.y / reach };
   // A twentieth of the stroke's width in from its outer edge.
   const from = { x: spine.x - toward.x * 0.9, y: spine.y - toward.y * 0.9 };
-  if (windingAt(ink, from) === 0) return plain;
+  if (windingIn(ink, from) === 0) return plain;
   const at = (k: number): Vec2 => ({ x: from.x + way.x * k, y: from.y + way.y * k });
   const most = reach * 2.5 + 1;
   let low = 0;
   let high = -1;
   for (let step = 1; step <= EDGE_STEPS; step++) {
     const k = (most * step) / EDGE_STEPS;
-    if (windingAt(ink, at(k)) === 0) {
+    if (windingIn(ink, at(k)) === 0) {
       high = k;
       break;
     }
@@ -2854,7 +3003,7 @@ function edgeFrom(ink: Flat, spine: Vec2, toward: Vec2): Vec2 {
   if (high < 0) return plain;
   for (let step = 0; step < KEPT_HALVINGS; step++) {
     const middle = (low + high) / 2;
-    if (windingAt(ink, at(middle)) === 0) high = middle;
+    if (windingIn(ink, at(middle)) === 0) high = middle;
     else low = middle;
   }
   return at(low);
@@ -2887,7 +3036,7 @@ function middleOf(spine: Vec2, toward: Vec2, meets: Vec2): Vec2 {
  * tenths of it.
  */
 function closingHandle(
-  ink: Flat,
+  ink: Banded,
   spine: Spine,
   distance: number,
   way: number,
@@ -2897,7 +3046,7 @@ function closingHandle(
   leaving: Vec2,
   arriving: Vec2,
 ): number {
-  const chord = Math.hypot(corner.x - behind.x, corner.y - behind.y);
+  const chord = hypot(corner.x - behind.x, corner.y - behind.y);
   const apart = { x: leaving.x - arriving.x, y: leaving.y - arriving.y };
   const spread = apart.x * apart.x + apart.y * apart.y;
   if (spread < 1e-9) return chord / 3;
@@ -2931,18 +3080,19 @@ const PEAR_CLEAR = 0.5;
  * first asked.
  */
 function clashesWith(others: Contour[], gap: number): (drop: Contour) => boolean {
-  let ink: Flat | null = null;
+  let ink: Banded | null = null;
   return (drop) => {
-    ink ??= flatten(others);
+    ink ??= banded(flattenRows(others));
     const points: Vec2[] = [];
     for (let edge = 0; edge < 3; edge++) {
       const from = drop.nodes[edge];
       const to = drop.nodes[edge + 1];
       for (let step = 0; step <= 12; step++) points.push(pointAt(from, to, step / 12));
     }
-    const near = edgesNear(ink, points, gap);
+    const round = reachRound(points, gap);
+    const filed = ink;
     return points.some(
-      (point) => windingAmong(near.round, point) !== 0 || !deeperThan(near.deep, point, gap),
+      (point) => windingIn(filed, point) !== 0 || !deeperIn(filed, point, gap, round),
     );
   };
 }
@@ -3009,10 +3159,10 @@ interface Pear {
   /** How far the stroke's inner side was moved by its heft, where the drop hangs on that side. */
   lift: Vec2 | null;
   /**
-   * The stroke's own ink, flattened, where the pear has a neck: what the neck
-   * leaves the stroke along and must not dip into.
+   * The stroke's own ink, flattened and filed (see `banded`), where the pear
+   * has a neck: what the neck leaves the stroke along and must not dip into.
    */
-  ink: Flat | null;
+  ink: Banded | null;
 }
 
 /**
@@ -3025,7 +3175,8 @@ interface Pear {
  */
 function pearAt(
   stroke: Stroke,
-  swept: Contour[],
+  // The stroke's ink, flattened and filed, asked for only where the pear has a neck.
+  sorted: () => Banded,
   drop: NonNullable<Terminal["drop"]>,
   side: number,
   reach: ReturnType<typeof penReach>,
@@ -3035,7 +3186,7 @@ function pearAt(
   }
   const lift = heftLift(stroke, side, reach);
   const neck = drop.neck ?? 0;
-  const ink = neck > 0 ? flatten(swept, DIP_CHORDS) : null;
+  const ink = neck > 0 ? sorted() : null;
   return { hang: drop.hang ?? 0, turn: drop.turn ?? 0, neck, lift, ink };
 }
 
@@ -3071,43 +3222,39 @@ const DIP_DEPTH = 0.5;
  *
  * A point is in the ink where the ink winds round it, and deeper than
  * `DIP_DEPTH` where no edge of the ink comes that near it. Both are asked of
- * the edges that could answer for some point of the neck (`edgesNear`), not
- * of the whole stroke: the neck is short and the stroke long.
+ * the ink filed by height (see `banded`): of the edges at the point's height,
+ * and of those within reach of it, not of the whole stroke -- the neck is
+ * short and the stroke long.
  */
-function dipsInto(ink: Flat): (drop: Contour) => boolean {
+function dipsInto(ink: Banded): (drop: Contour) => boolean {
   return (drop) => {
     const top = drop.nodes[2];
     const meets = drop.nodes[3];
     const points: Vec2[] = [];
     for (let step = 1; step <= 16; step++) points.push(pointAt(top, meets, step / 17));
-    const near = edgesNear(ink, points, DIP_DEPTH);
+    const round = reachRound(points, DIP_DEPTH);
     return points.some(
-      (point) => windingAmong(near.round, point) !== 0 && deeperThan(near.deep, point, DIP_DEPTH),
+      (point) => windingIn(ink, point) !== 0 && deeperIn(ink, point, DIP_DEPTH, round),
     );
   };
 }
 
 /**
- * The edges of a flattened outline that can answer for a few points: see
- * `edgesNear`. Each edge is four numbers in a row -- the x and y of the point
- * it leaves, then of the point it reaches -- the very numbers of the outline.
+ * The box round a few points, and how far round it an edge can be and still
+ * come within `depth` of one of them, and a hair more: past it, an edge is
+ * further than `depth` from each, by more than any rounding in finding the
+ * nearest point on it. Not a number where a point is not one, which passes
+ * nothing over.
  */
-interface Near {
-  /** Each polygon's box, as `windingAt` reads it, and its edges level with any of the points. */
-  round: Array<{ edges: number[]; xMin: number; yMin: number; xMax: number; yMax: number }>;
-  /** The edges that come within `depth` of the box round the points, and a hair more. */
-  deep: number[];
+interface Round {
+  xMin: number;
+  yMin: number;
+  xMax: number;
+  yMax: number;
+  reach: number;
 }
 
-/**
- * The edges of a flattened outline that can answer either question `dipsInto`
- * asks of these points. An edge wholly above or below every point winds round
- * none of them, as `windingAt` counts winding; and one further than `depth`
- * from the box round them all is further than that from each, by more than
- * any rounding in finding the nearest point on it. Every other edge is kept,
- * and one that is no number is never "wholly" anywhere, so it is kept too.
- */
-function edgesNear(ink: Flat, points: Vec2[], depth: number): Near {
+function reachRound(points: Vec2[], depth: number): Round {
   let xMin = Infinity;
   let yMin = Infinity;
   let xMax = -Infinity;
@@ -3120,71 +3267,7 @@ function edgesNear(ink: Flat, points: Vec2[], depth: number): Near {
   }
   const reach =
     depth + 1e-6 * (1 + Math.max(Math.abs(xMin), Math.abs(xMax), Math.abs(yMin), Math.abs(yMax)));
-  const round: Near["round"] = [];
-  const deep: number[] = [];
-  for (const polygon of ink.polygons) {
-    const { points: ring } = polygon;
-    const edges: number[] = [];
-    for (let k = 0; k < ring.length; k++) {
-      const a = ring[k];
-      const b = ring[(k + 1) % ring.length];
-      const low = Math.min(a.y, b.y);
-      const high = Math.max(a.y, b.y);
-      if (!(high < yMin || low > yMax)) edges.push(a.x, a.y, b.x, b.y);
-      if (
-        !(
-          high < yMin - reach ||
-          low > yMax + reach ||
-          Math.max(a.x, b.x) < xMin - reach ||
-          Math.min(a.x, b.x) > xMax + reach
-        )
-      ) {
-        deep.push(a.x, a.y, b.x, b.y);
-      }
-    }
-    round.push({
-      edges,
-      xMin: polygon.xMin,
-      yMin: polygon.yMin,
-      xMax: polygon.xMax,
-      yMax: polygon.yMax,
-    });
-  }
-  return { round, deep };
-}
-
-/**
- * How many times the edges wind round a point: `windingAt`, edge for edge,
- * of the edges `edgesNear` kept, each polygon passed over where its box does
- * not hold the point.
- */
-function windingAmong(round: Near["round"], point: Vec2): number {
-  let winding = 0;
-  for (const polygon of round) {
-    if (
-      point.x < polygon.xMin ||
-      point.x > polygon.xMax ||
-      point.y < polygon.yMin ||
-      point.y > polygon.yMax
-    ) {
-      continue;
-    }
-    const { edges } = polygon;
-    for (let at = 0; at < edges.length; at += 4) {
-      const ax = edges[at];
-      const ay = edges[at + 1];
-      const bx = edges[at + 2];
-      const by = edges[at + 3];
-      if (ay <= point.y) {
-        if (by > point.y && (bx - ax) * (point.y - ay) - (point.x - ax) * (by - ay) > 0) {
-          winding += 1;
-        }
-      } else if (by <= point.y && (bx - ax) * (point.y - ay) - (point.x - ax) * (by - ay) < 0) {
-        winding -= 1;
-      }
-    }
-  }
-  return winding;
+  return { xMin, yMin, xMax, yMax, reach };
 }
 
 /**
@@ -3196,28 +3279,83 @@ function windingAmong(round: Near["round"], point: Vec2): number {
 const SQUARED_SLACK = 1 + 1e-9;
 
 /**
- * Whether a point is further than `depth` from every one of these edges (as
- * `edgesNear` lays them out), each measured from the nearest point on it --
- * answered no at the first that comes that near, rather than after measuring
- * every one.
+ * Whether a point is further than `depth` from every edge of a filed ink,
+ * each measured from the nearest point on it -- answered no at the first
+ * that comes that near, rather than after measuring every one.
+ *
+ * The edges measured are those `round` keeps for all the points asked about
+ * together (see `reachRound`): every edge but one whose ends both lie past
+ * the box round them, grown by the reach, on one side. Of a polygon whose
+ * numbers are all finite and modest, and for a point that is, only the
+ * edges filed under the heights within the reach of this point are
+ * measured, and of those only the ones whose ends do not both lie past the
+ * reach of this point on one side: every other is further off than `depth`
+ * by more than any rounding, as the reach is. Any other polygon is measured
+ * whole, against the box round all the points, as the edges were kept for
+ * them; an edge that is not a number is kept wherever it is, and answers
+ * no, as the least of the distances then was not one.
  */
-function deeperThan(edges: number[], point: Vec2, depth: number): boolean {
+function deeperIn(ink: Banded, point: Vec2, depth: number, round: Round): boolean {
   const near = depth * depth * SQUARED_SLACK;
-  for (let at = 0; at < edges.length; at += 4) {
-    const ax = edges[at];
-    const ay = edges[at + 1];
-    const dx = edges[at + 2] - ax;
-    const dy = edges[at + 3] - ay;
+  const { x, y } = point;
+  const { reach } = round;
+  const modest = (value: number) => Math.abs(value) < 1e100;
+  const filed = modest(x) && modest(y) && modest(reach);
+  // Whether one edge, from (ax, ay) to (bx, by), lies within the box and comes within `depth`.
+  const nearer = (
+    box: { xMin: number; yMin: number; xMax: number; yMax: number },
+    ax: number,
+    ay: number,
+    bx: number,
+    by: number,
+  ): boolean => {
+    if (
+      Math.max(ay, by) < box.yMin - reach ||
+      Math.min(ay, by) > box.yMax + reach ||
+      Math.max(ax, bx) < box.xMin - reach ||
+      Math.min(ax, bx) > box.xMax + reach
+    ) {
+      return false;
+    }
+    const dx = bx - ax;
+    const dy = by - ay;
     const length = dx * dx + dy * dy;
     const share =
-      length > 0
-        ? Math.min(1, Math.max(0, ((point.x - ax) * dx + (point.y - ay) * dy) / length))
-        : 0;
-    const offX = point.x - (ax + dx * share);
-    const offY = point.y - (ay + dy * share);
-    if (offX * offX + offY * offY > near) continue;
-    // Measured exactly; one that is no number answers no, as the least of them then was not one.
-    if (!(Math.hypot(offX, offY) > depth)) return false;
+      length > 0 ? Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / length)) : 0;
+    const offX = x - (ax + dx * share);
+    const offY = y - (ay + dy * share);
+    if (offX * offX + offY * offY > near) return false;
+    // Measured exactly; one that is no number comes near, as the least of them then was not one.
+    return !(hypot(offX, offY) > depth);
+  };
+  const own = { xMin: x, yMin: y, xMax: x, yMax: y };
+  for (const polygon of ink.polygons) {
+    const { xs, ys } = polygon;
+    const length = xs.length;
+    const plain =
+      filed &&
+      !polygon.whole &&
+      modest(polygon.xMin) &&
+      modest(polygon.yMin) &&
+      modest(polygon.xMax) &&
+      modest(polygon.yMax);
+    if (!plain) {
+      // Every edge, in its own numbers, against the box round all the points.
+      for (let k = 0; k < length; k++) {
+        const after = (k + 1) % length;
+        if (nearer(round, xs[k], ys[k], xs[after], ys[after])) return false;
+      }
+      continue;
+    }
+    // No edge of the polygon reaches a height within `reach` of the point.
+    if (y + reach < polygon.yMin || y - reach > polygon.yMax) continue;
+    const { count, step, starts, edges, ends } = polygon;
+    const first = bandAt(y - reach, polygon.yMin, step, count);
+    const last = bandAt(y + reach, polygon.yMin, step, count);
+    for (let at = starts[first]; at < starts[last + 1]; at++) {
+      const e = edges[at];
+      if (nearer(own, ends[e], ends[e + 1], ends[e + 2], ends[e + 3])) return false;
+    }
   }
   return true;
 }
@@ -3236,29 +3374,81 @@ const BEND_REACH = 6;
  * one over the radius of the circle through that nearest corner of it and
  * the two `BEND_REACH` units either way along it -- positive where it bends
  * round toward `inside`, negative where away.
+ *
+ * Asked again with the same numbers of the same ink, what it found before:
+ * see `edgeFrom`.
  */
-function bendOf(ink: Flat, point: Vec2, inside: Vec2): number {
+function bendOf(ink: Banded, point: Vec2, inside: Vec2): number {
+  return askedBefore(BENDS, ink, point, inside, () => bendFound(ink, point, inside));
+}
+
+/** What `bendOf` found on each ink, by what it was asked. */
+const BENDS = new WeakMap<object, Array<{ asked: number[]; answer: number }>>();
+
+/**
+ * `bendOf`, worked out.
+ *
+ * The nearest corner is the first, polygon by polygon and corner by corner
+ * along each, of the corners as near as any. The corners filed at the point's
+ * own height (see `banded`) are measured first, and then every corner in
+ * turn: so most of those are passed over by their squares, rather than
+ * measured one nearer than the last all the way round to the nearest. One as
+ * near as the nearest so far but earlier in turn takes its place, so the
+ * corner found is the same whichever was measured first.
+ */
+function bendFound(ink: Banded, point: Vec2, inside: Vec2): number {
   let best = Infinity;
   // The square of the nearest so far, with `SQUARED_SLACK`: a corner past it cannot be nearer.
   let past = Infinity;
-  let polygon: Vec2[] = [];
+  let nearest = -1;
   let at = 0;
-  for (const { points } of ink.polygons) {
-    for (let k = 0; k < points.length; k++) {
-      const dx = points[k].x - point.x;
-      const dy = points[k].y - point.y;
-      if (dx * dx + dy * dy > past) continue;
-      const far = Math.hypot(dx, dy);
-      if (far < best) {
-        best = far;
-        // Not for a distance so small its square is lost: every corner is then measured.
-        past = far > 1e-100 ? far * far * SQUARED_SLACK : Infinity;
-        polygon = points;
-        at = k;
-      }
+  const measure = (index: number, xs: Numbers, ys: Numbers, k: number) => {
+    const dx = xs[k] - point.x;
+    const dy = ys[k] - point.y;
+    if (dx * dx + dy * dy > past) return;
+    const far = hypot(dx, dy);
+    if (far < best || (far === best && (index < nearest || (index === nearest && k < at)))) {
+      best = far;
+      // Not for a distance so small its square is lost: every corner is then measured.
+      past = far > 1e-100 ? far * far * SQUARED_SLACK : Infinity;
+      nearest = index;
+      at = k;
     }
-  }
-  const count = polygon.length;
+  };
+  ink.polygons.forEach((polygon, index) => {
+    if (polygon.whole || !(point.y >= polygon.yMin && point.y <= polygon.yMax)) return;
+    const { starts, edges } = polygon;
+    const band = bandAt(point.y, polygon.yMin, polygon.step, polygon.count);
+    // Each edge filed there starts at a corner: its numbers start at four times the corner's index.
+    for (let e = starts[band]; e < starts[band + 1]; e++) {
+      measure(index, polygon.xs, polygon.ys, edges[e] / 4);
+    }
+  });
+  /*
+   * Then every corner that could be as near: one further from the point's
+   * height than the nearest so far, by more than any rounding, is further
+   * off, so only the corners filed at the heights within that reach are
+   * measured (each starts an edge filed at its own height, and maybe others).
+   * Every corner of a polygon walked whole, and of every polygon where
+   * nothing is near yet or the point is not a number.
+   */
+  ink.polygons.forEach((polygon, index) => {
+    const { xs, ys } = polygon;
+    const length = xs.length;
+    const reach = best + 1e-9 * (1 + Math.abs(point.y) + best);
+    if (polygon.whole || !Number.isFinite(reach) || !Number.isFinite(point.y)) {
+      for (let k = 0; k < length; k++) measure(index, xs, ys, k);
+      return;
+    }
+    if (point.y + reach < polygon.yMin || point.y - reach > polygon.yMax) return;
+    const { count, step, starts, edges } = polygon;
+    const first = bandAt(point.y - reach, polygon.yMin, step, count);
+    const last = bandAt(point.y + reach, polygon.yMin, step, count);
+    for (let e = starts[first]; e < starts[last + 1]; e++) measure(index, xs, ys, edges[e] / 4);
+  });
+  const xs = nearest >= 0 ? ink.polygons[nearest].xs : [];
+  const ys = nearest >= 0 ? ink.polygons[nearest].ys : xs;
+  const count = xs.length;
   if (count < 3) return 0;
   // Walked a fixed way round, never past the whole outline.
   const walk = (way: number): Vec2 => {
@@ -3266,20 +3456,18 @@ function bendOf(ink: Flat, point: Vec2, inside: Vec2): number {
     let gone = 0;
     for (let step = 0; step < count - 1 && gone < BEND_REACH; step++) {
       const next = (k + way + count) % count;
-      gone += Math.hypot(polygon[next].x - polygon[k].x, polygon[next].y - polygon[k].y);
+      gone += hypot(xs[next] - xs[k], ys[next] - ys[k]);
       k = next;
     }
-    return polygon[k];
+    return { x: xs[k], y: ys[k] };
   };
   const before = walk(-1);
-  const here = polygon[at];
+  const here = { x: xs[at], y: ys[at] };
   const after = walk(1);
   const one = { x: here.x - before.x, y: here.y - before.y };
   const two = { x: after.x - here.x, y: after.y - here.y };
   const lengths =
-    Math.hypot(one.x, one.y) *
-    Math.hypot(two.x, two.y) *
-    Math.hypot(after.x - before.x, after.y - before.y);
+    hypot(one.x, one.y) * hypot(two.x, two.y) * hypot(after.x - before.x, after.y - before.y);
   if (lengths < 1e-12) return 0;
   const turning = (2 * (one.x * two.y - one.y * two.x)) / lengths;
   // A left turn bends round to the left of the way walked.
@@ -3543,7 +3731,7 @@ function tear(
   // How far a heft moved the side the drop hangs on: see `heftLift`.
   lift: Vec2 | null = null,
   // The stroke's ink where it thins into the drop, whose edge the neck comes back onto.
-  thinned: Flat | null = null,
+  thinned: Banded | null = null,
 ): Contour {
   if (pear) {
     return pearShape(stroke, spine, at, u, n, outer, radius, bend, pull, close, pear, thinned);
@@ -3674,7 +3862,7 @@ function pearShape(
   close: boolean,
   pear: Pear,
   // The stroke's ink where it thins into the drop: see `tear`.
-  thinned: Flat | null = null,
+  thinned: Banded | null = null,
 ): Contour {
   const { hang, turn, neck } = pear;
   const add = (p: Vec2, d: Vec2, by: number): Vec2 => ({ x: p.x + d.x * by, y: p.y + d.y * by });
@@ -3693,17 +3881,17 @@ function pearShape(
   const crossing = lineIntersection(corner, u, front, m);
   const bow = kappa(Math.PI / 2 + turn);
   const fromCorner = crossing
-    ? bow * Math.hypot(crossing.point.x - corner.x, crossing.point.y - corner.y)
+    ? bow * hypot(crossing.point.x - corner.x, crossing.point.y - corner.y)
     : quarter;
   const intoFront = crossing
-    ? bow * Math.hypot(crossing.point.x - front.x, crossing.point.y - front.y)
+    ? bow * hypot(crossing.point.x - front.x, crossing.point.y - front.y)
     : quarter;
   // Where the neck comes back onto the stroke: as `tear` finds it, further back.
   const total = spine.segments.reduce(
     (sum, segment) =>
       sum +
       (segment.kind === "line"
-        ? Math.hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y)
+        ? hypot(segment.to.x - segment.from.x, segment.to.y - segment.from.y)
         : segment.radius * Math.abs(segment.endAngle - segment.startAngle)),
     0,
   );
@@ -3737,12 +3925,12 @@ function pearShape(
       : back.point;
   // Whether the closing edge runs back along the stroke, or is closed off short.
   let along = true;
-  if (Math.hypot(meets.x - centre.x, meets.y - centre.y) < radius * 1.1) {
+  if (hypot(meets.x - centre.x, meets.y - centre.y) < radius * 1.1) {
     meets = top;
     behind = centre;
     along = false;
   }
-  const span = Math.hypot(top.x - meets.x, top.y - meets.y);
+  const span = hypot(top.x - meets.x, top.y - meets.y);
   if (close) {
     behind = add(meets, { x: corner.x - meets.x, y: corner.y - meets.y }, 0.01);
     along = false;

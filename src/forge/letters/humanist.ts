@@ -784,22 +784,25 @@ export function humanistG(style: Style): Recipe {
    * lands out toward the loop's outer edge rather than on its middle. Its end
    * is cut square with the pen, and on a pen whose cut runs along that edge --
    * held at eighteen degrees with contrast 0.7 -- the cut lay a quarter of a
-   * unit outside it at 194 and width 100, and the g came in two pieces. Where
-   * it does not reach, it is aimed at the middle of the loop as drawn; where
-   * it does, which is everywhere every base draws it, it is aimed as it
-   * always was. Asked of the run before it is inked, so it is inked once
-   * whatever the answer.
+   * unit outside it at 194 and width 100, and the g came in two pieces. On a
+   * face that reads its pen as held (`metrics.heldPen`), where the link does
+   * not reach, it is aimed at the middle of the loop as drawn; where it does
+   * it is aimed as it always was. Asked of the run before it is inked, so it
+   * is inked once whatever the answer. Every other face aims it as it always
+   * did, and never sweeps the two runs to ask.
    */
   let lands = bowlPoint(loop, loopHalf, loopH, roundness, f.half, 140, f.curve);
-  const aimed: Stroke = {
-    spine: linkSpine(lands),
-    pen: { ...f.style.pen, weight: f.style.pen.weight * linkShare },
-    start: BUTT,
-    end: BUTT,
-    join: f.style.parts.corner.join,
-  };
-  if (!meets(aimed, loopStroke)) {
-    lands = bowlPoint(loop, loopHalf, loopH, roundness, drawnLoop.pen.weight / 2, 140, f.curve);
+  if (f.style.metrics.heldPen === true) {
+    const aimed: Stroke = {
+      spine: linkSpine(lands),
+      pen: { ...f.style.pen, weight: f.style.pen.weight * linkShare },
+      start: BUTT,
+      end: BUTT,
+      join: f.style.parts.corner.join,
+    };
+    if (!meets(aimed, loopStroke)) {
+      lands = bowlPoint(loop, loopHalf, loopH, roundness, drawnLoop.pen.weight / 2, 140, f.curve);
+    }
   }
   return {
     ...finish(
@@ -1728,22 +1731,26 @@ function bookSpine(
  * of 0.6 and one at 0.8, and past it as far again (see `bookSpine`, which
  * holds what it reads to one where it must).
  *
- * On a text serif, the contrast is read across the pen as it is held -- its
- * level runs against its uprights -- rather than off the pen's own. A
- * didone's pen stands upright, and all of its contrast lies between the two;
- * a broad nib held at an angle carries some of its thin into the uprights and
- * some of its weight into the level runs, and draws a text face's s at the
- * same number. Read off the pen's own, the Soft Serif's -- 0.7, held at
- * eighteen degrees, which is 0.61 across -- was half a didone's: its s and S
- * were let off the widening a text serif's take past the Bold and their
- * spines left to lie as flat as they would, and at 194 and 260 both leaned
- * like an italic, the S's upper counter cut to a notch. Upright, the two are
- * one number; at the Serif's own eight degrees, never past the 0.6 where
- * either begins to count. Any other face reads the pen's own, as it did.
+ * On a text serif that says its pen is read as held (`metrics.heldPen`), the
+ * contrast is read across the pen as it is held -- its level runs against
+ * its uprights -- rather than off the pen's own. A didone's pen stands
+ * upright, and all of its contrast lies between the two; a broad nib held at
+ * an angle carries some of its thin into the uprights and some of its weight
+ * into the level runs, and draws a text face's s at the same number. Read off
+ * the pen's own, the Soft Serif's -- 0.7, held at eighteen degrees, which is
+ * 0.61 across -- was half a didone's: its s and S were let off the widening a
+ * text serif's take past the Bold and their spines left to lie as flat as
+ * they would, and at 194 and 260 both leaned like an italic, the S's upper
+ * counter cut to a notch. Upright, the two are one number.
+ *
+ * Every other face reads the pen's own, as it always did, at every contrast
+ * and angle: the Serif's own pen is not past the 0.6 either way, but its
+ * contrast slider is, and read across the pen its s, S and dollar moved as
+ * the slider went past 0.6.
  */
-function sDidone(f: ReturnType<typeof frame>): number {
+export function sDidone(f: ReturnType<typeof frame>): number {
   const { contrast, angle } = f.style.pen;
-  if (!textSerif(f)) return Math.max(0, contrast - 0.6) / 0.2;
+  if (!textSerif(f) || f.style.metrics.heldPen !== true) return Math.max(0, contrast - 0.6) / 0.2;
   const thin = 1 - Math.min(Math.max(contrast, 0), 0.95);
   const turned = (angle * Math.PI) / 180;
   const sin2 = Math.sin(turned) ** 2;

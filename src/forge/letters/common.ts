@@ -2509,7 +2509,8 @@ export function tittle(f: Frame, x: number): Stroke {
    * the room under the ascender has its say: see `Metrics.dotScale`.
    */
   const scale = f.style.metrics.dotScale;
-  const scaled = (size: number): number => (scale === undefined ? size : size * scale);
+  // A document can carry the field as null (see `settled` in document.ts), which is no scale.
+  const scaled = (size: number): number => (typeof scale === "number" ? size * scale : size);
   if (squareDots(f)) {
     // Square, a little wider than the stem, its top level with the ascender --
     // at every weight, as Geist's is, the Thin's as high as the Black's.
@@ -4567,7 +4568,8 @@ export function middleBar(f: Frame, top: number): number {
  */
 export function middleArm(f: Frame, reach: number): number {
   const asked = f.style.metrics.middleArm;
-  if (asked === undefined) return MIDDLE_ARM;
+  // Left out, or null as a document can carry it (see `settled` in document.ts).
+  if (typeof asked !== "number") return MIDDLE_ARM;
   // Out past the stem's half-width by a third of what the others show past it.
   const side = stemSide(f);
   const third = side + Math.max(0, reach - side) * MIDDLE_ARM_SHOWS;

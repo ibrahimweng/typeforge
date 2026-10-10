@@ -158,6 +158,19 @@ export interface Metrics {
    */
   middleArm?: number;
   /**
+   * Whether the letters that answer to how the pen is held read it as held,
+   * at its angle, rather than off its own contrast: the s, the S and the
+   * dollar take their share of a didone's from the contrast between the
+   * pen's level runs and its uprights (see `sDidone` in
+   * `letters/humanist.ts`), and the g's link, where its square end stops
+   * short of a loop drawn lighter than the stem, is aimed at the loop as
+   * drawn (see `humanistG`). A broad nib held well off upright carries some
+   * of its weight into the level runs, and read off its own contrast the s
+   * and the S were let off the widening every text serif takes past the
+   * Bold. Left out, both read the pen as every base always has.
+   */
+  heldPen?: boolean;
+  /**
    * How tall a square dot stands against its width at the Thin and at the
    * Black (by a blackness of `at`): Geist's full stop is a tenth taller than
    * wide at its Thin, square at its Regular and 0.92 as tall at its Black.

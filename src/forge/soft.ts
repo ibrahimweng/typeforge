@@ -29,6 +29,47 @@ function isLine(from: GlyphNode, to: GlyphNode): boolean {
   return from.handleOut === null && to.handleIn === null;
 }
 
+/**
+ * The length of the vector (x, y): the very number `Math.hypot(x, y)` gives,
+ * worked out step for step as V8 works it out -- the larger magnitude taken
+ * out, the two squares summed with Kahan's compensation, the root of the sum
+ * scaled back -- so to the last bit the same, infinite where either is,
+ * otherwise not a number where either is not, and nought for two noughts.
+ *
+ * Written out because `Math.hypot` takes any number of arguments and gathers
+ * them into a new array on every call, which made it the dearest step of the
+ * soft finishes' searches: an edge's length alone asks it sixteen times, and
+ * a cut at a length along an edge asks for thirty-three lengths. Only the
+ * finishes here and in the files that draw them use it; everything an
+ * existing face draws still asks `Math.hypot` itself.
+ */
+export function hypot(x: number, y: number): number {
+  const ax = Math.abs(x);
+  const ay = Math.abs(y);
+  let max = 0;
+  let nan = false;
+  if (Number.isNaN(x)) nan = true;
+  else if (ax > max) max = ax;
+  if (Number.isNaN(y)) nan = true;
+  else if (ay > max) max = ay;
+  if (max === Number.POSITIVE_INFINITY) return Number.POSITIVE_INFINITY;
+  if (nan) return Number.NaN;
+  if (max === 0) return 0;
+  let sum = 0;
+  let compensation = 0;
+  let n = ax / max;
+  let summand = n * n - compensation;
+  let preliminary = sum + summand;
+  compensation = preliminary - sum - summand;
+  sum = preliminary;
+  n = ay / max;
+  summand = n * n - compensation;
+  preliminary = sum + summand;
+  compensation = preliminary - sum - summand;
+  sum = preliminary;
+  return Math.sqrt(sum) * max;
+}
+
 const lerp = (a: Vec2, b: Vec2, t: number): Vec2 => ({
   x: a.x + (b.x - a.x) * t,
   y: a.y + (b.y - a.y) * t,
@@ -90,16 +131,33 @@ const GAUSS_W = [
   0.1246289712555339, 0.0951585116824928, 0.0622535239386479, 0.0271524594117541,
 ];
 
-/** The length of a cubic from its start to parameter `t`. */
-function lengthTo(curve: Cubic, t: number): number {
+/**
+ * The length of a cubic from its start to parameter `t`.
+ *
+ * Each point is `derivative` at the node below the middle and then above it,
+ * written out here so that the search in `parameterAt`, which asks this 32
+ * times an edge, makes no objects: the same sums in the same order.
+ */
+function lengthTo([p0, p1, p2, p3]: Cubic, t: number): number {
   if (t <= 0) return 0;
   const half = t / 2;
+  const x1 = p1.x - p0.x;
+  const y1 = p1.y - p0.y;
+  const x2 = p2.x - p1.x;
+  const y2 = p2.y - p1.y;
+  const x3 = p3.x - p2.x;
+  const y3 = p3.y - p2.y;
+  const speed = (at: number): number => {
+    const u = 1 - at;
+    const a = 3 * u * u;
+    const b = 6 * u * at;
+    const c = 3 * at * at;
+    return hypot(a * x1 + b * x2 + c * x3, a * y1 + b * y2 + c * y3);
+  };
   let sum = 0;
   for (let k = 0; k < GAUSS_X.length; k++) {
-    for (const sign of [-1, 1]) {
-      const d = derivative(curve, half + sign * GAUSS_X[k] * half);
-      sum += GAUSS_W[k] * Math.hypot(d.x, d.y);
-    }
+    sum += GAUSS_W[k] * speed(half + -1 * GAUSS_X[k] * half);
+    sum += GAUSS_W[k] * speed(half + 1 * GAUSS_X[k] * half);
   }
   return sum * half;
 }
@@ -118,7 +176,7 @@ function parameterAt(curve: Cubic, length: number): number {
 
 /** The length of the edge from one node to the next. */
 export function edgeLength(from: GlyphNode, to: GlyphNode): number {
-  if (isLine(from, to)) return Math.hypot(to.point.x - from.point.x, to.point.y - from.point.y);
+  if (isLine(from, to)) return hypot(to.point.x - from.point.x, to.point.y - from.point.y);
   return lengthTo(cubicOf(from, to), 1);
 }
 
@@ -141,7 +199,7 @@ export function pointAt(from: GlyphNode, to: GlyphNode, t: number): Vec2 {
 export function tangentAt(from: GlyphNode, to: GlyphNode, t: number): Vec2 {
   const curve = cubicOf(from, to);
   let d = derivative(curve, t);
-  if (Math.hypot(d.x, d.y) < 1e-12) {
+  if (hypot(d.x, d.y) < 1e-12) {
     const [p0, p1, p2, p3] = curve;
     const pairs: Array<[Vec2, Vec2]> =
       t < 0.5
@@ -157,10 +215,10 @@ export function tangentAt(from: GlyphNode, to: GlyphNode, t: number): Vec2 {
           ];
     for (const [a, b] of pairs) {
       d = { x: b.x - a.x, y: b.y - a.y };
-      if (Math.hypot(d.x, d.y) >= 1e-12) break;
+      if (hypot(d.x, d.y) >= 1e-12) break;
     }
   }
-  const length = Math.hypot(d.x, d.y);
+  const length = hypot(d.x, d.y);
   return length < 1e-12 ? { x: 0, y: 0 } : { x: d.x / length, y: d.y / length };
 }
 
@@ -182,7 +240,7 @@ export function splitEdgeAtLength(
   length: number,
 ): { from: GlyphNode; at: GlyphNode; to: GlyphNode } {
   if (isLine(from, to)) {
-    const whole = Math.hypot(to.point.x - from.point.x, to.point.y - from.point.y);
+    const whole = hypot(to.point.x - from.point.x, to.point.y - from.point.y);
     const t = whole > 0 ? Math.min(1, Math.max(0, length / whole)) : 0;
     return {
       from: { ...from },
@@ -294,12 +352,37 @@ export interface Flat {
   }>;
 }
 
+/** The weights `bezier` gives a cubic's four points at each step of so many chords, by count. */
+const WEIGHTS = new Map<number, Float64Array>();
+
+/**
+ * The four weights `bezier` works out at `step / chords` for every step of
+ * `chords`, worked out once for each count the very way `bezier` does.
+ */
+function weightsOf(chords: number): Float64Array {
+  let weights = WEIGHTS.get(chords);
+  if (weights === undefined) {
+    weights = new Float64Array(Math.max(0, Math.ceil(chords)) * 4);
+    for (let step = 1; step < chords; step++) {
+      const t = step / chords;
+      const u = 1 - t;
+      weights[step * 4] = u * u * u;
+      weights[step * 4 + 1] = 3 * u * u * t;
+      weights[step * 4 + 2] = 3 * u * t * t;
+      weights[step * 4 + 3] = t * t * t;
+    }
+    WEIGHTS.set(chords, weights);
+  }
+  return weights;
+}
+
 /**
  * Contours as polygons: each straight edge one chord, each curve `chords`
  * chords. An open contour is closed back to its start, as a fill would.
  */
 export function flatten(contours: Contour[], chords = 12): Flat {
   const polygons: Flat["polygons"] = [];
+  const weights = weightsOf(chords);
   for (const contour of contours) {
     const { nodes } = contour;
     if (nodes.length === 0) continue;
@@ -310,8 +393,18 @@ export function flatten(contours: Contour[], chords = 12): Flat {
       const to = nodes[(edge + 1) % nodes.length];
       points.push(from.point);
       if (isLine(from, to)) continue;
-      const curve = cubicOf(from, to);
-      for (let step = 1; step < chords; step++) points.push(bezier(curve, step / chords));
+      const [p0, p1, p2, p3] = cubicOf(from, to);
+      // `bezier` at each step, its four weights made once for the count.
+      for (let step = 1; step < chords; step++) {
+        const a = weights[step * 4];
+        const b = weights[step * 4 + 1];
+        const c = weights[step * 4 + 2];
+        const d = weights[step * 4 + 3];
+        points.push({
+          x: a * p0.x + b * p1.x + c * p2.x + d * p3.x,
+          y: a * p0.y + b * p1.y + c * p2.y + d * p3.y,
+        });
+      }
     }
     if (!contour.closed) points.push(nodes[nodes.length - 1].point);
     let xMin = Infinity;
@@ -356,6 +449,316 @@ export function windingAt(flat: Flat, point: Vec2): number {
       if (a.y <= point.y) {
         if (b.y > point.y && side(a, b) > 0) winding += 1;
       } else if (b.y <= point.y && side(a, b) < 0) {
+        winding -= 1;
+      }
+    }
+  }
+  return winding;
+}
+
+/**
+ * Twice the signed area of the polygon `flatten` makes of one closed contour,
+ * summed over its edges in the order it lays its points, the edge back from
+ * the last to the first coming last, without making the polygon: the same
+ * sum, to the last bit, of the same numbers.
+ */
+export function flattenedArea(contour: Contour, chords = 12): number {
+  const { nodes } = contour;
+  if (nodes.length === 0) return 0;
+  const weights = weightsOf(chords);
+  let area = 0;
+  let firstX = 0;
+  let firstY = 0;
+  let lastX = 0;
+  let lastY = 0;
+  let any = false;
+  const add = (x: number, y: number) => {
+    if (any) area += lastX * y - x * lastY;
+    else {
+      firstX = x;
+      firstY = y;
+      any = true;
+    }
+    lastX = x;
+    lastY = y;
+  };
+  const edges = contour.closed ? nodes.length : nodes.length - 1;
+  for (let edge = 0; edge < edges; edge++) {
+    const from = nodes[edge];
+    const to = nodes[(edge + 1) % nodes.length];
+    add(from.point.x, from.point.y);
+    if (isLine(from, to)) continue;
+    const [p0, p1, p2, p3] = cubicOf(from, to);
+    for (let step = 1; step < chords; step++) {
+      const a = weights[step * 4];
+      const b = weights[step * 4 + 1];
+      const c = weights[step * 4 + 2];
+      const d = weights[step * 4 + 3];
+      add(a * p0.x + b * p1.x + c * p2.x + d * p3.x, a * p0.y + b * p1.y + c * p2.y + d * p3.y);
+    }
+  }
+  if (!contour.closed) add(nodes[nodes.length - 1].point.x, nodes[nodes.length - 1].point.y);
+  // And back round to the first, as the polygon closes.
+  if (any) area += lastX * firstY - firstX * lastY;
+  return area;
+}
+
+/**
+ * An outline flattened as `flatten` flattens it, each polygon's points kept
+ * as two rows of numbers rather than as points: the same numbers in the same
+ * order, and the same box, for asking many questions of one outline without
+ * making an object of every point.
+ */
+export interface Rows {
+  polygons: Array<{
+    xs: Numbers;
+    ys: Numbers;
+    xMin: number;
+    yMin: number;
+    xMax: number;
+    yMax: number;
+  }>;
+}
+
+/**
+ * A row of numbers: kept as a plain array where it is made here, which costs
+ * far less to make than a typed one, or as a typed one where it is handed in.
+ */
+export type Numbers = Float64Array | number[];
+
+/** `flatten`, into rows: see `Rows`. */
+export function flattenRows(contours: Contour[], chords = 12): Rows {
+  const polygons: Rows["polygons"] = [];
+  const weights = weightsOf(chords);
+  for (const contour of contours) {
+    const { nodes } = contour;
+    if (nodes.length === 0) continue;
+    const edges = contour.closed ? nodes.length : nodes.length - 1;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    for (let edge = 0; edge < edges; edge++) {
+      const from = nodes[edge];
+      const to = nodes[(edge + 1) % nodes.length];
+      xs.push(from.point.x);
+      ys.push(from.point.y);
+      if (isLine(from, to)) continue;
+      const [p0, p1, p2, p3] = cubicOf(from, to);
+      for (let step = 1; step < chords; step++) {
+        const a = weights[step * 4];
+        const b = weights[step * 4 + 1];
+        const c = weights[step * 4 + 2];
+        const d = weights[step * 4 + 3];
+        xs.push(a * p0.x + b * p1.x + c * p2.x + d * p3.x);
+        ys.push(a * p0.y + b * p1.y + c * p2.y + d * p3.y);
+      }
+    }
+    if (!contour.closed) {
+      xs.push(nodes[nodes.length - 1].point.x);
+      ys.push(nodes[nodes.length - 1].point.y);
+    }
+    const count = xs.length;
+    let xMin = Infinity;
+    let yMin = Infinity;
+    let xMax = -Infinity;
+    let yMax = -Infinity;
+    for (let k = 0; k < count; k++) {
+      xMin = Math.min(xMin, xs[k]);
+      yMin = Math.min(yMin, ys[k]);
+      xMax = Math.max(xMax, xs[k]);
+      yMax = Math.max(yMax, ys[k]);
+    }
+    polygons.push({ xs, ys, xMin, yMin, xMax, yMax });
+  }
+  return { polygons };
+}
+
+/**
+ * A flattened outline made ready to be asked many questions about where it
+ * is (see `banded`): each polygon's edges filed into bands by height, so a
+ * question about a point is asked only of the edges at that height.
+ */
+export interface Banded {
+  polygons: Array<{
+    /** The polygon's box, as `windingAt` reads it. */
+    xMin: number;
+    yMin: number;
+    xMax: number;
+    yMax: number;
+    /** Its points, as `flattenRows` laid them: edge `k` runs from point `k` to the next. */
+    xs: Numbers;
+    ys: Numbers;
+    /** Each edge's four numbers in a row, from x and y then to x and y: edge `k` from `4k` on. */
+    ends: number[];
+    /**
+     * Whether any of its numbers is not finite. Such a polygon is not filed:
+     * every question walks it whole, as `windingAt` walks it.
+     */
+    whole: boolean;
+    /** How many bands from the bottom of its box to the top, and how tall each is. */
+    count: number;
+    step: number;
+    /**
+     * Where each band's edges start in `edges`, and where the last ends: band
+     * `k` runs from `starts[k]` up to `starts[k + 1]`.
+     */
+    starts: number[];
+    /** Every band's edges in turn, each by where its numbers start in `ends`, filed under every band its height spans. */
+    edges: number[];
+  }>;
+}
+
+/** About how many edges a band holds, before the edges that cross several. */
+const BAND_EDGES = 8;
+
+/** The band a height falls in, which is never less where the height is more. */
+export function bandAt(y: number, low: number, step: number, count: number): number {
+  return count === 1 ? 0 : Math.min(count - 1, Math.max(0, Math.floor((y - low) / step)));
+}
+
+/** Each point's band, for `banded`: kept between calls, and grown as it must be. */
+let BANDS_OF = new Int32Array(0);
+
+/**
+ * An outline flattened by `flattenRows`, filed for `windingIn` and for the
+ * questions `teardropsFor` asks of a stroke's ink: every edge filed under each
+ * band of height it spans, from its lower end's band to its upper end's, so a
+ * point is asked only of the edges in its own band. An edge winds round a
+ * point only where the point's height lies from its lower end up to (not
+ * including) its upper one, and the band a height falls in never decreases as
+ * the height rises, so every edge that could count for a point is in that
+ * point's band, and each is counted there with the very numbers `windingAt`
+ * counts it with: the same winding, to the last bit, for many fewer edges
+ * walked. Each edge is filed by its index, so however many bands it spans its
+ * numbers are the polygon's own.
+ */
+export function banded(flat: Rows): Banded {
+  const polygons: Banded["polygons"] = [];
+  for (const polygon of flat.polygons) {
+    const { xs, ys, xMin, yMin, xMax, yMax } = polygon;
+    const length = xs.length;
+    let finite = true;
+    for (let k = 0; k < length; k++) {
+      if (!Number.isFinite(xs[k]) || !Number.isFinite(ys[k])) {
+        finite = false;
+        break;
+      }
+    }
+    if (!finite || length === 0) {
+      polygons.push({
+        xMin,
+        yMin,
+        xMax,
+        yMax,
+        xs,
+        ys,
+        ends: [],
+        whole: true,
+        count: 0,
+        step: 0,
+        starts: [0],
+        edges: [],
+      });
+      continue;
+    }
+    let count = Math.max(1, Math.ceil(length / BAND_EDGES));
+    let step = (yMax - yMin) / count;
+    if (!(step > 0) || !Number.isFinite(step)) {
+      count = 1;
+      step = 0;
+    }
+    /*
+     * Each point's band, once: as the band never decreases with the height,
+     * the band of an edge's lower end is the lesser of its two ends' bands,
+     * and of its upper end the greater.
+     */
+    if (BANDS_OF.length < length) BANDS_OF = new Int32Array(length * 2);
+    const bandOf = BANDS_OF;
+    for (let k = 0; k < length; k++) bandOf[k] = bandAt(ys[k], yMin, step, count);
+    // How many edges each band holds, then where each band starts.
+    const starts: number[] = new Array(count + 1).fill(0);
+    for (let k = 0; k < length; k++) {
+      const after = k + 1 === length ? 0 : k + 1;
+      const last = Math.max(bandOf[k], bandOf[after]);
+      for (let band = Math.min(bandOf[k], bandOf[after]); band <= last; band++) {
+        starts[band + 1] += 1;
+      }
+    }
+    for (let band = 0; band < count; band++) starts[band + 1] += starts[band];
+    const next = starts.slice(0, count);
+    const edges: number[] = new Array(starts[count]).fill(0);
+    const ends: number[] = [];
+    for (let k = 0; k < length; k++) {
+      const after = k + 1 === length ? 0 : k + 1;
+      ends.push(xs[k], ys[k], xs[after], ys[after]);
+    }
+    for (let k = 0; k < length; k++) {
+      const after = k + 1 === length ? 0 : k + 1;
+      const last = Math.max(bandOf[k], bandOf[after]);
+      for (let band = Math.min(bandOf[k], bandOf[after]); band <= last; band++) {
+        edges[next[band]] = k * 4;
+        next[band] += 1;
+      }
+    }
+    polygons.push({
+      xMin,
+      yMin,
+      xMax,
+      yMax,
+      xs,
+      ys,
+      ends,
+      whole: false,
+      count,
+      step,
+      starts,
+      edges,
+    });
+  }
+  return { polygons };
+}
+
+/**
+ * How many times a banded outline winds round a point: `windingAt`, edge for
+ * edge, of the edges in the point's band (see `banded`), each polygon passed
+ * over where its box does not hold the point.
+ */
+export function windingIn(flat: Banded, point: Vec2): number {
+  let winding = 0;
+  const { x, y } = point;
+  for (const polygon of flat.polygons) {
+    if (x < polygon.xMin || x > polygon.xMax || y < polygon.yMin || y > polygon.yMax) continue;
+    const { xs, ys } = polygon;
+    const length = xs.length;
+    if (polygon.whole) {
+      // Every edge, as `windingAt` walks them.
+      for (let k = 0; k < length; k++) {
+        const after = (k + 1) % length;
+        const ax = xs[k];
+        const ay = ys[k];
+        const bx = xs[after];
+        const by = ys[after];
+        if (ay <= y) {
+          if (by > y && (bx - ax) * (y - ay) - (x - ax) * (by - ay) > 0) winding += 1;
+        } else if (by <= y && (bx - ax) * (y - ay) - (x - ax) * (by - ay) < 0) {
+          winding -= 1;
+        }
+      }
+      continue;
+    }
+    // A height that is no number crosses no edge, as `windingAt` counts.
+    if (!(y >= polygon.yMin)) continue;
+    const band = bandAt(y, polygon.yMin, polygon.step, polygon.count);
+    const { edges, starts, ends } = polygon;
+    const end = starts[band + 1];
+    for (let at = starts[band]; at < end; at++) {
+      const e = edges[at];
+      const ax = ends[e];
+      const ay = ends[e + 1];
+      const bx = ends[e + 2];
+      const by = ends[e + 3];
+      if (ay <= y) {
+        if (by > y && (bx - ax) * (y - ay) - (x - ax) * (by - ay) > 0) winding += 1;
+      } else if (by <= y && (bx - ax) * (y - ay) - (x - ax) * (by - ay) < 0) {
         winding -= 1;
       }
     }

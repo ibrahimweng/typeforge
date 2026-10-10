@@ -15,6 +15,7 @@
  */
 
 import type { Vec2 } from "@/font/types";
+import { hypot } from "./soft";
 import type { Style } from "./style";
 import {
   cutAlong,
@@ -101,7 +102,7 @@ export function hefted(
   const fade = stroke.heft?.fade;
   const inner = fade ? faded(plain, shift, fade) : plain.map((one) => movedBy(one, shift));
   if (!stroke.spine.closed) {
-    const most = 2 * Math.hypot(shift.x, shift.y);
+    const most = 2 * hypot(shift.x, shift.y);
     for (const atEnd of [false, true]) {
       if (cutsItself(atEnd ? stroke.end : stroke.start)) continue;
       squared(inner, plain, outer, atEnd, most);
@@ -189,8 +190,8 @@ function faded(
     const f = (b00 - b11) / 2;
     const g = (b10 + b01) / 2;
     const h = (b10 - b01) / 2;
-    const q = Math.hypot(e, h);
-    const r = Math.hypot(f, g);
+    const q = hypot(e, h);
+    const r = hypot(f, g);
     const first = Math.atan2(g, f);
     const second = Math.atan2(h, e);
     const turn = (second - first) / 2;
@@ -235,7 +236,7 @@ function squared(
   const corner = endOf(outer);
   const was = endOf(plain);
   const along = { x: corner.x - was.x, y: corner.y - was.y };
-  const across = Math.hypot(along.x, along.y);
+  const across = hypot(along.x, along.y);
   if (across < 1e-9) return;
   const normal = { x: -along.y / across, y: along.x / across };
   const value = normal.x * corner.x + normal.y * corner.y;
@@ -260,7 +261,7 @@ function squared(
     cut();
     const from = endOf(inner);
     const to = endOf(trial);
-    if (Math.hypot(to.x - from.x, to.y - from.y) > most) return;
+    if (hypot(to.x - from.x, to.y - from.y) > most) return;
     inner.splice(0, inner.length, ...trial);
     return;
   }
@@ -269,7 +270,7 @@ function squared(
   const rate = normal.x * run.x + normal.y * run.y;
   if (Math.abs(rate) < 1e-12) return;
   const share = (value - normal.x * piece.from.x - normal.y * piece.from.y) / rate;
-  const length = Math.hypot(run.x, run.y);
+  const length = hypot(run.x, run.y);
   const travel = (atEnd ? share - 1 : share) * length;
   if (Math.abs(travel) > most || (atEnd ? share <= 1e-6 : share >= 1 - 1e-6)) return;
   const tip = { x: piece.from.x + run.x * share, y: piece.from.y + run.y * share };
