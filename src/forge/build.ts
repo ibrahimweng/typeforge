@@ -11,6 +11,7 @@
 import {
   contourArea,
   contoursBounds,
+  flattenContour,
   inkRuler,
   inkRunsAt,
   polygonContains,
@@ -934,7 +935,21 @@ function besideTop(
   const over = contoursBounds(mark);
   const band = style.metrics.unitsPerEm * 0.04;
   let right = -Infinity;
+  /*
+   * On a face that rounds its corners (`terminal.soft`, `slab.tip`), read off
+   * the ink itself: the stem's top corner is then a curve whose nodes stand
+   * back from its edge by the rounding, and at a Black, where the rounding is
+   * deeper than the band, the node nearest the edge stood half a hairline in
+   * from it, and the caron of a ď and an ľ ran into the ascender.
+   */
+  const rounded = (style.parts.terminal.soft ?? 0) > 0 || (style.parts.slab.tip ?? 0) > 0;
   for (const contour of letter) {
+    if (rounded) {
+      for (const point of flattenContour(contour, BESIDE_STEPS)) {
+        if (point.y >= under.yMax - band) right = Math.max(right, point.x);
+      }
+      continue;
+    }
     for (const node of contour.nodes) {
       if (node.point.y >= under.yMax - band) right = Math.max(right, node.point.x);
     }
@@ -943,6 +958,9 @@ function besideTop(
   const top = Math.max(under.yMax, capital ? style.metrics.capHeight : style.metrics.ascender);
   return { x: right + gap * 1.4 - over.xMin, y: top - over.yMax };
 }
+
+/** How finely `besideTop` reads each curve of a rounded letter's ink. */
+const BESIDE_STEPS = 24;
 
 function shoved(contours: Contour[], by: Vec2): Contour[] {
   return moved(contours, (point) => ({ x: point.x + by.x, y: point.y + by.y }));
@@ -2915,6 +2933,142 @@ function closingHandle(
   return Math.min(chord * 0.6, Math.max(chord * 0.05, by));
 }
 
+/**
+ * The stroke halfway back from its end, `distance` being the whole way: its
+ * outer edge -- the spine less the pen's reach toward the inside of the
+ * curve, where no taper moves it -- and where its inner side has come to,
+ * as the taper drew it (see `edgeFrom`). What `closingHandles` lays a
+ * closing edge through, found once for every edge it tries.
+ */
+function halfwayAcross(
+  ink: Flat,
+  spine: Spine,
+  distance: number,
+  way: number,
+  reach: ReturnType<typeof penReach>,
+): { outer: Vec2; inner: Vec2 } {
+  const half = backFromEnd(spine, distance / 2);
+  const shift = reachAlong({ x: -half.heading.y, y: half.heading.x }, reach);
+  const local = { x: -half.heading.y * way, y: half.heading.x * way };
+  const toward = shift.x * local.x + shift.y * local.y >= 0 ? shift : { x: -shift.x, y: -shift.y };
+  return {
+    outer: { x: half.point.x - toward.x, y: half.point.y - toward.y },
+    inner: edgeFrom(ink, half.point, toward),
+  };
+}
+
+/**
+ * The two handles of a drop's closing edge, each its own length, that carry
+ * the edge's middle exactly through the point `share` of the way in from the
+ * outer edge to the inner one as the stroke is drawn halfway back (`half`,
+ * see `halfwayAcross`) -- where `closingHandle` asks the same of handles of
+ * one length, and can only come as near it as their difference reaches.
+ * Nothing where that asks a handle that turns back or runs past the chord.
+ */
+function closingHandles(
+  half: { outer: Vec2; inner: Vec2 },
+  behind: Vec2,
+  corner: Vec2,
+  leaving: Vec2,
+  arriving: Vec2,
+  share: number,
+): [number, number] | null {
+  const chord = Math.hypot(corner.x - behind.x, corner.y - behind.y);
+  const { outer, inner } = half;
+  const aim = {
+    x: outer.x + (inner.x - outer.x) * share,
+    y: outer.y + (inner.y - outer.y) * share,
+  };
+  // The middle is the chord's middle and three eighths of (a leaving - b arriving).
+  const off = {
+    x: ((aim.x - (behind.x + corner.x) / 2) * 8) / 3,
+    y: ((aim.y - (behind.y + corner.y) / 2) * 8) / 3,
+  };
+  const det = leaving.x * -arriving.y - -arriving.x * leaving.y;
+  if (Math.abs(det) < 1e-9) return null;
+  const a = (off.x * -arriving.y - -arriving.x * off.y) / det;
+  const b = (leaving.x * off.y - off.x * leaving.y) / det;
+  if (!(a > chord * 0.02 && b > chord * 0.02 && a < chord && b < chord)) return null;
+  return [a, b];
+}
+
+/**
+ * Whether a drop's closing edge -- from `behind` leaving along `leaving` to
+ * the outer `corner` arriving along `arriving`, both handles `by` long --
+ * strays from the stroke's ink, read at a fixed number of points along its
+ * first nine tenths: anywhere it runs out past the side drawn in toward it
+ * (a point outside the ink with ink a short way on toward the outer edge,
+ * `outward`), which closes a sliver of paper between the two, or anywhere
+ * it runs further out past the outer edge than `CLOSING_SLACK`, which would
+ * stand out of the letter. The last stretch is not read: it runs into the
+ * outer corner along the outer edge itself.
+ */
+function strays(
+  ink: Flat,
+  behind: Vec2,
+  leaving: Vec2,
+  corner: Vec2,
+  arriving: Vec2,
+  by: number,
+  outward: Vec2,
+  into = by,
+): boolean {
+  const one = { x: behind.x + leaving.x * by, y: behind.y + leaving.y * by };
+  const two = { x: corner.x - arriving.x * into, y: corner.y - arriving.y * into };
+  const inked = (point: Vec2, along: number): boolean =>
+    windingAt(ink, { x: point.x + outward.x * along, y: point.y + outward.y * along }) !== 0;
+  for (let step = 1; step <= CLOSING_READS; step++) {
+    const t = (step / CLOSING_READS) * CLOSING_SPAN;
+    const s = 1 - t;
+    const a = s * s * s;
+    const b = 3 * s * s * t;
+    const c = 3 * s * t * t;
+    const d = t * t * t;
+    const point = {
+      x: a * behind.x + b * one.x + c * two.x + d * corner.x,
+      y: a * behind.y + b * one.y + c * two.y + d * corner.y,
+    };
+    if (inked(point, 0)) {
+      // Inside, but no nearer the drawn-in side than a hair, where it only just touches it.
+      if (inked(point, -CLOSING_SLACK)) continue;
+      return true;
+    }
+    // Past the drawn-in side: the ink is a little way on toward the outer edge.
+    if (CLOSING_DEPTHS.some((depth) => inked(point, depth))) return true;
+    // Past the outer edge by more than a hair.
+    if (!inked(point, -CLOSING_SLACK)) return true;
+  }
+  return false;
+}
+
+/** How many points along a closing edge `strays` reads. */
+const CLOSING_READS = 9;
+
+/** How far along the closing edge, from where it is laid from, those points reach. */
+const CLOSING_SPAN = 0.9;
+
+/** How far on toward the outer edge `strays` looks for the ink a point has run out of, in units. */
+const CLOSING_DEPTHS = [1.5, 4, 10];
+
+/**
+ * How far past the outer edge a closing edge may run, in units, where it
+ * comes round into the outer corner along that edge: a hair, as it always
+ * has, and no visible step.
+ */
+const CLOSING_SLACK = 1.5;
+
+/**
+ * Where a closing edge that would leave the ink is laid again from, in turn:
+ * the share of the way from the stroke's outer edge to its inner one -- the
+ * middle first, as it is laid anyway (see `middleOf`), then nearer the outer
+ * edge -- its middle carried through half that share as the stroke is drawn
+ * halfway along (see `closingHandles`).
+ */
+const CLOSING_SHARES = [0.5, 0.35, 0.2];
+
+/** How far back from the corner the outer edge's heading into it is read, in units. */
+const CLOSING_STEP = 2;
+
 /** How many steps out `edgeFrom` walks before it narrows in. */
 const EDGE_STEPS = 32;
 
@@ -3737,10 +3891,13 @@ function pearShape(
       : back.point;
   // Whether the closing edge runs back along the stroke, or is closed off short.
   let along = true;
+  // And whether the neck still meets the stroke's edge, rather than the drop's own top.
+  let onEdge = true;
   if (Math.hypot(meets.x - centre.x, meets.y - centre.y) < radius * 1.1) {
     meets = top;
     behind = centre;
     along = false;
+    onEdge = false;
   }
   const span = Math.hypot(top.x - meets.x, top.y - meets.y);
   if (close) {
@@ -3804,9 +3961,72 @@ function pearShape(
           u,
         )
       : run / 3;
+    /*
+     * And held inside the stroke all the way along (see `strays`). Down a
+     * stroke that both curves and is drawn in toward its end -- the hook of
+     * a question mark, the tail of an inverted one -- the edge laid from the
+     * stroke's middle crossed the side drawn in toward it a little way down,
+     * and the two closed a sliver of paper between them, a pinhole in the
+     * letter at a large size; elsewhere it ran out past the outer edge as a
+     * small bump. Where it would do either, it is laid again: arriving at the
+     * corner along the outer edge as the sweep draws it, with a handle of its
+     * own at each end that carries its middle through the stroke as the
+     * stroke is drawn there (`closingHandles`), from the stroke's middle and
+     * then from nearer its outer edge (`CLOSING_SHARES`), and kept from the
+     * first that stays in the ink -- or, failing every one, left as it was.
+     * A drop whose closing edge already stays in is left as it was too. Every
+     * try is the same nodes with the same handles: only where they lie and
+     * how long the handles are changes.
+     */
+    // Where the closing edge is laid again, its two handles' lengths, and its arrival.
+    let split: [number, number] | null = null;
+    let arrives = u;
+    const towardLength = Math.hypot(toward.x, toward.y);
+    const outward =
+      towardLength > 1e-9 ? { x: -toward.x / towardLength, y: -toward.y / towardLength } : null;
+    if (
+      thinned &&
+      onEdge &&
+      outward &&
+      strays(thinned, behind, back.heading, corner, u, along ? reach * neck : 0, outward)
+    ) {
+      const outerEdge = { x: back.point.x - toward.x, y: back.point.y - toward.y };
+      const across = { x: meets.x - outerEdge.x, y: meets.y - outerEdge.y };
+      /*
+       * Arriving along the outer edge itself, as the sweep draws it a step
+       * back from the corner, rather than along the way the spine ends: on
+       * an angled pen with contrast the two part by a few degrees, and an
+       * edge arriving along the spine came into the corner from outside it.
+       */
+      const near = backFromEnd(spine, CLOSING_STEP);
+      const nearShift = reachAlong({ x: -near.heading.y, y: near.heading.x }, penReach(stroke.pen));
+      const nearLocal = { x: -near.heading.y * way, y: near.heading.x * way };
+      const nearToward =
+        dot(nearShift, nearLocal) >= 0 ? nearShift : { x: -nearShift.x, y: -nearShift.y };
+      const edgeBack = { x: near.point.x - nearToward.x, y: near.point.y - nearToward.y };
+      const edgeRun = Math.hypot(corner.x - edgeBack.x, corner.y - edgeBack.y);
+      const arriving =
+        edgeRun > 1e-9
+          ? { x: (corner.x - edgeBack.x) / edgeRun, y: (corner.y - edgeBack.y) / edgeRun }
+          : u;
+      const half = halfwayAcross(thinned, spine, distance, way, penReach(stroke.pen));
+      for (const share of CLOSING_SHARES) {
+        const from = add(outerEdge, across, share);
+        const both = closingHandles(half, from, corner, back.heading, arriving, share / 2);
+        if (
+          both &&
+          !strays(thinned, from, back.heading, corner, arriving, both[0], outward, both[1])
+        ) {
+          behind = from;
+          split = both;
+          arrives = arriving;
+          break;
+        }
+      }
+    }
     const by = along ? reach * neck : 0;
-    behindOut = add(behind, back.heading, by);
-    cornerIn = add(corner, u, -by);
+    behindOut = add(behind, back.heading, split ? split[0] : by);
+    cornerIn = add(corner, arrives, -(split ? split[1] : by));
   }
   return {
     nodes: [
@@ -4647,9 +4867,18 @@ function serifsFor(
        */
       const text = terminal.shape === "wedge";
       const paper = text ? Math.min(reference, style.metrics.xHeight * 0.14) : reference;
+      /*
+       * This wing's own reach, where the recipe asks the two wings for
+       * different shares of the serif (`Terminal.wings`, named against the way
+       * the stroke travels: this side is its left where `side` and the way it
+       * travels agree); the serif's whole reach where it does not.
+       */
+      const share = terminal.wings?.[side * (which === 1 ? 1 : -1) === 1 ? "left" : "right"];
+      const wide =
+        share === undefined ? full : inner + Math.max(0, full - inner) * Math.max(0, share);
       let room = winged
-        ? roomBeside(at, facing, side, inner, full, thickness, paper, others)
-        : full;
+        ? roomBeside(at, facing, side, inner, wide, thickness, paper, others)
+        : wide;
       /*
        * And never into the other end of its own stroke. The two arms of a v,
        * a V and each vee of a W are one run, so the strokes beside it do not
@@ -4720,7 +4949,7 @@ function serifsFor(
         crowded ||
         underneath ||
         behind ||
-        crossesALine(at, facing, side, full, inner, style);
+        crossesALine(at, facing, side, wide, inner, style);
       /*
        * Refused, the wing shrinks to a sliver held well inside the stroke --
        * from its spine to a little short of its edge -- so nothing of it shows
@@ -4758,13 +4987,13 @@ function serifsFor(
       // curve with contrast is not how wide it is at the end.
       const tip = refused
         ? Math.min(inner, endHalfAcross(stroke, terminal, buried.heading)) * 0.6
-        : Math.min(full, room);
+        : Math.min(wide, room);
       /*
        * A wing cut short by a neighbour is made shallower with it, so it
        * stays the shape of a serif rather than becoming a stub with a full
        * bracket standing on it.
        */
-      const short = refused || full <= inner ? 1 : Math.max(0, (tip - inner) / (full - inner));
+      const short = refused || wide <= inner ? 1 : Math.max(0, (tip - inner) / (wide - inner));
       /*
        * And a head no deeper than a text weight's. The flag and its bracket
        * grew with the serif, and at a black weight the two together ran a

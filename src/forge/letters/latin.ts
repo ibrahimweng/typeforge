@@ -153,11 +153,12 @@ const OE_LEAST_CONDENSED = 1.4;
  * o's ring, and the e's belt and bar beside it, set half the o's width
  * further on, so the e's side crosses into the o.
  *
- * Joined (`joinedOE`), the e is set no further into the o than keeps the two
- * sides one wall: crossed further, on a light pen the room between the two
- * sides opened into a lens, which the e's bar split into two slits.
+ * On a face that keeps the two sides one wall (`metrics.oeWall`), the e is
+ * set no further into the o than that (`oneWall`): crossed further, on a
+ * light pen the room between the two sides opened into a lens, which the e's
+ * bar split into two slits.
  */
-export function drawnOE(style: Style, joined: boolean): Recipe {
+function drawnOE(style: Style): Recipe {
   const f = frame(style);
   /*
    * And never so narrow that the first bowl's counter is under a quarter of
@@ -171,9 +172,11 @@ export function drawnOE(style: Style, joined: boolean): Recipe {
     f.half * (widthShare(f.style) < 1 ? OE_LEAST_CONDENSED : OE_LEAST),
   );
   const first = at(f.edge + bowl, f.x / 2);
-  const second = joined
-    ? at(first.x + joinedOE(f, bowl), f.x / 2)
-    : at(first.x + bowl * 2, f.x / 2);
+  const wall = f.style.metrics.oeWall;
+  const second =
+    typeof wall === "number" && wall > 0
+      ? at(first.x + oneWall(f, bowl, wall), f.x / 2)
+      : at(first.x + bowl * 2, f.x / 2);
 
   const eye = eyeOf(f, second);
   const rise = Math.max(-0.85, Math.min(0.85, (eye - second.y) / f.bowlH));
@@ -192,20 +195,16 @@ export function drawnOE(style: Style, joined: boolean): Recipe {
   );
 }
 
-/** How much of the two walls' width the joined œ lets its e's side cross into its o's: see `joinedOE`. */
-const OE_JOIN = 0.8;
-
 /**
- * How far right of the o's centre the joined œ sets its e's: half the o's
- * width again, as the ligature always has it, unless that crosses the e's
- * side further into the o's than `OE_JOIN` of the two walls' width, where it
- * stops there. Past that the two sides stand apart inside the overlap and
- * leave a counter between them.
+ * How far right of the o's centre the oe sets its e's on a face that keeps
+ * the two sides one wall: half the o's width again, as the ligature always
+ * has it, unless that crosses the e's side further into the o's than
+ * `share` of the two sides' width together, where it stops there.
  */
-function joinedOE(f: ReturnType<typeof frame>, bowl: number): number {
+function oneWall(f: ReturnType<typeof frame>, bowl: number, share: number): number {
   const side = bendWidth(f, f.bowlH);
   const wall = Math.abs(reachAlong(at(1, 0), penReach(f.style.pen)).x);
-  const crossed = Math.min(side - bowl, OE_JOIN * 2 * wall);
+  const crossed = Math.min(side - bowl, Math.min(1, Math.max(0.5, share)) * 2 * wall);
   return bowl + side - crossed;
 }
 
@@ -470,7 +469,7 @@ export const LATIN_RECIPES: Record<LetterName, (style: Style) => Recipe> = {
    * width read as two letters that have collided, and the pair has to read as
    * one letter with two counters.
    */
-  oe: (style) => drawnOE(style, false),
+  oe: drawnOE,
 
   /**
    * The Dutch digraph, which is one character and two letters.

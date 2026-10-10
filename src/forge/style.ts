@@ -169,6 +169,14 @@ export interface Metrics {
    */
   dotScale?: number;
   /**
+   * How far the oe's e crosses its side into the o's, at the most, as a share
+   * of the two sides' width together, 0.5 to one: the two kept one wall.
+   * Left out, the e is set half the o's width on, as the ligature always is,
+   * which on a light pen crosses the sides so far that they stand apart
+   * inside the overlap and leave a lens of a counter between them.
+   */
+  oeWall?: number;
+  /**
    * How much faster the counters close midway to the Black than the straight
    * line `heavyCounter` gives, as a share of it at its most: see `narrowed`.
    */

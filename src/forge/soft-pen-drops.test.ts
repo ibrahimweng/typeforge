@@ -602,8 +602,6 @@ describe("the ends of an open bowl left blunt (bowl.blunt)", () => {
 });
 
 describe("the s and the S on the Soft Serif's pen", () => {
-  const forms = formsOf(SOFT_SERIF);
-
   it("are drawn as a text serif's at a Black, upright and as wide as the Serif's", () => {
     for (const pen of [194, 260]) {
       for (const [name, height] of [
@@ -626,7 +624,7 @@ describe("the s and the S on the Soft Serif's pen", () => {
             wide: xMax - xMin,
           };
         };
-        const soft = measure(atPen(SOFT_SERIF, pen), forms(name));
+        const soft = measure(atPen(SOFT_SERIF, pen), "humanist");
         const serif = measure(atPen(SERIF, pen), "humanist");
         const label = `${name} at ${pen}: lean ${soft.lean.toFixed(1)} against ${serif.lean.toFixed(1)}, ${soft.wide.toFixed(0)} wide against ${serif.wide.toFixed(0)}`;
         // Not leaning like an italic ...
@@ -640,7 +638,7 @@ describe("the s and the S on the Soft Serif's pen", () => {
   it("hang their beaks as beaks at a text weight: narrowing to a rounded tip, not a stalk", () => {
     for (const pen of [30, 87, 142]) {
       for (const name of ["s", "S"]) {
-        const { contours } = drawn(name, atPen(SOFT_SERIF, pen), forms(name));
+        const { contours } = drawn(name, atPen(SOFT_SERIF, pen), "humanist");
         const beaks = contours.filter((contour) => contour.nodes.length === 6);
         expect(beaks.length, `${name} at ${pen}`).toBe(2);
         for (const beak of beaks) {
@@ -660,6 +658,52 @@ describe("the s and the S on the Soft Serif's pen", () => {
           const root = widthAt(fromLine + (tip - fromLine) * 0.15);
           const nearTip = widthAt(fromLine + (tip - fromLine) * 0.7);
           expect(nearTip, `${name} at ${pen}`).toBeLessThan(root * 0.85);
+        }
+      }
+    }
+  });
+});
+
+describe("the beaked s and S on the Soft Serif's pen", () => {
+  it("are drawn as a text serif's at a Black, upright and as wide as the Serif's", () => {
+    for (const pen of [194, 260]) {
+      for (const [name, height] of [
+        ["s", SOFT_SERIF.metrics.xHeight],
+        ["S", SOFT_SERIF.metrics.capHeight],
+      ] as const) {
+        const measure = (style: Style, form?: string) => {
+          const { contours } = drawn(name, style, form);
+          let xMin = Infinity;
+          let xMax = -Infinity;
+          for (const point of contours.flatMap((contour) => along(contour, 8))) {
+            xMin = Math.min(xMin, point.x);
+            xMax = Math.max(xMax, point.x);
+          }
+          return {
+            lean:
+              inkCentreX(contours, height * 0.55, height * 1.05) -
+              inkCentreX(contours, -20, height * 0.45),
+            wide: xMax - xMin,
+          };
+        };
+        const soft = measure(atPen(SOFT_SERIF, pen), "beaked");
+        const serif = measure(atPen(SERIF, pen), "humanist");
+        const label = `${name} at ${pen}: lean ${soft.lean.toFixed(1)} against ${serif.lean.toFixed(1)}, ${soft.wide.toFixed(0)} wide against ${serif.wide.toFixed(0)}`;
+        // Leaning no further than the Serif's s, whichever way its beaks move its ink ...
+        expect(Math.abs(soft.lean), label).toBeLessThan(Math.abs(serif.lean) + 25);
+        // ... never left narrow as a didone's would be, and wider only by its beaks turning out.
+        expect(soft.wide / serif.wide, label).toBeGreaterThan(0.93);
+        expect(soft.wide / serif.wide, label).toBeLessThan(1.2);
+      }
+    }
+  });
+
+  it("draw their beaks as part of the stroke: one contour, no separate beak, at every pen", () => {
+    for (const pen of PENS) {
+      for (const width of WIDTHS) {
+        for (const name of ["s", "S"]) {
+          const { contours } = drawn(name, atPen(SOFT_SERIF, pen, width), "beaked");
+          expect(contours.length, `${name} at ${pen}/${width}`).toBe(1);
         }
       }
     }

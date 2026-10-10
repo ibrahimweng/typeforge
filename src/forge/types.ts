@@ -188,6 +188,13 @@ export interface Terminal {
   angle?: number;
   /** For `slab`: how far the bar reaches past the stroke on each side. */
   projection?: number;
+  /**
+   * For `slab`: how far each wing reaches past the stroke, as a share of the
+   * reach the serif is given, named against the way the stroke travels; a
+   * wing left out reaches the whole way. Set by a letter's recipe -- the swung
+   * y's arms, whose outer wings are short -- and never by the face.
+   */
+  wings?: { left?: number; right?: number };
   /** For `slab`: how far the bar reaches back along the stroke. */
   thickness?: number;
   /**

@@ -8,7 +8,6 @@ import type { Spine, Stroke } from "../types";
 import { buried } from "./hints";
 import { curledA, swungY, tuckedF } from "./soft";
 import { beakedS, beltedA, wedgedT, wideE } from "./soft";
-import { drawnOE } from "./latin";
 import {
   grotesqueA,
   grotesqueAt,
@@ -2206,13 +2205,6 @@ const SOFT_MORE: Array<[LetterName, string, string, string, (style: Style) => Re
     "Soft beaks",
     "Its S with soft beaks of its own, a long stub out of its top and one out of its foot.",
     humanistDollar,
-  ],
-  [
-    "oe",
-    "joined",
-    "One wall",
-    "The o and the e sharing one wall where they meet, never crossing far enough to leave room between.",
-    (style) => drawnOE(style, true),
   ],
 ];
 for (const [name, id, label, hint, build] of SOFT_MORE) {

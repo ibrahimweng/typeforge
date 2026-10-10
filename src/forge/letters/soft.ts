@@ -296,6 +296,16 @@ export const SWUNG_HANG = 2.5;
 export const SWUNG_SIZE = 1.1;
 
 /**
+ * How far the outer wing of the serif on each of the swung y's arms reaches,
+ * as a share of the face's serif: short, as the reference's are, where its
+ * inner wings reach the whole way (`SWUNG_INNER`).
+ */
+export const SWUNG_OUTER = 0.45;
+
+/** And how far the inner wing reaches. */
+export const SWUNG_INNER = 1.4;
+
+/**
  * The y of a soft text face: the hooked y's vee, with its tail turning on
  * past the bottom (through a wider curve at a heavy weight), running out
  * along the bottom and stopping heading left, where a pear on a face that
@@ -347,13 +357,27 @@ export function swungY(style: Style): Recipe {
    */
   uses("terminal");
   const tail: Terminal = { ...f.end, pear: { hang: SWUNG_HANG, size: SWUNG_SIZE } };
+  /*
+   * The arms' serifs with short outer wings (`SWUNG_OUTER`): reaching as far
+   * out as the face's other serifs, the y stood a sixth wider than the
+   * reference's and ran a line of text long. Named against the way each arm
+   * travels, down from its top: the left arm's outer wing is on its right,
+   * the right arm's on its left.
+   */
+  const slab = f.end.kind === "slab";
+  const leftHead: Terminal = slab
+    ? { ...f.end, wings: { left: SWUNG_INNER, right: SWUNG_OUTER } }
+    : f.end;
+  const rightHead: Terminal = slab
+    ? { ...f.end, wings: { left: SWUNG_OUTER, right: SWUNG_INNER } }
+    : f.end;
   return finish(f, [
     // Its join with the tail rounded on the crotch side: see `buried`.
-    ink(f, straight(at(left, f.x), stop), f.end, buried(f, { left: SWUNG_CROTCH })),
+    ink(f, straight(at(left, f.x), stop), leftHead, buried(f, { left: SWUNG_CROTCH })),
     ink(
       f,
       chain(straight(top, knee), inPieces(turn(centre, radius, from, SWUNG_END), 2)),
-      f.end,
+      rightHead,
       tail,
     ),
   ]);
@@ -615,7 +639,15 @@ export const BELTED_HEAVIER = 1.1425;
  */
 export function beltedA(style: Style): Recipe {
   const f = frame(style);
-  const heavy = heaviness(f);
+  /*
+   * As heavy as the letter it is drawn for, where it is drawn small inside
+   * another (`Pen.black`, which `sized` sets): the feminine ordinal's a, on a
+   * pen that is light for the face but heavy for its size. Counted off its
+   * own pen alone, a Bold's ordinal was drawn as a text weight's a, and its
+   * head's drop came down onto the belt and closed a pinhole of paper under
+   * it.
+   */
+  const heavy = Math.max(heaviness(f), f.style.pen.black ?? 0);
   const weight = f.style.pen.weight;
   const heavier = 1 + (BELTED_HEAVIER - 1) * Math.max(0, 1 - heavy);
   const bowlPen = { ...f.style.pen, weight: weight * (1 - CURLED_BOWL_LIGHT * heavy) * heavier };
@@ -832,18 +864,29 @@ export const WIDE_WIDTH = 1.03;
  * upright pen, the Soft Serif's bar stood 21 units deep where its o's crown
  * is 28 and its H's bar 32 -- the lightest stroke in the face, and at 11 and
  * 12 pixels on a screen of one pixel to the point it fell out of the letter
- * altogether, and the e read as a c. Never lighter than the face's own
- * hairline, it stays in the letter wherever the face's hairlines do.
+ * altogether, and the e read as a c. Held to the face's own hairline, it
+ * stays in the letter wherever the face's hairlines do -- though never drawn
+ * with as heavy a pen as the old-style e's bar (`WIDE_BAR_HELD`), which is
+ * what keeps this e's eye the wider.
  */
 export const WIDE_BAR_LEAST = 1;
+
+/**
+ * The most the wide-eyed e's bar is drawn with, against the pen of the
+ * old-style e's own bar: a little less, so the bar the hairline asks for is
+ * still the lighter of the two. On the e's more upright pen a level stroke
+ * stands less deep for its weight, and the hairline asked a pen a thirtieth
+ * heavier than the old-style bar's.
+ */
+export const WIDE_BAR_HELD = 0.98;
 
 /**
  * The e of a soft text face: the old-style e (`humanistE`, handed in as
  * `drawE`) written with its pen held nearer the upright, a little lighter and
  * a little wider, and with a lighter bar, so its eye opens wider -- light
  * along the bar and over the top, its right side no heavier than a stem --
- * and its weight sits in its sides. The bar is never lighter than the face's
- * hairline (`WIDE_BAR_LEAST`).
+ * and its weight sits in its sides. The bar is held to the face's hairline
+ * (`WIDE_BAR_LEAST`), short of the old-style bar's own pen (`WIDE_BAR_HELD`).
  *
  * The whole letter is drawn with that pen and that bar, not changed after,
  * so the bar still meets the bowl along the bowl's own edge and the bowl's
@@ -864,7 +907,9 @@ export function wideE(style: Style, drawE: (style: Style) => Recipe): Recipe {
    */
   const deep = (one: typeof pen) => Math.abs(reachAlong(at(0, 1), penReach(one)).y);
   const hairline = deep(pen) * WIDE_BAR_LEAST;
-  const least = deep(upright) > 0 ? hairline / deep(upright) : 0;
+  // And no heavier a pen than the old-style bar's, of the face's crossbar on the face's pen.
+  const held = (parts.crossbar.weight / WIDE_WEIGHT) * WIDE_BAR_HELD;
+  const least = deep(upright) > 0 ? Math.min(hairline / deep(upright), held) : 0;
   return drawE({
     ...style,
     pen: upright,
