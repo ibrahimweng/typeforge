@@ -29,7 +29,7 @@ import { SERIF, type Family, type Style } from "./style";
  * of every join rounded; the c and e tails run long and flat, and the open
  * bowls heavier at the bottom than at the top; the arches springing lower from
  * the stem; bigger dots. On a pen with more contrast at a steeper angle, and
- * with its own a, y and f (`letters/soft.ts`).
+ * with its own a, e, f, t and y (`letters/soft.ts`).
  *
  * Every number here is a field the engine reads, and none of them is special
  * to this face: the same settings on the Serif by hand draw the same letters.
@@ -106,7 +106,14 @@ export const SOFT_SERIF: Style = {
     corner: { ...SERIF.parts.corner, fillet: 0.35 },
     crossbar: { ...SERIF.parts.crossbar, weight: 1.05 },
   },
-  forms: { ...SERIF.forms, a: "curled", y: "swung", f: "tucked" },
+  forms: {
+    ...SERIF.forms,
+    a: "belted",
+    y: "swung",
+    f: "tucked",
+    e: "wide-eyed",
+    t: "wedged",
+  },
 };
 
 /** A face offered to start from, beside the base it is drawn on. */

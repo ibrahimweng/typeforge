@@ -138,7 +138,14 @@ describe("the Soft Serif", () => {
   });
 
   it("draws its own a, y and f, and the Serif's forms for everything else", () => {
-    expect(SOFT_SERIF.forms).toEqual({ ...SERIF.forms, a: "curled", y: "swung", f: "tucked" });
+    expect(SOFT_SERIF.forms).toEqual({
+      ...SERIF.forms,
+      a: "belted",
+      y: "swung",
+      f: "tucked",
+      e: "wide-eyed",
+      t: "wedged",
+    });
     expect(SERIF.forms?.a).toBe("humanist");
     expect(SERIF.forms?.y).toBe("hooked");
     expect(SERIF.forms?.f).toBeUndefined();
@@ -153,10 +160,12 @@ describe("a Soft Serif document", () => {
     expect(JSON.stringify(opened.style)).toBe(JSON.stringify(forge.style));
     expect(JSON.stringify(opened.style)).toBe(JSON.stringify(SOFT_SERIF));
     expect(opened.base).toBe("Serif");
-    expect(formOf(opened, "a")).toBe("curled");
-    expect(formOf(opened, "aacute")).toBe("curled");
+    expect(formOf(opened, "a")).toBe("belted");
+    expect(formOf(opened, "aacute")).toBe("belted");
     expect(formOf(opened, "y")).toBe("swung");
     expect(formOf(opened, "f")).toBe("tucked");
+    expect(formOf(opened, "e")).toBe("wide-eyed");
+    expect(formOf(opened, "t")).toBe("wedged");
     // A base on its own is not work; this is, whatever it is called.
     expect(worthKeeping(forge, "Untitled")).toBe(true);
     expect(worthKeeping(forge, "Soft Serif")).toBe(true);

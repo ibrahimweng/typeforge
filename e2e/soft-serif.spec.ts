@@ -29,9 +29,11 @@ test("starts the Soft Serif from its button, on the Serif", async ({ page }) => 
   await expect(start).toHaveAttribute("aria-pressed", "false");
   // The letters it draws its own way are the ones chosen.
   for (const [letter, form] of [
-    ["a", "curled"],
+    ["a", "belted"],
     ["y", "swung"],
     ["f", "tucked"],
+    ["e", "wide-eyed"],
+    ["t", "wedged"],
   ]) {
     await page.locator(`[data-forge-cell="${letter}"]`).click();
     await expect(

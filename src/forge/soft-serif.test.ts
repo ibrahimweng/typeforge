@@ -49,7 +49,13 @@ const PENS = [30, 87, 142, 194, 260];
 const WIDTHS = [75, 100, 125];
 const NAMES = letterNames();
 /** The letters the Soft Serif draws its own way. */
-const OWN = Object.entries({ a: "curled", y: "swung", f: "tucked" });
+const OWN = Object.entries({
+  a: "belted",
+  y: "swung",
+  f: "tucked",
+  e: "wide-eyed",
+  t: "wedged",
+});
 
 /** The fields that are the soft finishes, by where they live. */
 const FINISHES: Record<string, string[]> = {
