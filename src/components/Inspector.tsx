@@ -289,7 +289,9 @@ export function Inspector(): React.JSX.Element {
                 disabled={option === "glyph" && !glyph}
                 title={
                   option === "family"
-                    ? "Every glyph in the font at once"
+                    ? state.masters.length > 1
+                      ? "Every glyph in the version you are drawing"
+                      : "Every glyph in the font at once"
                     : option === "glyph"
                       ? glyph
                         ? `Just ${glyph.name}, which can override any family value`
@@ -417,6 +419,7 @@ function Parameters({
   const gestureRef = gesture;
   return (
     <>
+      {!editingGlyph && <WhichVersion />}
       <div ref={listRef} className="p-3" data-panel-section="params">
         {PARAMS.map((spec) => {
           const scaleFactor = spec.emRelative ? typeface.unitsPerEm : 1;
@@ -522,6 +525,50 @@ function Parameters({
         </button>
       </div>
     </>
+  );
+}
+
+/**
+ * Which version these settings belong to, once there is more than one.
+ *
+ * Every version keeps its own Weight, Width, Slant and the rest, so moving one
+ * of them here changes the version being drawn and no other. That is not
+ * something anybody can see from a slider, and the first thing a person does
+ * with a new Bold is reach for Weight and look to see whether the Regular moved
+ * too. So it is said above the sliders, with the versions beside it to switch
+ * between, and each one's weight shown so the two can be told apart at a
+ * glance without leaving the panel.
+ */
+function WhichVersion(): React.JSX.Element | null {
+  const state = useAppState();
+  const masters = state.masters;
+  const here = masters.find((one) => one.id === state.master);
+  if (masters.length < 2 || !here) return null;
+  return (
+    <div className="border-b border-border px-3 py-2.5" data-params-version>
+      <p className="pb-2 text-2xs leading-snug text-muted-foreground">
+        These settings change <span className="font-medium text-foreground">{here.name}</span> only.
+        Each version keeps its own.
+      </p>
+      <div className="flex flex-wrap gap-1" role="group" aria-label="Version to adjust">
+        {masters.map((master) => (
+          <button
+            key={master.id}
+            type="button"
+            data-params-version-pick={master.id}
+            aria-pressed={master.id === state.master}
+            onClick={() => store.goToMaster(master.id)}
+            title={`Adjust the ${master.name}`}
+            className={segment(master.id === state.master, "px-2")}
+          >
+            {master.name}
+            {master.at.wght !== undefined && (
+              <span className="pl-1 opacity-60 tabular-nums">{master.at.wght}</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

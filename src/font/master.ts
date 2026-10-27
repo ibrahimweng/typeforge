@@ -17,7 +17,14 @@
  * rather than by taste. See `docs/masters.md`.
  */
 
-import { cloneGlyph, type Glyph, type Typeface, type Vec2 } from "./types";
+import {
+  cloneGlyph,
+  DEFAULT_PARAMS,
+  type Glyph,
+  type GlyphParams,
+  type Typeface,
+  type Vec2,
+} from "./types";
 import { blendStrokes, inkOf, strokesAgree } from "@/quill/written";
 import { normalise, regionOf, scalarAt, type Axis } from "./variable";
 
@@ -188,6 +195,8 @@ export function masterFrom(
       ...base,
       glyphs: base.glyphs.map(cloneGlyph),
       glyphIndex: new Map(base.glyphIndex),
+      // Its own, like the drawing: see `shareAcross`.
+      params: { ...base.params },
     },
   };
 }
@@ -272,7 +281,13 @@ export function alignMasters(source: Typeface, masters: Master[]): void {
 export function mastersFrom(
   base: Typeface,
   weight: { name: string; at: Record<string, number> } | undefined,
-  saved: Array<{ id: string; name: string; at: Record<string, number>; glyphs: Glyph[] }>,
+  saved: Array<{
+    id: string;
+    name: string;
+    at: Record<string, number>;
+    glyphs: Glyph[];
+    params?: Partial<GlyphParams>;
+  }>,
 ): Master[] {
   const first = soleMaster(base);
   if (weight) {
@@ -284,6 +299,14 @@ export function mastersFrom(
   for (const one of saved) {
     if (!one || typeof one.id !== "string" || masters.some((had) => had.id === one.id)) continue;
     const made = masterFrom(base, one.name, one.at ?? {}, one.id);
+    // Its own settings, where it was saved with them. A document from before
+    // versions kept their own has none, and every version takes the first's.
+    if (one.params && typeof one.params === "object") {
+      const own = Object.entries(one.params).filter(
+        ([key, value]) => key in made.typeface.params && Number.isFinite(value),
+      );
+      made.typeface.params = { ...made.typeface.params, ...Object.fromEntries(own) };
+    }
     for (const glyph of Array.isArray(one.glyphs) ? one.glyphs : []) {
       const at = made.typeface.glyphIndex.get(glyph?.name);
       if (at === undefined) continue;
@@ -304,10 +327,17 @@ export function mastersFrom(
  * back onto one typeface -- so the divergence had two doors, not one.
  *
  * So it is stated as a rule and enforced after every change instead: **a master
- * owns its glyphs and shares everything else.** Written as "copy all of it, then
- * put the drawing back", so a field added to `Typeface` later is shared by
- * default, which is the right default -- there is one `name`, one set of
- * vertical metrics and one `GPOS` in the file this all becomes.
+ * owns its glyphs and its parameters, and shares everything else.** Written as
+ * "copy all of it, then put the drawing back", so a field added to `Typeface`
+ * later is shared by default, which is the right default -- there is one
+ * `name`, one set of vertical metrics and one `GPOS` in the file this all
+ * becomes.
+ *
+ * The parameters are drawing, not bookkeeping. Weight, width, slant and the
+ * rest are applied to every letter on the way out, so a Bold made heavier with
+ * the Weight control is a Bold drawn differently. Shared, moving that control
+ * in the Bold moved the Regular with it: the two versions were always the same
+ * letters, and the variable font written from them had no difference to store.
  */
 export function shareAcross(source: Typeface, masters: Master[]): void {
   for (const master of masters) {
@@ -315,9 +345,11 @@ export function shareAcross(source: Typeface, masters: Master[]): void {
     if (to === source) continue;
     const glyphs = to.glyphs;
     const glyphIndex = to.glyphIndex;
+    const params = to.params;
     Object.assign(to, source);
     to.glyphs = glyphs;
     to.glyphIndex = glyphIndex;
+    to.params = params;
   }
 }
 
@@ -468,7 +500,7 @@ export function glyphAcross(
   const base = masters[0].typeface.glyphs[index];
 
   const here = normalise(axes, at);
-  const others: Array<{ glyph: Glyph; scalar: number }> = [];
+  const others: Array<{ glyph: Glyph; scalar: number; family: GlyphParams }> = [];
   for (const master of masters.slice(1)) {
     const found = master.typeface.glyphIndex.get(name);
     if (found === undefined) continue;
@@ -487,13 +519,26 @@ export function glyphAcross(
       base.written && !base.written.expanded && glyph.written && !glyph.written.expanded;
     if (written) {
       if (strokesAgree(base.written!.strokes, glyph.written!.strokes))
-        others.push({ glyph, scalar });
+        others.push({ glyph, scalar, family: master.typeface.params });
       continue;
     }
-    if (agrees(base, glyph)) others.push({ glyph, scalar });
+    if (agrees(base, glyph)) others.push({ glyph, scalar, family: master.typeface.params });
   }
   if (others.length === 0) return base;
+  return withParams(
+    between(base, masters[0].typeface.unitsPerEm, others),
+    base,
+    masters[0],
+    others,
+  );
+}
 
+/** The letter between the drawings, before the settings are blended. */
+function between(
+  base: Glyph,
+  unitsPerEm: number | undefined,
+  others: Array<{ glyph: Glyph; scalar: number }>,
+): Glyph {
   /*
    * Between two written letters, blend the pen and sweep the result -- and this
    * is the one place the difference is not a nicety.
@@ -515,11 +560,50 @@ export function glyphAcross(
     return {
       ...outline,
       written: { strokes },
-      contours: inkOf(strokes, masters[0].typeface.unitsPerEm ?? 1000),
+      contours: inkOf(strokes, unitsPerEm ?? 1000),
     };
   }
 
   return moved(base, others);
+}
+
+/**
+ * The settings between the versions, on the letter.
+ *
+ * Every version keeps its own Weight, Width, Slant and the rest, and they are
+ * applied to every letter on the way out, so a Bold made heavier with the
+ * Weight control and no point moved is still a heavier letter. Halfway along
+ * the axis is halfway between those settings, by the same amounts the points
+ * are blended by. Written onto the letter as its own values, which is where a
+ * setting that belongs to this one drawing is read from.
+ *
+ * Left alone where every version has the same settings, which is every font
+ * that has never had a version's settings moved.
+ */
+function withParams(
+  glyph: Glyph,
+  base: Glyph,
+  first: Master,
+  others: Array<{ glyph: Glyph; scalar: number; family: GlyphParams }>,
+): Glyph {
+  const own = (family: GlyphParams, letter: Glyph): GlyphParams => ({
+    ...DEFAULT_PARAMS,
+    ...family,
+    ...letter.params,
+  });
+  const from = own(first.typeface.params, base);
+  const each = others.map((other) => ({ ...other, params: own(other.family, other.glyph) }));
+  const keys = Object.keys(from) as Array<keyof GlyphParams>;
+  if (each.every((other) => keys.every((key) => other.params[key] === from[key]))) return glyph;
+
+  const params = { ...from };
+  for (const key of keys) {
+    let value = from[key];
+    for (const other of each) value += (other.params[key] - from[key]) * other.scalar;
+    // A grid is counted in whole cells.
+    params[key] = key === "pixelGrid" ? Math.round(value) : value;
+  }
+  return { ...glyph, params };
 }
 
 /**

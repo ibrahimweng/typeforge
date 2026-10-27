@@ -65,6 +65,26 @@ export function axisPositionOf(weight: number, unitsPerEm: number): number {
   return Math.round(Math.min(WEIGHT_AXIS.max, Math.max(WEIGHT_AXIS.min, at)));
 }
 
+/**
+ * What the Weight control should read for a version placed somewhere else on
+ * the weight axis, starting from one that is already drawn.
+ *
+ * The same line `axisPositionOf` reads the other way: the control's full range
+ * is the axis from 100 to 900, so a Bold at 700 copied from a Regular at 400
+ * starts three eighths of that range heavier. Held inside the control, so a
+ * version is never given a weight the slider cannot show.
+ */
+export function weightParamFor(
+  weight: number,
+  from: number,
+  to: number,
+  unitsPerEm: number,
+): number {
+  const { min, max } = weightLimits(unitsPerEm);
+  const moved = weight + ((to - from) / (WEIGHT_AXIS.max - WEIGHT_AXIS.min)) * (max - min);
+  return Math.min(max, Math.max(min, moved));
+}
+
 /** The same typeface with the family weight moved, sharing everything else. */
 function at(typeface: Typeface, weight: number): Typeface {
   return { ...typeface, params: { ...typeface.params, weight } };

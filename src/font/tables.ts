@@ -462,8 +462,14 @@ export function buildName(
  */
 export function nameValues(meta: FontMeta): Array<{ id: number; value: string }> {
   const named = familyNames(meta);
-  const fullName = `${meta.familyName} ${meta.styleName}`.trim();
-  const postScriptName = sanitisePostScriptName(`${meta.familyName}-${meta.styleName}`);
+  /*
+   * A face with no style name is a Regular, as `familyNames` already says for
+   * the style itself. Left blank here it wrote a PostScript name ending in a
+   * hyphen, `BeetleSans-`, which is the name a Mac keeps track of fonts by.
+   */
+  const style = meta.styleName.trim() || "Regular";
+  const fullName = `${meta.familyName} ${style}`.trim();
+  const postScriptName = sanitisePostScriptName(`${meta.familyName}-${style}`);
 
   const values: Record<string, string> = {
     copyright: meta.copyright,

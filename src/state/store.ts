@@ -32,6 +32,7 @@ import { NOTDEF, notdefGlyph } from "@/font/library";
 import { readControls } from "@/font/control";
 import { importFont } from "@/font/parse";
 import { cloneGlyph } from "@/font/types";
+import { weightParamFor } from "@/font/masters";
 import {
   AXES,
   axesOf,
@@ -278,6 +279,34 @@ class Store extends ShapingStore {
       [tag]: at,
     };
     const made = masterFrom(typeface, freeMasterName(masters, wanted), at_, freeMasterId(masters));
+    /*
+     * A new weight starts as that weight rather than as a copy nobody can tell
+     * from the one it came from. A Bold that looked exactly like the Regular
+     * read as a feature that did nothing, and exported as a variable font with
+     * nothing to vary. The Weight control is where it starts, and it is this
+     * version's own to move from there.
+     */
+    /*
+     * Its settings start from a version standing where it stands on every
+     * other axis: the one in hand when it does, the first one when it does not.
+     * A Condensed added while the Bold is open sits at the Regular's weight, and
+     * starting it on the Bold's Weight setting made a Condensed that was also a
+     * Bold.
+     */
+    const alongside =
+      here && Object.keys(at_).every((key) => key === tag || here.at[key] === at_[key])
+        ? here
+        : masters[0];
+    made.typeface.params = { ...alongside.typeface.params };
+    if (tag === WGHT) {
+      const from = alongside.at[tag] ?? middle;
+      made.typeface.params.weight = weightParamFor(
+        made.typeface.params.weight,
+        from,
+        at,
+        typeface.unitsPerEm,
+      );
+    }
     const filled = masters.map((one) =>
       one.at[tag] === undefined ? { ...one, at: { ...one.at, [tag]: middle } } : one,
     );
@@ -285,7 +314,9 @@ class Store extends ShapingStore {
     this.set({ masters: [...filled, made] });
     this.goToMaster(made.id);
     this.say(
-      `${made.name} added at ${spec.label.toLowerCase()} ${at}. It starts as a copy of ${here?.name ?? "this version"}.`,
+      tag === WGHT
+        ? `${made.name} added at weight ${at}, drawn ${at > (here?.at[tag] ?? middle) ? "heavier" : "lighter"} than ${here?.name ?? "this version"}. Its Weight control is its own to adjust.`
+        : `${made.name} added at ${spec.label.toLowerCase()} ${at}. It starts as a copy of ${here?.name ?? "this version"}.`,
     );
     return made.id;
   }
@@ -466,6 +497,7 @@ class Store extends ShapingStore {
             at: one.at,
             // Only what has been drawn in it, on the same terms as the font above.
             glyphs: one.typeface.glyphs.filter((glyph) => glyph.dirty),
+            params: { ...one.typeface.params },
           })),
         },
       ];

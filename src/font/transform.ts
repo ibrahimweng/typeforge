@@ -819,6 +819,26 @@ export function resolveAdvanceWidth(glyph: Glyph, typeface: Typeface): number {
   return anchorAt(glyph, typeface)?.advance ?? exactAdvance(glyph, typeface);
 }
 
+/**
+ * The drawn advance that comes out as `wanted` once the settings are applied.
+ *
+ * The width a person reads beside a letter is the finished one, with the
+ * Weight, Width and Tracking settings already added, and what they type there
+ * is the width they want to see. Stored as typed, the settings were added a
+ * second time: a Bold given 880 read 1034. So the drawn advance is worked back
+ * from the finished one, which is the same number wherever nothing is moved.
+ */
+export function drawnAdvanceFor(glyph: Glyph, typeface: Typeface, wanted: number): number {
+  const scale = effectiveParams(glyph, typeface).width || 1;
+  let drawn = glyph.advanceWidth;
+  for (let step = 0; step < 4; step += 1) {
+    const now = resolveAdvanceWidth({ ...glyph, advanceWidth: drawn }, typeface);
+    if (Math.abs(now - wanted) < 0.5) break;
+    drawn += (wanted - now) / scale;
+  }
+  return Math.max(0, Math.round(drawn));
+}
+
 function exactAdvance(glyph: Glyph, typeface: Typeface): number {
   const params = effectiveParams(glyph, typeface);
   return Math.max(

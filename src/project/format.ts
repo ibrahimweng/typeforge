@@ -380,6 +380,12 @@ export interface SavedMaster extends SavedWeight {
   id: string;
   /** The letters drawn in this weight. The rest follow the first one. */
   glyphs: Glyph[];
+  /**
+   * This weight's own settings: its Weight, Width, Slant and the rest. Left out
+   * by every document saved before a version kept its own, which then opens
+   * with each version on the first one's settings, as it always did.
+   */
+  params?: GlyphParams;
 }
 
 // ---------------------------------------------------------------------------

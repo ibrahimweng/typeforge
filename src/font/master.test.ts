@@ -327,6 +327,22 @@ describe("looking between the weights", () => {
     expect(glyphAcross("a", pair(), { [WGHT]: 900 })!.contours[0].nodes[1].point.x).toBe(200);
   });
 
+  it("blends each version's own settings by the same amount", () => {
+    /*
+     * A Bold made heavier with the Weight control and no point moved is still
+     * a heavier letter, so halfway along the axis is halfway between the two
+     * settings -- not the Regular's setting on a letter that never moved.
+     */
+    const [first, bold] = pair();
+    bold.typeface.params = { ...bold.typeface.params, weight: 40 };
+    const halfway = glyphAcross("a", [first, bold], { [WGHT]: 650 })!;
+    expect(halfway.params.weight).toBe(20);
+  });
+
+  it("leaves the letter's settings alone where the versions agree", () => {
+    expect(glyphAcross("a", pair(), { [WGHT]: 650 })!.params).toEqual({});
+  });
+
   it("stands at the first version where the drawings do not line up", () => {
     /*
      * The same thing the exported file does with that letter: `buildGvar`

@@ -31,7 +31,7 @@ import * as React from "react";
 
 import { contoursBounds } from "@/font/geometry";
 
-import { resolveAdvanceWidth } from "@/font/transform";
+import { drawnAdvanceFor, resolveAdvanceWidth } from "@/font/transform";
 import type { Glyph, Typeface, Vec2 } from "@/font/types";
 import { cursorFor as cursorClass } from "@/font/tools";
 
@@ -692,7 +692,8 @@ function Numbers({
             value={Math.round(advance)}
             onCommit={(next) =>
               store.editGlyph(glyph.name, "Set advance width", (editing) => {
-                editing.advanceWidth = Math.max(0, next);
+                // What is typed is the width that is shown: see `drawnAdvanceFor`.
+                editing.advanceWidth = drawnAdvanceFor(editing, typeface, Math.max(0, next));
               })
             }
           />
