@@ -110,6 +110,35 @@ test("adds a second weight at the far end of the axis and goes to it", async ({ 
   await expect(row.locator("[data-version-name]")).toHaveValue("Bold");
 });
 
+test("each weight has its own Weight control, and says which one it is", async ({ page }) => {
+  await sample(page);
+  await page.locator('[data-add-version="wght"]').click();
+
+  /*
+   * The panel says whose settings these are. Moving Weight in the Bold used to
+   * move the Regular with it, so the two were always the same letters and the
+   * variable font written from them had nothing to vary.
+   */
+  const panel = page.getByRole("complementary", { name: "Parameters" });
+  const note = panel.locator("[data-params-version]");
+  await expect(note).toContainText("These settings change Bold only");
+  const weight = panel.getByRole("slider", { name: "Weight" });
+  const bold = await weight.getAttribute("aria-valuenow");
+
+  // A new Bold starts heavier than the Regular it was copied from.
+  await note.getByRole("button", { name: /^Regular/ }).click();
+  await expect(note).toContainText("These settings change Regular only");
+  const regular = await weight.getAttribute("aria-valuenow");
+  expect(Number(bold)).toBeGreaterThan(Number(regular));
+
+  // Moved in the Regular, and the Bold keeps its own.
+  await weight.focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(weight).not.toHaveAttribute("aria-valuenow", regular!);
+  await note.getByRole("button", { name: /^Bold/ }).click();
+  await expect(weight).toHaveAttribute("aria-valuenow", bold!);
+});
+
 test("a letter drawn in one weight leaves the other alone", async ({ page }) => {
   await sample(page);
   await page.locator('[data-add-version="wght"]').click();
@@ -119,7 +148,10 @@ test("a letter drawn in one weight leaves the other alone", async ({ page }) => 
   // The chips follow you to the letter, because that is where the decision is.
   await expect(page.locator('[data-versions="compact"] [data-version]')).toHaveCount(2);
 
+  // Read in the Regular: a new Bold starts heavier, so it is wider already.
+  await page.locator('[data-versions="compact"] [data-version]').first().click();
   const was = await widthOf(page);
+  await page.locator('[data-versions="compact"] [data-version]').nth(1).click();
   const width = page.getByRole("textbox", { name: "Advance width" });
   await width.fill("880");
   await width.press("Enter");
@@ -174,7 +206,10 @@ test("both weights are still there after coming back", async ({ page }) => {
   await page.locator("[data-glyph-cell='o']").dblclick();
   const width = page.getByRole("textbox", { name: "Advance width" });
   await expect(width).toBeVisible();
+  // Read in the Regular: a new weight starts heavier, so it is wider already.
+  await page.locator('[data-versions="compact"] [data-version]').first().click();
   const was = await width.inputValue();
+  await page.locator('[data-versions="compact"] [data-version]').nth(1).click();
   await width.fill("880");
   await width.press("Enter");
   await expect(width).toHaveValue("880");
@@ -186,7 +221,12 @@ test("both weights are still there after coming back", async ({ page }) => {
    * over a copy of the first weight, which is what this polls for before
    * reloading rather than guessing at the timer.
    */
-  await expect.poll(() => keptWidth(page, "Black", "o"), { timeout: 30_000 }).toBe(880);
+  /*
+   * Kept as drawn, which is the 880 shown less the room the Black's own Weight
+   * setting adds, so what is waited for is the edit arriving at all: before it,
+   * nothing in the Black has been drawn and nothing of it is written down.
+   */
+  await expect.poll(() => keptWidth(page, "Black", "o"), { timeout: 30_000 }).toBeGreaterThan(0);
 
   await page.reload();
   await expect(page.getByText("Picked up where you left off")).toBeVisible({ timeout: 45_000 });

@@ -11,7 +11,7 @@ import * as React from "react";
 
 import { contoursBounds } from "@/font/geometry";
 import { NumberField } from "@/components/NumberField";
-import { resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
+import { drawnAdvanceFor, resolveAdvanceWidth, resolveGlyphContours } from "@/font/transform";
 import {
   drawGlyph,
   glyphLabel,
@@ -161,7 +161,8 @@ export function MetricsView(): React.JSX.Element {
                     value={row.advance}
                     onCommit={(next) =>
                       store.editGlyph(row.glyph.name, "Set advance width", (glyph) => {
-                        glyph.advanceWidth = Math.max(0, next);
+                        // What is typed is the width shown: see `drawnAdvanceFor`.
+                        glyph.advanceWidth = drawnAdvanceFor(glyph, typeface, Math.max(0, next));
                       })
                     }
                   />

@@ -275,7 +275,10 @@ export async function exportFont(drawn: Typeface, asked: ExportOptions): Promise
           resolving: options.resolving,
         });
 
-  const base = `${typeface.meta.familyName}-${typeface.meta.styleName}`.replace(/\s+/g, "");
+  const base = `${typeface.meta.familyName}-${typeface.meta.styleName.trim() || "Regular"}`.replace(
+    /\s+/g,
+    "",
+  );
   /*
    * A varying font is named for its family and its axes, as Draw names the
    * ones it writes and as every foundry does: `Family[wght].ttf`. Named for
@@ -842,9 +845,11 @@ async function exportOpenType(
     styleName,
     // The full and PostScript names are the face's real ones, as `buildName`
     // writes them, rather than opentype.js's joining of the old pair.
-    fullName: `${typeface.meta.familyName} ${typeface.meta.styleName}`.trim() || undefined,
+    fullName:
+      `${typeface.meta.familyName} ${typeface.meta.styleName.trim() || "Regular"}`.trim() ||
+      undefined,
     postScriptName:
-      `${typeface.meta.familyName}-${typeface.meta.styleName}`
+      `${typeface.meta.familyName}-${typeface.meta.styleName.trim() || "Regular"}`
         .replace(/[^A-Za-z0-9-]/g, "")
         .slice(0, 63) || undefined,
     unitsPerEm: typeface.unitsPerEm,
