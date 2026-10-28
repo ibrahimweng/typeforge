@@ -630,7 +630,18 @@ async function exportTrueType(
       contours: entry.contours,
       original,
       rebuild: !preserving || familyChanged || entry.glyph.dirty || !original,
-      composite: compositeRefsFor(entry.glyph, typeface),
+      /*
+       * Never a reference in a font that varies. A reference has no points of
+       * its own, so `gvar` had nothing to move for it: an imported font's é,
+       * ô, Ä, ½ and ÷ kept their Regular advance and their parts' Regular
+       * places at every weight, while the e beside them grew. The bold é was
+       * as narrow as the regular one and its accent drifted off centre -- and
+       * nothing said so, because a glyph with no points is not counted as one
+       * that cannot vary. Written as an outline, it is the assembled letter at
+       * every weight, which is what the screen and a static Bold already draw.
+       */
+      composite:
+        varying && varying.axes.length > 0 ? undefined : compositeRefsFor(entry.glyph, typeface),
       still: still[index],
     };
   });

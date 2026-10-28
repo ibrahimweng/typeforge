@@ -248,7 +248,13 @@ export function buildGvar(
     const usable = masters.filter((master) => linesUp(base, master.glyphs[index]));
     if (usable.length < masters.length && base.points.length > 0) unvarying.push(index);
 
-    if (usable.length === 0 || base.points.length === 0) {
+    /*
+     * A glyph with no outline still has an advance, and a space as wide in the
+     * Bold as in the Regular is a word set too tight at every weight but one.
+     * Its four phantom points are all it has, and they are enough: the tuple
+     * below moves the second of them, and says nothing where nothing moved.
+     */
+    if (usable.length === 0) {
       perGlyph.push(new Uint8Array(0));
       continue;
     }
