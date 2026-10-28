@@ -658,8 +658,13 @@ function resolveExactly(glyph: Glyph, typeface: Typeface): Contour[] {
   }
   if (params.cornerRadius > 0) {
     const outer = rolesOf(contours);
+    /*
+     * Which points are corners is read off the letter as drawn, before the
+     * weight, when the weight has kept its points: see `roundCorners`.
+     */
+    const drawn = params.weight !== 0 && unweightedContours ? unweightedContours : contours;
     contours = contours.map((contour, index) =>
-      applyCornerRadius(contour, params.cornerRadius, outer[index]),
+      applyCornerRadius(contour, params.cornerRadius, outer[index], drawn[index]),
     );
   }
   /*
@@ -3341,7 +3346,12 @@ const COUNTER_KNEE = 0.85;
  * held to less than half of either side, so two corners at the ends of a short
  * stretch cannot eat through it and each other.
  */
-function applyCornerRadius(contour: Contour, radius: number, isOuter = true): Contour {
+function applyCornerRadius(
+  contour: Contour,
+  radius: number,
+  isOuter = true,
+  drawn?: Contour,
+): Contour {
   /*
    * And held back where it would make the outline cross itself. That happens
    * at the Black, where the weight has folded a stretch of outline in an
@@ -3352,29 +3362,91 @@ function applyCornerRadius(contour: Contour, radius: number, isOuter = true): Co
    * so a crossing the letter had is looked for within that of where it was.
    */
   const crossedMore = crossesMoreThan(contour, FINE_STEPS);
-  for (const share of [1, 0.5, 0.25]) {
-    const rounded = roundCorners(contour, radius * share, isOuter);
+  const plan = cornerPlan(contour, drawn);
+  /*
+   * Followed through to a radius too small to see rather than given up on,
+   * where the corners are planned: handed back unrounded, the letter has a
+   * point fewer at every corner than the same letter at another weight, and a
+   * variable font cannot blend the two.
+   */
+  const shares = plan ? [1, 0.5, 0.25, 0.1, 0.02] : [1, 0.5, 0.25];
+  let last: Contour | null = null;
+  for (const share of shares) {
+    const rounded = roundCorners(contour, radius * share, isOuter, plan);
     if (!crossedMore(rounded, radius * share)) return rounded;
+    last = rounded;
   }
-  return contour;
+  return plan && last ? last : contour;
 }
 
-function roundCorners(contour: Contour, radius: number, isOuter: boolean): Contour {
+/**
+ * Which of a contour's points are corners, read off the letter as drawn.
+ *
+ * Every weight of a letter is the same drawing with its points moved, and a
+ * variable font blends them point for point -- so every weight has to round
+ * the same corners and come out with the same points. Read off each weight's
+ * own outline, it did not: the weight moves a join until it turns by less, or
+ * folds two points onto one, and a corner rounded in the Regular was left
+ * sharp in the Black. Lora with its corners fully rounded had a point fewer at
+ * every bracket of its heavy H, and a hundred and fifty letters that could not
+ * vary at all. So the drawing decides, the weight only says how far.
+ *
+ * Nothing when there is no drawing to go by, or when the weight has not kept
+ * its points, and then each outline decides for itself as before.
+ */
+interface CornerPlan {
+  /** Whether the drawing has a corner at each point. */
+  corner: boolean[];
+  /** Whether the drawing's piece leaving each point is a curve. */
+  curved: boolean[];
+}
+
+function cornerPlan(contour: Contour, drawn: Contour | undefined): CornerPlan | null {
+  if (!drawn || !contour.closed || drawn.nodes.length !== contour.nodes.length) return null;
+  if (drawn.nodes.length < 2) return null;
+  const segments = contourSegments(drawn);
+  const count = segments.length;
+  if (count !== drawn.nodes.length) return null;
+  const corner = drawn.nodes.map((_, index) => {
+    const arriving = segmentDirection(segments[(index - 1 + count) % count], 1);
+    const leaving = segmentDirection(segments[index], 0);
+    if (!(arriving.x || arriving.y) || !(leaving.x || leaving.y)) return false;
+    const cos = arriving.x * leaving.x + arriving.y * leaving.y;
+    return cos <= Math.cos((CORNER_TURN * Math.PI) / 180);
+  });
+  return { corner, curved: segments.map((segment) => segment.kind !== "line") };
+}
+
+function roundCorners(
+  contour: Contour,
+  radius: number,
+  isOuter: boolean,
+  plan: CornerPlan | null = null,
+): Contour {
   /*
    * Points written on top of each other first become one. Weight leaves them
    * where it collapsed a stretch of outline it ran over, and a corner whose
    * neighbour is itself has no direction on that side: it was left sharp
    * while the corners beside it were rounded towards it, which stood up as a
    * burr in the notch of a heavy n and on the counter of a 4.
+   *
+   * Which points went into each one is kept, for a planned rounding: there
+   * every point has to come back out, because a point folded away at this
+   * weight is still a point at every other one (see `cornerPlan`). Rounded
+   * one by one instead, the folded tip of a light chevron had no direction on
+   * one side and stayed sharp.
    */
   const nodes: GlyphNode[] = [];
-  for (const node of contour.nodes) {
+  const members: number[][] = [];
+  for (const [at, node] of contour.nodes.entries()) {
     const last = nodes[nodes.length - 1];
     if (last && distance(last.point, node.point) < 1e-6) {
       nodes[nodes.length - 1] = { ...last, handleOut: node.handleOut };
+      members[members.length - 1].push(at);
       continue;
     }
     nodes.push(node);
+    members.push([at]);
   }
   while (
     contour.closed &&
@@ -3383,7 +3455,10 @@ function roundCorners(contour: Contour, radius: number, isOuter: boolean): Conto
   ) {
     const last = nodes.pop() as GlyphNode;
     nodes[0] = { ...nodes[0], handleIn: last.handleIn };
+    members[0] = [...(members.pop() as number[]), ...members[0]];
   }
+  // A group is a corner wherever any of its points is one in the drawing.
+  const planned = plan ? members.map((group) => group.some((at) => plan.corner[at])) : null;
   if (!contour.closed || nodes.length < 2 || radius <= 0) return contour;
 
   const settled: Contour = { closed: true, nodes };
@@ -3433,11 +3508,12 @@ function roundCorners(contour: Contour, radius: number, isOuter: boolean): Conto
   // How far each corner is cut back; nought where there is no corner.
   const cut = nodes.map((_, index) => {
     const { arriving, leaving } = directions[index];
+    if (planned && !planned[index]) return 0;
     if (!(arriving.x || arriving.y) || !(leaving.x || leaving.y)) return 0;
     const cos = arriving.x * leaving.x + arriving.y * leaving.y;
     // Turning by less than this is a point on a curve drawn slightly off, not
-    // a corner anybody meant.
-    if (cos > Math.cos((CORNER_TURN * Math.PI) / 180)) return 0;
+    // a corner anybody meant. Planned, the drawing has already said.
+    if (!planned && cos > Math.cos((CORNER_TURN * Math.PI) / 180)) return 0;
     /*
      * An inside corner -- where a crossbar meets a stem, the throat of a
      * counter -- is softened, not rounded as far as an outside one. Given the
@@ -3450,9 +3526,13 @@ function roundCorners(contour: Contour, radius: number, isOuter: boolean): Conto
       lengths[(index - 1 + count) % count] * 0.49,
       lengths[index] * 0.49,
     );
-    return r < 1 ? 0 : r;
+    // Planned, a corner with no room is still a corner, rounded by too little
+    // to see, so this weight has the points every other one has.
+    return planned ? Math.max(0, r) : r < 1 ? 0 : r;
   });
-  if (cut.every((r) => r === 0)) return settled;
+  const rounds = (index: number): boolean => (planned ? planned[index] : cut[index] > 0);
+  // Planned and with nothing to round, the contour goes back with every point.
+  if (nodes.every((_, index) => !rounds(index))) return planned ? contour : settled;
 
   // Each piece with its two ends cut back.
   const trimmed = pieces.map((piece, index) => {
@@ -3462,9 +3542,11 @@ function roundCorners(contour: Contour, radius: number, isOuter: boolean): Conto
     return subPiece(piece, from, Math.max(from, to));
   });
 
+  if (planned && plan) return plannedContour(contour, plan, members, trimmed, rounds);
+
   const out: Piece[] = [];
   for (let index = 0; index < count; index++) {
-    if (cut[index] > 0) {
+    if (rounds(index)) {
       const arriving = trimmed[(index - 1 + count) % count];
       const leaving = trimmed[index];
       out.push(arcBetween(arriving, leaving));
@@ -3474,6 +3556,61 @@ function roundCorners(contour: Contour, radius: number, isOuter: boolean): Conto
   return piecesToContour(
     out.filter((piece) => distance(piece.from, piece.to) > 1e-6 || piece.curved),
   );
+}
+
+/**
+ * A planned rounding, put back with as many points as the drawing has.
+ *
+ * Every point of the drawing comes out as its own piece, and as an arc before
+ * it where the drawing has a corner there -- whatever happened at this weight.
+ * Where the weight folded several points into one, the one was rounded and
+ * the rest come back as pieces of no length on the start of its arc, so the
+ * letter looks as the fold left it and still has the points the other weights
+ * have, in the same order. Handed out point by point in the drawing's own
+ * order, a fold across the start of the contour still begins where the
+ * drawing begins.
+ */
+function plannedContour(
+  contour: Contour,
+  plan: CornerPlan,
+  members: number[][],
+  trimmed: Piece[],
+  rounds: (index: number) => boolean,
+): Contour {
+  const count = trimmed.length;
+  const owed: Piece[][] = contour.nodes.map(() => []);
+  for (let index = 0; index < count; index++) {
+    const group = members[index];
+    const piece = trimmed[index];
+    const arc = rounds(index) ? arcBetween(trimmed[(index - 1 + count) % count], piece) : null;
+    /*
+     * Every point of the group as it would have come out unfolded: an arc
+     * where the drawing has a corner, then its own piece, curved where the
+     * drawing's is -- the drawing's kinds, which a fold at this weight cannot
+     * change. The group's own arc goes where the last of its corners is and
+     * its own piece goes last, which is where they come from; the rest stand
+     * in, on the arc's start before it and on its end after, each the kind it
+     * stands in for, because a curve and a straight line are written with
+     * different points.
+     */
+    const slots = group.flatMap((at) =>
+      plan.corner[at]
+        ? [
+            { at, arc: true, curved: true },
+            { at, arc: false, curved: plan.curved[at] },
+          ]
+        : [{ at, arc: false, curved: plan.curved[at] }],
+    );
+    const arcSlot = arc ? slots.map((slot) => slot.arc).lastIndexOf(true) : -1;
+    const pieces = slots.map((slot, place): Piece => {
+      if (place === slots.length - 1) return piece;
+      if (place === arcSlot && arc) return arc;
+      const at = arc && place > arcSlot ? arc.to : (arc?.from ?? piece.from);
+      return { from: { ...at }, c1: { ...at }, c2: { ...at }, to: { ...at }, curved: slot.curved };
+    });
+    for (const [place, slot] of slots.entries()) owed[slot.at].push(pieces[place]);
+  }
+  return piecesToContour(owed.flat());
 }
 
 /** How much of the radius an inside corner gets. */
